@@ -2,9 +2,7 @@
 
 import { useState } from "react";
 import { useAuth } from "@/components/auth-provider";
-import { cn } from "@/lib/utils";
-import { Sidebar } from "@/components/sidebar";
-import { Header } from "@/components/header";
+import { useAppChrome } from "@/components/app-chrome";
 import { FilterBar } from "@/components/filter-bar";
 import { ProductGrid } from "@/components/product-grid";
 import { SignInModal } from "@/components/sign-in-modal";
@@ -26,9 +24,8 @@ export function CategoryPageLayout({
   description 
 }: CategoryPageLayoutProps) {
   const { user } = useAuth();
-  const [searchQuery, setSearchQuery] = useState("");
+  const { searchQuery } = useAppChrome();
   const [sortBy, setSortBy] = useState("popular");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [signInOpen, setSignInOpen] = useState(false);
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
 
@@ -55,52 +52,24 @@ export function CategoryPageLayout({
   });
 
   return (
-    <div className="min-h-screen bg-background relative overflow-hidden">
-      {/* Background glow effects */}
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-blue-500/10 rounded-full blur-[120px]" />
-        <div className="absolute top-1/3 right-0 w-[500px] h-[500px] bg-purple-500/10 rounded-full blur-[120px]" />
-        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-cyan-500/8 rounded-full blur-[100px]" />
+    <>
+      <div className="mb-8">
+        <h1 className="text-3xl lg:text-4xl font-semibold text-foreground mb-3 tracking-tight">
+          {title}
+        </h1>
+        <p className="text-muted-foreground text-lg max-w-2xl">{description}</p>
       </div>
-      
-      <Sidebar 
-        activeCategory={categoryName} 
-        onCategoryChange={() => {}}
-        collapsed={sidebarCollapsed}
-        onCollapsedChange={setSidebarCollapsed}
-        useLinks={true}
-      />
-      
-      <div className={cn("transition-all duration-300", sidebarCollapsed ? "lg:pl-[72px]" : "lg:pl-72")}>
-        <Header 
-          searchQuery={searchQuery} 
-          onSearchChange={setSearchQuery}
-          sidebarCollapsed={sidebarCollapsed}
-        />
-        
-        <main className="p-6 pt-22">
-          {/* Category Header */}
-          <div className="mb-8">
-            <h1 className="text-3xl lg:text-4xl font-semibold text-foreground mb-3 tracking-tight">
-              {title}
-            </h1>
-            <p className="text-muted-foreground text-lg max-w-2xl">
-              {description}
-            </p>
-          </div>
 
-          <FilterBar 
-            activeCategory={categoryName}
-            sortBy={sortBy}
-            onSortChange={setSortBy}
-          />
-          <ProductGrid 
-            products={sortedProducts} 
-            title={searchQuery ? `Results for "${searchQuery}"` : `${products.length} Templates`}
-            onDownload={handleDownload}
-          />
-        </main>
-      </div>
+      <FilterBar
+        activeCategory={categoryName}
+        sortBy={sortBy}
+        onSortChange={setSortBy}
+      />
+      <ProductGrid
+        products={sortedProducts}
+        title={searchQuery ? `Results for "${searchQuery}"` : `${products.length} Templates`}
+        onDownload={handleDownload}
+      />
 
       <SignInModal
         open={signInOpen}
@@ -108,6 +77,6 @@ export function CategoryPageLayout({
         onAuthSuccess={() => setSignInOpen(false)}
       />
       <SubscriptionModal open={subscriptionOpen} onOpenChange={setSubscriptionOpen} />
-    </div>
+    </>
   );
 }

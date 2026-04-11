@@ -255,23 +255,6 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
           </Button>
         </div>
       </div>
-
-      {/* Footer Links */}
-      <div className={cn(
-        "px-4 pb-4 transition-all duration-300 overflow-hidden",
-        collapsed ? "opacity-0 h-0 p-0" : "opacity-100"
-      )}>
-        <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-          <a href="#" className="hover:text-foreground smooth">Privacy Policy</a>
-          <a href="#" className="hover:text-foreground smooth">Terms of Use</a>
-          <a href="#" className="hover:text-foreground smooth">Refund Policy</a>
-          <a href="#" className="hover:text-foreground smooth">License</a>
-          <a href="#" className="hover:text-foreground smooth">Contact</a>
-        </div>
-        <p className="text-[10px] text-muted-foreground/60 mt-2">
-          2024 Motion Flow. All rights reserved.
-        </p>
-      </div>
     </>
   );
 
