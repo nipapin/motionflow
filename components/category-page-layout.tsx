@@ -8,7 +8,7 @@ import { ProductGrid } from "@/components/product-grid";
 import { SignInModal } from "@/components/sign-in-modal";
 import { SubscriptionModal } from "@/components/subscription-modal";
 import type { Product } from "@/lib/product-types";
-import { productMatchesSearch, productPopularityScore } from "@/lib/product-ui";
+import { productMatchesSearch, productPopularityScore, productKind } from "@/lib/product-ui";
 
 interface CategoryPageLayoutProps {
   categoryName: string;
@@ -67,7 +67,10 @@ export function CategoryPageLayout({
       />
       <ProductGrid
         products={sortedProducts}
-        title={searchQuery ? `Results for "${searchQuery}"` : `${products.length} Templates`}
+        title={searchQuery
+          ? `Results for "${searchQuery}"`
+          : `${products.length} ${products.length > 0 && productKind(products[0]) !== "template" ? "Tracks" : "Templates"}`
+        }
         onDownload={handleDownload}
       />
 

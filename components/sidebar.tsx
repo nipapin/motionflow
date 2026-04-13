@@ -153,7 +153,7 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
             onClick={() => setMobileOpen(false)}
           >
             <div className="w-9 h-9 flex items-center justify-center shrink-0 smooth group-hover:scale-105">
-              <Image src="/images/logo.png" alt="Motion Flow" width={36} height={36} className="w-full h-full object-contain" />
+              <Image src="/images/logo.png" alt="Motion Flow" width={36} height={36} className="w-full h-full object-contain dark:invert-0 invert" />
             </div>
             <span className={cn(
               "font-semibold text-lg text-foreground tracking-tight whitespace-nowrap transition-all duration-300",
@@ -167,7 +167,7 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
             className="flex items-center gap-3 group overflow-hidden"
           >
             <div className="w-9 h-9 flex items-center justify-center shrink-0 smooth group-hover:scale-105">
-              <Image src="/images/logo.png" alt="Motion Flow" width={36} height={36} className="w-full h-full object-contain" />
+              <Image src="/images/logo.png" alt="Motion Flow" width={36} height={36} className="w-full h-full object-contain dark:invert-0 invert" />
             </div>
             <span className={cn(
               "font-semibold text-lg text-foreground tracking-tight whitespace-nowrap transition-all duration-300",

@@ -4,7 +4,7 @@ export const SIDEBAR_LABEL_BY_PATH: Record<string, string> = {
   "/premiere-pro": "Premiere Pro",
   "/davinci-resolve": "DaVinci Resolve",
   "/illustrator": "Illustrator",
-  "/stock-music": "Stock Music",
+  "/stock-audio": "Stock Audio",
   "/sound-fx": "Sound FX",
   "/image-generation": "Image Gen",
   "/video-generation": "Video Gen",

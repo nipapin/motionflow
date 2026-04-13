@@ -2,9 +2,10 @@
 
 import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
-import { Heart, Download } from "lucide-react";
+import { Heart, Download, Volume2, VolumeOff } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+import { useVideoMute } from "@/components/video-mute-provider";
 import type { Product } from "@/lib/product-types";
 import {
   productCardVideoSrc,
@@ -42,6 +43,7 @@ export function ProductCard({ product, onDownload, onClick }: ProductCardProps) 
   /** Set on first hover; kept after leave so the clip stays buffered (no reload / spinner on re-hover). */
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [videoUiLoading, setVideoUiLoading] = useState(false);
+  const { muted: globalMuted, toggle: toggleGlobalMute } = useVideoMute();
   const wantsVideoRef = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const kind = productKind(product);
@@ -79,6 +81,13 @@ export function ProductCard({ product, onDownload, onClick }: ProductCardProps) 
       el.currentTime = 0;
     }
   };
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    el.muted = globalMuted;
+    el.volume = 0.5;
+  }, [globalMuted]);
 
   useEffect(() => {
     if (!videoSrc) {
@@ -173,10 +182,14 @@ export function ProductCard({ product, onDownload, onClick }: ProductCardProps) 
 
           <button
             type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleGlobalMute();
+            }}
             className="w-9 h-9 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 smooth border border-white/10"
-            aria-label="Add to favorites"
+            aria-label={globalMuted ? "Unmute" : "Mute"}
           >
-            <Heart className="w-4 h-4" />
+            {globalMuted ? <VolumeOff className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
           </button>
         </div>
 
@@ -185,17 +198,27 @@ export function ProductCard({ product, onDownload, onClick }: ProductCardProps) 
             <h3 className="font-semibold text-white text-sm line-clamp-1 mb-0.5">{product.name}</h3>
             <p className="text-white/50 text-xs">{categoryLabel}</p>
           </div>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDownload?.();
-            }}
-            className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-110 smooth shrink-0"
-            aria-label="Download"
-          >
-            <Download className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={(e) => e.stopPropagation()}
+              className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 smooth border border-white/10"
+              aria-label="Add to favorites"
+            >
+              <Heart className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDownload?.();
+              }}
+              className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-110 smooth shrink-0"
+              aria-label="Download"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
     </div>

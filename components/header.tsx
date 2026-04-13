@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 interface HeaderProps {
   searchQuery: string;
@@ -43,8 +44,6 @@ export function Header({ searchQuery, onSearchChange, sidebarCollapsed }: Header
     setAuthModalMode("signup");
     setSignInOpen(true);
   };
-  const theme = resolvedTheme; // Declare the theme variable
-
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -111,37 +110,31 @@ export function Header({ searchQuery, onSearchChange, sidebarCollapsed }: Header
                   className="text-foreground hover:bg-foreground/5 rounded-full h-10 px-4 text-sm font-medium smooth border border-blue-500/30 hover:border-blue-500/50 gap-2"
                 >
                   <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-                    <span className="text-sm text-white font-semibold">I</span>
+                    <span className="text-sm text-white font-semibold">{user?.name?.charAt(0).toUpperCase() ?? "U"}</span>
                   </div>
-                  ionestudio
+                  {user?.name ?? "Account"}
                 </Button>
                 <div className="absolute right-0 top-full pt-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
                   <div className="w-64 bg-card/95 backdrop-blur-xl border border-blue-500/20 rounded-xl p-3 shadow-xl">
                     <div className="flex flex-col gap-1">
-                      <button className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-foreground/5 smooth text-left">
-                        <User className="w-5 h-5 text-blue-400" />
-                        <span className="text-sm text-foreground">Profile</span>
-                      </button>
-                      <button className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-foreground/5 smooth text-left">
-                        <ShoppingBag className="w-5 h-5 text-blue-400" />
-                        <span className="text-sm text-foreground">My purchases</span>
-                      </button>
-                      <button className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-foreground/5 smooth text-left">
-                        <CreditCard className="w-5 h-5 text-blue-400" />
-                        <span className="text-sm text-foreground">My subscription</span>
-                      </button>
-                      <button className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-foreground/5 smooth text-left">
-                        <Download className="w-5 h-5 text-blue-400" />
-                        <span className="text-sm text-foreground">My downloads</span>
-                      </button>
-                      <button className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-foreground/5 smooth text-left">
-                        <Bookmark className="w-5 h-5 text-blue-400" />
-                        <span className="text-sm text-foreground">Favorites</span>
-                      </button>
-                      <button className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-foreground/5 smooth text-left">
-                        <Settings className="w-5 h-5 text-blue-400" />
-                        <span className="text-sm text-foreground">Settings</span>
-                      </button>
+                      {[
+                        { icon: User, label: "Profile" },
+                        { icon: ShoppingBag, label: "My purchases" },
+                        { icon: CreditCard, label: "My subscription" },
+                        { icon: Download, label: "My downloads" },
+                        { icon: Bookmark, label: "Favorites" },
+                        { icon: Settings, label: "Settings" },
+                      ].map(({ icon: Icon, label }) => (
+                        <button
+                          key={label}
+                          type="button"
+                          onClick={() => toast.info(`${label} — coming soon`)}
+                          className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-foreground/5 smooth text-left"
+                        >
+                          <Icon className="w-5 h-5 text-blue-400" />
+                          <span className="text-sm text-foreground">{label}</span>
+                        </button>
+                      ))}
                       <div className="h-px bg-border/50 my-1" />
                       <button
                         type="button"

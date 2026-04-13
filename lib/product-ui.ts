@@ -17,7 +17,7 @@ const SLUG_TO_SOFTWARE_LABEL: Record<string, string> = {
   "premiere-pro": "Premiere Pro",
   "davinci-resolve": "DaVinci Resolve",
   illustrator: "Illustrator",
-  "stock-music": "Stock Music",
+  "stock-audio": "Stock Music",
   "sound-fx": "Sound FX",
 };
 
@@ -49,12 +49,12 @@ function titleCaseSlug(slug: string): string {
     .join(" ");
 }
 
-export type ProductKind = "template" | "music" | "sfx";
+export type ProductKind = "template" | "stock-audio" | "sfx";
 
 export function productKind(product: Product): ProductKind {
   const slug = product.index_category_slug?.toLowerCase() ?? "";
   if (slug === "sound-fx") return "sfx";
-  if (slug === "stock-music") return "music";
+  if (slug === "stock-audio") return "stock-audio";
   return "template";
 }
 
@@ -194,6 +194,28 @@ export function productCardVideoSrc(product: Product): string | undefined {
   ) {
     return demo;
   }
+  return undefined;
+}
+
+/**
+ * Audio URL for stock-audio / sound-fx products.
+ * Tries `files.main` via CDN, then `demo_url`.
+ */
+export function productAudioUrl(product: Product): string | undefined {
+  const f = normalizeProductFiles(product.files);
+  for (const slug of [f.main, f.video]) {
+    if (!slug) continue;
+    if (slug.startsWith("http://") || slug.startsWith("https://")) {
+      if (allowedAssetHttpUrl(slug)) return slug;
+      continue;
+    }
+    const file = /\.(mp3|wav|ogg|aac|flac|m4a|webm)(\?.*)?$/i.test(slug)
+      ? slug
+      : `${slug}.mp3`;
+    const url = marketPreviewPath(product, file);
+    if (url) return url;
+  }
+  if (product.demo_url && allowedAssetHttpUrl(product.demo_url)) return product.demo_url;
   return undefined;
 }
 

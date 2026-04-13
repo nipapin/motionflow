@@ -30,12 +30,12 @@ export function HeroBanner({ onCategoryChange }: HeroBannerProps) {
       
       <div className="relative flex flex-col lg:flex-row gap-10 p-8 lg:p-14">
         <div className="flex-1 flex flex-col justify-center text-center lg:text-left">
-          <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium bg-foreground/5 text-white mb-6 w-fit mx-auto lg:mx-0 border border-blue-500/30">
+          <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium bg-foreground/5 text-foreground mb-6 w-fit mx-auto lg:mx-0 border border-blue-500/30">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
             Unlimited Downloads
           </span>
           <h1 className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-semibold text-foreground mb-5 tracking-tight leading-[1.1] text-balance">
-            Create stunning videos with premium templates
+            Create stunning videos <br/> with premium templates
           </h1>
           <p className="text-muted-foreground mb-8 max-w-lg mx-auto lg:mx-0 text-pretty text-lg leading-relaxed">
             Access thousands of professionally crafted templates for After Effects, Premiere Pro, and DaVinci Resolve.
@@ -81,7 +81,7 @@ export function HeroBanner({ onCategoryChange }: HeroBannerProps) {
                     <cat.icon className="w-5 h-5 sm:w-6 sm:h-6 lg:w-7 lg:h-7 text-white drop-shadow-md" />
                   ) : null}
                 </div>
-                <span className="text-xs sm:text-sm font-medium text-white smooth text-center leading-tight px-2">
+                <span className="text-xs sm:text-sm font-medium text-foreground smooth text-center leading-tight px-2">
                   {cat.label}
                 </span>
               </Link>

@@ -46,7 +46,7 @@ export function ProductGrid({
   const templateProducts = products.filter((p) => productKind(p) === "template");
   const audioProducts = products.filter((p) => {
     const k = productKind(p);
-    return k === "music" || k === "sfx";
+    return k === "stock-audio" || k === "sfx";
   });
 
   const getSimilarProducts = (product: Product) => {
@@ -108,7 +108,12 @@ export function ProductGrid({
         <div className={templateProducts.length > 0 ? "mt-10" : ""}>
           <div className="flex flex-col divide-y divide-border/50 rounded-2xl border border-border/50 overflow-hidden bg-card/50">
             {audioProducts.map((product) => (
-              <AudioTrack key={product.id} product={product} />
+              <AudioTrack
+                key={product.id}
+                product={product}
+                onDownload={onDownload}
+                onClick={() => setSelectedProduct(product)}
+              />
             ))}
           </div>
         </div>
@@ -119,7 +124,6 @@ export function ProductGrid({
           product={selectedProduct}
           open={!!selectedProduct}
           onOpenChange={(open) => !open && setSelectedProduct(null)}
-          onDownload={onDownload}
           similarProducts={getSimilarProducts(selectedProduct)}
         />
       )}

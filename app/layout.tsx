@@ -4,6 +4,8 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AuthProvider } from '@/components/auth-provider'
+import { VideoMuteProvider } from '@/components/video-mute-provider'
+import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
 const geistSans = Geist({
@@ -53,7 +55,10 @@ export default function RootLayout({
           enableSystem={false}
           disableTransitionOnChange
         >
-          <AuthProvider>{children}</AuthProvider>
+          <VideoMuteProvider>
+            <AuthProvider>{children}</AuthProvider>
+          </VideoMuteProvider>
+          <Toaster />
         </ThemeProvider>
         <Analytics />
       </body>

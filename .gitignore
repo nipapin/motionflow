@@ -22,6 +22,9 @@ yarn-error.log*
 # cursor
 .cursor/
 
+# cache
+/.cache/
+
 # vercel
 .vercel
 
