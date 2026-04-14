@@ -10,7 +10,7 @@ const categories = [
   { name: "Premiere Pro", label: "Premiere Pro", text: "Pr", gradient: "from-purple-600 via-violet-500 to-fuchsia-500", href: "/premiere-pro" },
   { name: "DaVinci Resolve", label: "DaVinci Resolve", text: "Dr", gradient: "from-orange-500 via-red-500 to-rose-500", href: "/davinci-resolve" },
   { name: "Illustrator", label: "Illustrator", text: "Ai", gradient: "from-amber-500 via-orange-500 to-yellow-500", href: "/illustrator" },
-  { name: "Stock Music", label: "Stock Music", icon: Music, gradient: "from-emerald-500 via-teal-500 to-cyan-500", href: "/stock-music" },
+  { name: "Stock Music", label: "Stock Music", icon: Music, gradient: "from-emerald-500 via-teal-500 to-cyan-500", href: "/stock-audio" },
   { name: "Sound FX", label: "Sound FX", icon: AudioLines, gradient: "from-blue-500 via-cyan-500 to-teal-500", href: "/sound-fx" },
 ];
 

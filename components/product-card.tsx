@@ -6,6 +6,7 @@ import { Heart, Download, Volume2, VolumeOff } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { useVideoMute } from "@/components/video-mute-provider";
+import { useFavorites } from "@/components/favorites-provider";
 import type { Product } from "@/lib/product-types";
 import {
   productCardVideoSrc,
@@ -44,6 +45,8 @@ export function ProductCard({ product, onDownload, onClick }: ProductCardProps) 
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [videoUiLoading, setVideoUiLoading] = useState(false);
   const { muted: globalMuted, toggle: toggleGlobalMute } = useVideoMute();
+  const { isFav, toggle: toggleFav } = useFavorites();
+  const favorited = isFav(product.id);
   const wantsVideoRef = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const kind = productKind(product);
@@ -201,11 +204,14 @@ export function ProductCard({ product, onDownload, onClick }: ProductCardProps) 
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={(e) => e.stopPropagation()}
-              className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 smooth border border-white/10"
-              aria-label="Add to favorites"
+              onClick={(e) => { e.stopPropagation(); void toggleFav(product.id); }}
+              className={cn(
+                "w-10 h-10 rounded-full backdrop-blur-md flex items-center justify-center smooth border border-white/10",
+                favorited ? "bg-red-500/20 text-red-400" : "bg-white/10 text-white hover:bg-white/20",
+              )}
+              aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
             >
-              <Heart className="w-4 h-4" />
+              <Heart className={cn("w-4 h-4", favorited && "fill-current")} />
             </button>
             <button
               type="button"

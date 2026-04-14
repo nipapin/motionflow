@@ -33,7 +33,7 @@ const browseCategories = [
     iconColor: "text-emerald-400",
   },
   {
-    name: "Stock Audio",
+    name: "Stock Music",
     label: "Stock Music",
     icon: Music,
     gradient: "from-primary/30 to-primary/10",

@@ -1,6 +1,9 @@
 import { Metadata } from "next";
 import { CategoryPageLayout } from "@/components/category-page-layout";
-import { getMarketItemsForSoftwareLabel } from "@/lib/market-items";
+import { getMarketItemsPage, getSubCategorySlugs } from "@/lib/market-items";
+
+const INDEX_SLUG = "stock-audio";
+const PAGE_SIZE = 20;
 
 export const metadata: Metadata = {
   title: "Royalty-Free Stock Music | Motion Flow",
@@ -14,14 +17,20 @@ export const metadata: Metadata = {
 };
 
 export default async function StockMusicPage() {
-  const products = await getMarketItemsForSoftwareLabel("Stock Music");
-  
+  const [page, subCategorySlugs] = await Promise.all([
+    getMarketItemsPage(INDEX_SLUG, { limit: PAGE_SIZE }),
+    getSubCategorySlugs(INDEX_SLUG),
+  ]);
+
   return (
     <CategoryPageLayout
       categoryName="Stock Music"
-      products={products}
+      products={page.items}
+      subCategorySlugs={subCategorySlugs}
       title="Royalty-Free Stock Music"
       description="High-quality background music for your videos, podcasts, and projects. Cinematic, corporate, electronic, and more."
+      pagination={{ indexCategorySlug: INDEX_SLUG, pageSize: PAGE_SIZE }}
+      initialHasMore={page.hasMore}
     />
   );
 }

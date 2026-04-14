@@ -23,7 +23,7 @@ const categories = [
   { name: "Premiere Pro", text: "Pr", href: "/premiere-pro" },
   { name: "DaVinci Resolve", text: "Dr", href: "/davinci-resolve" },
   { name: "Illustrator", text: "Ai", href: "/illustrator" },
-  { name: "Stock Music", icon: Music, href: "/stock-music" },
+  { name: "Stock Music", icon: Music, href: "/stock-audio" },
   { name: "Sound FX", icon: AudioLines, href: "/sound-fx" },
 ];
 
@@ -42,7 +42,7 @@ interface SidebarProps {
   useLinks?: boolean;
 }
 
-export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollapsedChange, useLinks = false }: SidebarProps) {
+export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollapsedChange, useLinks = true }: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const CategoryItem = ({ category }: { category: typeof categories[0] }) => {

@@ -78,7 +78,14 @@ export default function Home({ marketItems }: HomePageProps) {
         </>
       ) : (
         <>
-          <FilterBar activeCategory={activeCategory} sortBy={sortBy} onSortChange={setSortBy} />
+          <FilterBar
+            activeCategory={activeCategory}
+            subCategories={[]}
+            selectedSubCategory=""
+            onSubCategoryChange={() => {}}
+            sortBy={sortBy}
+            onSortChange={setSortBy}
+          />
           <ProductGrid
             products={filteredProducts}
             title={searchQuery ? `Results for "${searchQuery}"` : activeCategory}

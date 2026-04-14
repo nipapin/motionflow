@@ -173,3 +173,99 @@ export async function getMarketItemsForSoftwareLabel(softwareLabel: string): Pro
   const slug = softwareLabelToSlug(softwareLabel);
   return getMarketItemsByIndexCategorySlug(slug);
 }
+
+export interface MarketItemsPage {
+  items: Product[];
+  hasMore: boolean;
+}
+
+/** Keyset-paginated query: `ORDER BY id DESC`, cursor via `beforeId`. */
+export async function getMarketItemsPage(
+  indexCategorySlug: string,
+  { limit = 20, beforeId }: { limit?: number; beforeId?: number } = {},
+): Promise<MarketItemsPage> {
+  const pool = getMysqlPool();
+  if (!pool || !assertSafeSlug(indexCategorySlug)) return { items: [], hasMore: false };
+
+  const connection = process.env.DB_CONNECTION?.toLowerCase();
+  if (connection && connection !== "mysql" && connection !== "mariadb") return { items: [], hasMore: false };
+
+  const table = sanitizedTableName();
+  const capped = Math.min(Math.max(limit, 1), 50);
+
+  try {
+    const params: unknown[] = [indexCategorySlug];
+    let sql = `SELECT * FROM \`${table}\` WHERE LOWER(index_category_slug) = LOWER(?) AND author_id = 6 AND access = 1`;
+    if (beforeId != null) {
+      sql += " AND id < ?";
+      params.push(beforeId);
+    }
+    sql += ` ORDER BY id DESC LIMIT ?`;
+    params.push(capped + 1);
+
+    const [rows] = await pool.query<RowDataPacket[]>(sql, params);
+    const products = rows.map(rowToProduct).filter((p): p is Product => p != null);
+    const hasMore = products.length > capped;
+    return { items: hasMore ? products.slice(0, capped) : products, hasMore };
+  } catch (err) {
+    console.error("[getMarketItemsPage] MySQL query failed:", err);
+    return { items: [], hasMore: false };
+  }
+}
+
+/** Load products by an array of IDs (preserves input order). */
+export async function getMarketItemsByIds(ids: number[]): Promise<Product[]> {
+  if (ids.length === 0) return [];
+  const pool = getMysqlPool();
+  if (!pool) return [];
+
+  const table = sanitizedTableName();
+  const placeholders = ids.map(() => "?").join(",");
+
+  try {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT * FROM \`${table}\` WHERE id IN (${placeholders})`,
+      ids,
+    );
+    const map = new Map<number, Product>();
+    for (const row of rows) {
+      const p = rowToProduct(row);
+      if (p) map.set(p.id, p);
+    }
+    return ids.map((id) => map.get(id)).filter((p): p is Product => p != null);
+  } catch (err) {
+    console.error("[getMarketItemsByIds] MySQL query failed:", err);
+    return [];
+  }
+}
+
+/** Distinct `sub_category_slug` values for a given `index_category_slug`. */
+export async function getSubCategorySlugs(indexCategorySlug: string): Promise<string[]> {
+  const pool = getMysqlPool();
+  if (!pool || !assertSafeSlug(indexCategorySlug)) return [];
+
+  const connection = process.env.DB_CONNECTION?.toLowerCase();
+  if (connection && connection !== "mysql" && connection !== "mariadb") return [];
+
+  const table = sanitizedTableName();
+
+  try {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT DISTINCT sub_category_slug FROM \`${table}\` WHERE LOWER(index_category_slug) = LOWER(?) AND author_id = 6 AND access = 1 AND sub_category_slug IS NOT NULL AND sub_category_slug != ''`,
+      [indexCategorySlug],
+    );
+    const set = new Set<string>();
+    for (const row of rows) {
+      const raw = String(row.sub_category_slug ?? "").trim();
+      if (!raw) continue;
+      for (const part of raw.split(",")) {
+        const slug = part.trim();
+        if (slug) set.add(slug);
+      }
+    }
+    return Array.from(set).sort();
+  } catch (err) {
+    console.error("[getSubCategorySlugs] MySQL query failed:", err);
+    return [];
+  }
+}

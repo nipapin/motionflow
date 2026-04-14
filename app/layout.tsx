@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AuthProvider } from '@/components/auth-provider'
+import { FavoritesProvider } from '@/components/favorites-provider'
 import { VideoMuteProvider } from '@/components/video-mute-provider'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
@@ -56,7 +57,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <VideoMuteProvider>
-            <AuthProvider>{children}</AuthProvider>
+            <AuthProvider><FavoritesProvider>{children}</FavoritesProvider></AuthProvider>
           </VideoMuteProvider>
           <Toaster />
         </ThemeProvider>

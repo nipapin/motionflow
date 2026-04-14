@@ -1,6 +1,8 @@
 import { Metadata } from "next";
 import { CategoryPageLayout } from "@/components/category-page-layout";
-import { getMarketItemsForSoftwareLabel } from "@/lib/market-items";
+import { getMarketItemsForSoftwareLabel, getSubCategorySlugs } from "@/lib/market-items";
+
+const INDEX_SLUG = "premiere-pro";
 
 export const metadata: Metadata = {
   title: "Premiere Pro Templates | Motion Flow",
@@ -14,12 +16,16 @@ export const metadata: Metadata = {
 };
 
 export default async function PremiereProPage() {
-  const products = await getMarketItemsForSoftwareLabel("Premiere Pro");
-  
+  const [products, subCategorySlugs] = await Promise.all([
+    getMarketItemsForSoftwareLabel("Premiere Pro"),
+    getSubCategorySlugs(INDEX_SLUG),
+  ]);
+
   return (
     <CategoryPageLayout
       categoryName="Premiere Pro"
       products={products}
+      subCategorySlugs={subCategorySlugs}
       title="Premiere Pro Templates"
       description="Professional video templates, transitions, slideshows, and title packs for Adobe Premiere Pro."
     />

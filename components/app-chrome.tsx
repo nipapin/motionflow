@@ -90,7 +90,7 @@ export function AppChrome({ children }: { children: ReactNode }) {
           onCategoryChange={isSpaHome ? setSpaActiveCategory : () => {}}
           collapsed={sidebarCollapsed}
           onCollapsedChange={setSidebarCollapsed}
-          useLinks={!isSpaHome}
+          useLinks
         />
 
         <div

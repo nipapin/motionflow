@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Check, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -34,6 +35,7 @@ const ultimateFeatures = [
 ];
 
 export default function PricingPage() {
+  const router = useRouter();
   const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">("yearly");
 
   const monthlyPrice = 15;
@@ -54,13 +56,13 @@ export default function PricingPage() {
       </div>
 
       <div className="relative max-w-5xl mx-auto px-6 py-12">
-        <Link
-          href="/"
+        <button
+          onClick={() => router.back()}
           className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-12"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to Home
-        </Link>
+          Back
+        </button>
 
         <div className="text-center mb-12">
           <h1 className="text-4xl md:text-5xl font-semibold text-foreground mb-4 text-balance tracking-tight">

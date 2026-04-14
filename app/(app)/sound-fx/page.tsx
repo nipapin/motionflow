@@ -1,6 +1,9 @@
 import { Metadata } from "next";
 import { CategoryPageLayout } from "@/components/category-page-layout";
-import { getMarketItemsForSoftwareLabel } from "@/lib/market-items";
+import { getMarketItemsPage, getSubCategorySlugs } from "@/lib/market-items";
+
+const INDEX_SLUG = "sound-fx";
+const PAGE_SIZE = 20;
 
 export const metadata: Metadata = {
   title: "Sound Effects | Motion Flow",
@@ -14,14 +17,20 @@ export const metadata: Metadata = {
 };
 
 export default async function SoundFXPage() {
-  const products = await getMarketItemsForSoftwareLabel("Sound FX");
-  
+  const [page, subCategorySlugs] = await Promise.all([
+    getMarketItemsPage(INDEX_SLUG, { limit: PAGE_SIZE }),
+    getSubCategorySlugs(INDEX_SLUG),
+  ]);
+
   return (
     <CategoryPageLayout
       categoryName="Sound FX"
-      products={products}
+      products={page.items}
+      subCategorySlugs={subCategorySlugs}
       title="Sound Effects"
       description="Professional sound effects including whooshes, impacts, UI sounds, ambient loops, and foley for your projects."
+      pagination={{ indexCategorySlug: INDEX_SLUG, pageSize: PAGE_SIZE }}
+      initialHasMore={page.hasMore}
     />
   );
 }

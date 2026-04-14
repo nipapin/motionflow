@@ -14,7 +14,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/components/auth-provider";
+import { useAuth, type AuthUser } from "@/components/auth-provider";
+
+function authUserFromLoginPayload(u: { id: number; email: string; name: string }): AuthUser {
+  return {
+    ...u,
+    oauthPasswordOnly: false,
+    canChangePassword: true,
+  };
+}
 
 type Mode = "signin" | "signup";
 
@@ -95,7 +103,7 @@ export function SignInModal({
       });
       const data = (await res.json()) as AuthJson;
       if (data.success) {
-        await refresh();
+        await refresh(authUserFromLoginPayload(data.user));
         onAuthSuccess?.();
         handleOpenChange(false);
       } else {
@@ -128,7 +136,7 @@ export function SignInModal({
       });
       const data = (await res.json()) as AuthJson;
       if (data.success) {
-        await refresh();
+        await refresh(authUserFromLoginPayload(data.user));
         onAuthSuccess?.();
         handleOpenChange(false);
       } else {

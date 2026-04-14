@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
-import { Search, Moon, Sun, User, ShoppingBag, CreditCard, Download, Bookmark, Settings, LogOut, X } from "lucide-react";
+import { Search, Moon, Sun, User, ShoppingBag, CreditCard, Download, Bookmark, LogOut, X } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 
 interface HeaderProps {
   searchQuery: string;
@@ -118,22 +117,20 @@ export function Header({ searchQuery, onSearchChange, sidebarCollapsed }: Header
                   <div className="w-64 bg-card/95 backdrop-blur-xl border border-blue-500/20 rounded-xl p-3 shadow-xl">
                     <div className="flex flex-col gap-1">
                       {[
-                        { icon: User, label: "Profile" },
-                        { icon: ShoppingBag, label: "My purchases" },
-                        { icon: CreditCard, label: "My subscription" },
-                        { icon: Download, label: "My downloads" },
-                        { icon: Bookmark, label: "Favorites" },
-                        { icon: Settings, label: "Settings" },
-                      ].map(({ icon: Icon, label }) => (
-                        <button
+                        { icon: User, label: "Profile", href: "/profile" },
+                        { icon: ShoppingBag, label: "My purchases", href: "/profile/purchases" },
+                        { icon: CreditCard, label: "My subscriptions", href: "/profile/subscriptions" },
+                        { icon: Download, label: "My downloads", href: "/profile/downloads" },
+                        { icon: Bookmark, label: "Favorites", href: "/profile/favorites" },
+                      ].map(({ icon: Icon, label, href }) => (
+                        <Link
                           key={label}
-                          type="button"
-                          onClick={() => toast.info(`${label} — coming soon`)}
+                          href={href}
                           className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-foreground/5 smooth text-left"
                         >
                           <Icon className="w-5 h-5 text-blue-400" />
                           <span className="text-sm text-foreground">{label}</span>
-                        </button>
+                        </Link>
                       ))}
                       <div className="h-px bg-border/50 my-1" />
                       <button

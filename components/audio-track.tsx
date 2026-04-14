@@ -1,11 +1,15 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Play, Pause, Download, Bookmark } from "lucide-react";
+import { Play, Pause, Download, Heart } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import type { Product } from "@/lib/product-types";
 import { productCategoryLabel, productAudioUrl } from "@/lib/product-ui";
+import { useFavorites } from "@/components/favorites-provider";
+import { cn } from "@/lib/utils";
 
 const BAR_COUNT = 240;
+const FLAT_PEAKS: number[] = new Array(BAR_COUNT).fill(0);
 const CONCURRENCY = 2;
 
 // --------------- global fetch queue (max 2 concurrent) ---------------
@@ -57,6 +61,26 @@ function extractPeaks(buffer: AudioBuffer, barCount: number): number[] {
   return peaks;
 }
 
+// --------------- global playback (one track at a time) ---------------
+let activeTrack: { pause: () => void } | null = null;
+
+function claimPlayback(track: { pause: () => void }) {
+  if (activeTrack && activeTrack !== track) activeTrack.pause();
+  activeTrack = track;
+}
+
+function releasePlayback(track: { pause: () => void }) {
+  if (activeTrack === track) activeTrack = null;
+}
+
+/** Stops the list row player (e.g. before opening the product modal). */
+export function pauseGlobalAudioPlayback() {
+  if (activeTrack) {
+    activeTrack.pause();
+    activeTrack = null;
+  }
+}
+
 // --------------- helpers ---------------
 interface AudioTrackProps {
   product: Product;
@@ -95,20 +119,45 @@ function drawWaveform(canvas: HTMLCanvasElement, peaks: number[], progress: numb
   const playedColor = `rgba(${rgb}, 0.7)`;
 
   const barCount = peaks.length;
-  const gap = 2;
-  const barWidth = Math.max((w - gap * (barCount - 1)) / barCount, 2);
-  const radius = barWidth / 2;
-  const playedBars = Math.floor(progress * barCount);
-  const minH = 4;
+  if (barCount === 0) return;
 
-  for (let i = 0; i < barCount; i++) {
-    const barH = Math.max(peaks[i] * (h * 0.9), minH);
-    const x = i * (barWidth + gap);
-    const y = (h - barH) / 2;
-    ctx.fillStyle = i < playedBars ? playedColor : baseColor;
+  const mid = h / 2;
+  const maxAmp = h * 0.45;
+  const minAmp = 2;
+  const stepX = w / (barCount - 1);
+  const splitX = progress * w;
+
+  function buildPath(startIdx: number, endIdx: number) {
+    ctx!.beginPath();
+    for (let i = startIdx; i <= endIdx; i++) {
+      const x = i * stepX;
+      const amp = Math.max(peaks[i] * maxAmp, minAmp);
+      const y = mid - amp;
+      if (i === startIdx) ctx!.moveTo(x, y);
+      else ctx!.lineTo(x, y);
+    }
+    for (let i = endIdx; i >= startIdx; i--) {
+      const x = i * stepX;
+      const amp = Math.max(peaks[i] * maxAmp, minAmp);
+      const y = mid + amp;
+      ctx!.lineTo(x, y);
+    }
+    ctx!.closePath();
+  }
+
+  ctx.fillStyle = baseColor;
+  buildPath(0, barCount - 1);
+  ctx.fill();
+
+  if (progress > 0) {
+    ctx.save();
     ctx.beginPath();
-    ctx.roundRect(x, y, barWidth, barH, radius);
+    ctx.rect(0, 0, splitX, h);
+    ctx.clip();
+    ctx.fillStyle = playedColor;
+    buildPath(0, barCount - 1);
     ctx.fill();
+    ctx.restore();
   }
 }
 
@@ -142,8 +191,11 @@ async function fetchPeaks(audioUrl: string): Promise<number[]> {
 
 // --------------- component ---------------
 export function AudioTrack({ product, onDownload, onClick, containerClassName }: AudioTrackProps) {
+  const { isFav, toggle: toggleFav } = useFavorites();
+  const favorited = isFav(product.id);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [peaks, setPeaks] = useState<number[]>([]);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [peaks, setPeaks] = useState<number[] | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -151,8 +203,6 @@ export function AudioTrack({ product, onDownload, onClick, containerClassName }:
   const rowRef = useRef<HTMLDivElement>(null);
 
   const audioUrl = productAudioUrl(product);
-
-  const placeholderPeaks = useRef(Array.from({ length: BAR_COUNT }).fill(0));
 
   // Load peaks only when visible (IntersectionObserver) + queued
   useEffect(() => {
@@ -212,9 +262,25 @@ export function AudioTrack({ product, onDownload, onClick, containerClassName }:
     };
   }, [audioUrl, duration]);
 
+  // Reset everything when URL changes (e.g. product swap in modal)
+  const prevUrlRef = useRef(audioUrl);
+  useEffect(() => {
+    if (prevUrlRef.current === audioUrl) return;
+    prevUrlRef.current = audioUrl;
+    audioRef.current?.pause();
+    audioRef.current = null;
+    setIsPlaying(false);
+    setIsBuffering(false);
+    setCurrentTime(0);
+    setDuration(0);
+    setPeaks(audioUrl && peakCache.has(audioUrl) ? peakCache.get(audioUrl)! : null);
+  }, [audioUrl]);
+
   // Clean up audio on unmount
   useEffect(() => {
+    const handle = { pause: () => { audioRef.current?.pause(); setIsPlaying(false); } };
     return () => {
+      releasePlayback(handle);
       audioRef.current?.pause();
       audioRef.current = null;
     };
@@ -228,14 +294,19 @@ export function AudioTrack({ product, onDownload, onClick, containerClassName }:
     audioRef.current = audio;
     audio.addEventListener("loadedmetadata", () => setDuration(audio.duration));
     audio.addEventListener("timeupdate", () => setCurrentTime(audio.currentTime));
+    audio.addEventListener("playing", () => setIsBuffering(false));
+    audio.addEventListener("waiting", () => setIsBuffering(true));
+    audio.addEventListener("error", () => setIsBuffering(false));
     audio.addEventListener("ended", () => {
       setIsPlaying(false);
+      setIsBuffering(false);
       setCurrentTime(0);
+      releasePlayback({ pause: () => {} });
     });
     return audio;
   }, [audioUrl]);
 
-  const activePeaks = peaks ?? placeholderPeaks.current;
+  const activePeaks = peaks ?? FLAT_PEAKS;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -253,22 +324,36 @@ export function AudioTrack({ product, onDownload, onClick, containerClassName }:
     return () => obs.disconnect();
   }, [activePeaks, currentTime, duration]);
 
+  const pauseThis = useCallback(() => {
+    audioRef.current?.pause();
+    setIsPlaying(false);
+    setIsBuffering(false);
+  }, []);
+
   const togglePlay = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      if (isPlaying) {
-        audioRef.current?.pause();
-        setIsPlaying(false);
+      if (isPlaying || isBuffering) {
+        pauseThis();
+        releasePlayback({ pause: pauseThis });
       } else {
         const audio = getOrCreateAudio();
         if (!audio) return;
+        const handle = { pause: pauseThis };
+        claimPlayback(handle);
+        if (audio.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+          setIsBuffering(true);
+        }
         audio
           .play()
           .then(() => setIsPlaying(true))
-          .catch(() => {});
+          .catch(() => {
+            setIsBuffering(false);
+            releasePlayback(handle);
+          });
       }
     },
-    [isPlaying, getOrCreateAudio],
+    [isPlaying, isBuffering, getOrCreateAudio, pauseThis],
   );
 
   const handleWaveformClick = useCallback(
@@ -295,9 +380,15 @@ export function AudioTrack({ product, onDownload, onClick, containerClassName }:
         type="button"
         onClick={togglePlay}
         className="w-10 h-10 rounded-full bg-foreground/5 flex items-center justify-center text-foreground hover:bg-foreground hover:text-background smooth shrink-0"
-        aria-label={isPlaying ? "Pause" : "Play"}
+        aria-label={isBuffering ? "Loading" : isPlaying ? "Pause" : "Play"}
       >
-        {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+        {isBuffering ? (
+          <Spinner className="w-4 h-4" />
+        ) : isPlaying ? (
+          <Pause className="w-4 h-4" />
+        ) : (
+          <Play className="w-4 h-4 ml-0.5" />
+        )}
       </button>
 
       <div className="w-48 shrink-0">
@@ -316,11 +407,14 @@ export function AudioTrack({ product, onDownload, onClick, containerClassName }:
       <div className="flex items-center gap-1 shrink-0">
         <button
           type="button"
-          className="w-9 h-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-foreground/5 rounded-full smooth"
-          aria-label="Save to favorites"
-          onClick={(e) => e.stopPropagation()}
+          className={cn(
+            "w-9 h-9 flex items-center justify-center rounded-full smooth",
+            favorited ? "text-red-400 hover:bg-red-500/10" : "text-muted-foreground hover:text-foreground hover:bg-foreground/5",
+          )}
+          aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
+          onClick={(e) => { e.stopPropagation(); void toggleFav(product.id); }}
         >
-          <Bookmark className="w-4 h-4" />
+          <Heart className={cn("w-4 h-4", favorited && "fill-current")} />
         </button>
         <button
           type="button"

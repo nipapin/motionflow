@@ -1,6 +1,8 @@
 import { Metadata } from "next";
 import { CategoryPageLayout } from "@/components/category-page-layout";
-import { getMarketItemsForSoftwareLabel } from "@/lib/market-items";
+import { getMarketItemsForSoftwareLabel, getSubCategorySlugs } from "@/lib/market-items";
+
+const INDEX_SLUG = "davinci-resolve";
 
 export const metadata: Metadata = {
   title: "DaVinci Resolve Templates | Motion Flow",
@@ -14,12 +16,16 @@ export const metadata: Metadata = {
 };
 
 export default async function DaVinciResolvePage() {
-  const products = await getMarketItemsForSoftwareLabel("DaVinci Resolve");
-  
+  const [products, subCategorySlugs] = await Promise.all([
+    getMarketItemsForSoftwareLabel("DaVinci Resolve"),
+    getSubCategorySlugs(INDEX_SLUG),
+  ]);
+
   return (
     <CategoryPageLayout
       categoryName="DaVinci Resolve"
       products={products}
+      subCategorySlugs={subCategorySlugs}
       title="DaVinci Resolve Templates"
       description="Professional color grading LUTs, Fusion effects, transitions, and title templates for DaVinci Resolve."
     />

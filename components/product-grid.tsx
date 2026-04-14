@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, type RefObject } from "react";
 import { ChevronDown } from "lucide-react";
 import { ProductCard } from "./product-card";
 import type { Product } from "@/lib/product-types";
 import { productCategoryLabel, productKind, productSoftwareLabel } from "@/lib/product-ui";
 import { AudioTrack } from "./audio-track";
 import { ProductDetailModal } from "./product-detail-modal";
+import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -31,6 +32,8 @@ interface ProductGridProps {
   showCategoryFilter?: boolean;
   selectedSoftware?: string;
   onSoftwareChange?: (software: string) => void;
+  sentinelRef?: RefObject<HTMLDivElement | null>;
+  isLoadingMore?: boolean;
 }
 
 export function ProductGrid({ 
@@ -39,10 +42,23 @@ export function ProductGrid({
   onDownload, 
   showCategoryFilter = false,
   selectedSoftware = "After Effects",
-  onSoftwareChange 
+  onSoftwareChange,
+  sentinelRef,
+  isLoadingMore,
 }: ProductGridProps) {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  
+
+  useEffect(() => {
+    if (selectedProduct || products.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("product");
+    if (!raw) return;
+    const id = parseInt(raw, 10);
+    if (!Number.isFinite(id)) return;
+    const match = products.find((p) => p.id === id);
+    if (match) setSelectedProduct(match);
+  }, [products, selectedProduct]);
+
   const templateProducts = products.filter((p) => productKind(p) === "template");
   const audioProducts = products.filter((p) => {
     const k = productKind(p);
@@ -58,7 +74,7 @@ export function ProductGrid({
           p.id !== product.id &&
           (productSoftwareLabel(p) === sw || productCategoryLabel(p) === cat)
       )
-      .slice(0, 4);
+      .slice(0, 8);
   };
 
   return (
@@ -119,12 +135,19 @@ export function ProductGrid({
         </div>
       )}
 
+      {sentinelRef && (
+        <div ref={sentinelRef} className="flex justify-center py-8">
+          {isLoadingMore && <Spinner className="w-6 h-6 text-muted-foreground" />}
+        </div>
+      )}
+
       {selectedProduct && (
         <ProductDetailModal
           product={selectedProduct}
           open={!!selectedProduct}
           onOpenChange={(open) => !open && setSelectedProduct(null)}
           similarProducts={getSimilarProducts(selectedProduct)}
+          onProductChange={setSelectedProduct}
         />
       )}
     </section>

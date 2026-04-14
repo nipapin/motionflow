@@ -10,12 +10,22 @@ import {
 } from "react";
 import { toast } from "sonner";
 
-export type AuthUser = { id: number; email: string; name: string };
+export type AuthUser = {
+  id: number;
+  email: string;
+  name: string;
+  oauthPasswordOnly?: boolean;
+  canChangePassword?: boolean;
+};
 
 type AuthContextValue = {
   user: AuthUser | null;
   loading: boolean;
-  refresh: () => Promise<void>;
+  /**
+   * Re-fetch session from `/api/auth/me`.
+   * After email login/register, pass `fallbackIfNull` so a brief cookie delay does not flash logged-out UI.
+   */
+  refresh: (fallbackIfNull?: AuthUser) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -25,13 +35,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (fallbackIfNull?: AuthUser) => {
     try {
       const r = await fetch("/api/auth/me", { credentials: "include" });
       const d = (await r.json()) as { user: AuthUser | null };
-      setUser(d.user ?? null);
+      const next = d.user ?? fallbackIfNull ?? null;
+      setUser(next);
     } catch {
-      setUser(null);
+      setUser(fallbackIfNull ?? null);
     } finally {
       setLoading(false);
     }
@@ -69,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     } finally {
       setUser(null);
+      window.location.href = "/";
     }
   }, []);
 

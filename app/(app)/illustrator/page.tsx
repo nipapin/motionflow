@@ -1,6 +1,8 @@
 import { Metadata } from "next";
 import { CategoryPageLayout } from "@/components/category-page-layout";
-import { getMarketItemsForSoftwareLabel } from "@/lib/market-items";
+import { getMarketItemsForSoftwareLabel, getSubCategorySlugs } from "@/lib/market-items";
+
+const INDEX_SLUG = "illustrator";
 
 export const metadata: Metadata = {
   title: "Illustrator Templates | Motion Flow",
@@ -14,12 +16,16 @@ export const metadata: Metadata = {
 };
 
 export default async function IllustratorPage() {
-  const products = await getMarketItemsForSoftwareLabel("Illustrator");
-  
+  const [products, subCategorySlugs] = await Promise.all([
+    getMarketItemsForSoftwareLabel("Illustrator"),
+    getSubCategorySlugs(INDEX_SLUG),
+  ]);
+
   return (
     <CategoryPageLayout
       categoryName="Illustrator"
       products={products}
+      subCategorySlugs={subCategorySlugs}
       title="Illustrator Templates"
       description="Professional graphic templates, social media kits, thumbnails, and print-ready designs for Adobe Illustrator."
     />
