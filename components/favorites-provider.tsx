@@ -10,11 +10,11 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "@/components/auth-provider";
+import { SignInModal } from "@/components/sign-in-modal";
 
 type FavoritesContextValue = {
   ids: Set<number>;
   loading: boolean;
-  /** Toggle a favorite. Returns the new state (`true` = added). */
   toggle: (itemId: number) => Promise<boolean>;
   isFav: (itemId: number) => boolean;
 };
@@ -25,6 +25,7 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [ids, setIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [signInOpen, setSignInOpen] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -41,7 +42,11 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
 
   const toggle = useCallback(
     async (itemId: number): Promise<boolean> => {
-      // Optimistic update
+      if (!user) {
+        setSignInOpen(true);
+        return false;
+      }
+
       const was = ids.has(itemId);
       setIds((prev) => {
         const next = new Set(prev);
@@ -59,7 +64,6 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
         });
         const data = (await r.json()) as { favorited?: boolean; error?: string };
         if (!r.ok) {
-          // Revert
           setIds((prev) => {
             const next = new Set(prev);
             if (was) next.add(itemId);
@@ -70,7 +74,6 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
         }
         return data.favorited ?? !was;
       } catch {
-        // Revert
         setIds((prev) => {
           const next = new Set(prev);
           if (was) next.add(itemId);
@@ -80,7 +83,7 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
         return was;
       }
     },
-    [ids],
+    [ids, user],
   );
 
   const isFav = useCallback((itemId: number) => ids.has(itemId), [ids]);
@@ -93,6 +96,11 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
   return (
     <FavoritesContext.Provider value={value}>
       {children}
+      <SignInModal
+        open={signInOpen}
+        onOpenChange={setSignInOpen}
+        onAuthSuccess={() => setSignInOpen(false)}
+      />
     </FavoritesContext.Provider>
   );
 }

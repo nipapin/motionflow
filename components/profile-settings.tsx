@@ -59,7 +59,7 @@ export function ProfileSettings() {
 
   if (loading || !user) {
     return (
-      <div className="rounded-xl border border-border/60 bg-card/30 p-8 text-sm text-muted-foreground">
+      <div className="rounded-xl border border-blue-500/30 bg-card/30 p-8 text-sm text-muted-foreground glow">
         Loading profile…
       </div>
     );
@@ -154,7 +154,7 @@ export function ProfileSettings() {
         </p>
       </div>
 
-      <Card className="border-border/60 bg-card/40 backdrop-blur-sm">
+      <Card className="border-blue-500/30 bg-card/40 backdrop-blur-sm glow">
         <CardHeader>
           <CardTitle>Display name</CardTitle>
           <CardDescription>
@@ -183,7 +183,7 @@ export function ProfileSettings() {
         </CardContent>
       </Card>
 
-      <Card className="border-border/60 bg-card/40 backdrop-blur-sm">
+      <Card className="border-blue-500/30 bg-card/40 backdrop-blur-sm glow">
         <CardHeader>
           <CardTitle>Email</CardTitle>
           <CardDescription>
@@ -235,7 +235,7 @@ export function ProfileSettings() {
       </Card>
 
       {canChangePassword && (
-        <Card className="border-border/60 bg-card/40 backdrop-blur-sm">
+        <Card className="border-blue-500/30 bg-card/40 backdrop-blur-sm glow">
           <CardHeader>
             <CardTitle>Password</CardTitle>
             <CardDescription>

@@ -18,7 +18,7 @@ export default async function ProfileSubscriptionsPage() {
     return (
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight">My subscriptions</h1>
-        <div className="flex flex-col items-center rounded-2xl border border-border/60 bg-card/40 px-6 py-14 text-center">
+        <div className="flex flex-col items-center rounded-2xl border border-blue-500/30 bg-card/40 px-6 py-14 text-center glow">
           <h2 className="mb-2 text-lg font-medium">
             You don&apos;t have an{" "}
             <span className="text-primary">unlimited download</span> subscription.

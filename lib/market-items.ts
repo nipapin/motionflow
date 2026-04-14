@@ -239,6 +239,69 @@ export async function getMarketItemsByIds(ids: number[]): Promise<Product[]> {
   }
 }
 
+export interface HomeSection {
+  title: string;
+  items: Product[];
+}
+
+const HOME_SECTIONS: { title: string; slugs: string[] }[] = [
+  { title: "Most Popular Templates", slugs: ["after-effects", "premiere-pro", "davinci-resolve"] },
+  { title: "Most Popular Graphics", slugs: ["illustrator"] },
+  { title: "Most Popular Stock Audio", slugs: ["stock-audio"] },
+  { title: "Most Popular Sound FX", slugs: ["sound-fx"] },
+];
+
+/**
+ * Single query: uses UNION ALL with per-group LIMIT 6 to fetch all home
+ * sections in one round-trip, then splits results by slug group.
+ */
+export async function getHomeSections(): Promise<HomeSection[]> {
+  const pool = getMysqlPool();
+  if (!pool) return [];
+
+  const table = sanitizedTableName();
+
+  const allSlugs = HOME_SECTIONS.flatMap((s) => s.slugs);
+  const slugSet = new Set(allSlugs.map((s) => s.toLowerCase()));
+
+  const unions = HOME_SECTIONS.map(({ slugs }) => {
+    const placeholders = slugs.map(() => "?").join(",");
+    return `(SELECT * FROM \`${table}\` WHERE LOWER(index_category_slug) IN (${placeholders}) AND author_id = 6 AND access = 1 ORDER BY id DESC LIMIT 6)`;
+  });
+
+  const sql = unions.join(" UNION ALL ");
+  const params = HOME_SECTIONS.flatMap((s) => s.slugs);
+
+  try {
+    const [rows] = await pool.query<RowDataPacket[]>(sql, params);
+
+    const slugToSection = new Map<string, number>();
+    HOME_SECTIONS.forEach((section, i) => {
+      for (const slug of section.slugs) {
+        slugToSection.set(slug.toLowerCase(), i);
+      }
+    });
+
+    const buckets: Product[][] = HOME_SECTIONS.map(() => []);
+
+    for (const row of rows) {
+      const p = rowToProduct(row);
+      if (!p) continue;
+      const slug = p.index_category_slug?.toLowerCase() ?? "";
+      const idx = slugToSection.get(slug);
+      if (idx != null) buckets[idx].push(p);
+    }
+
+    return HOME_SECTIONS.map((section, i) => ({
+      title: section.title,
+      items: buckets[i],
+    })).filter((s) => s.items.length > 0);
+  } catch (err) {
+    console.error("[getHomeSections]", err);
+    return [];
+  }
+}
+
 /** Distinct `sub_category_slug` values for a given `index_category_slug`. */
 export async function getSubCategorySlugs(indexCategorySlug: string): Promise<string[]> {
   const pool = getMysqlPool();

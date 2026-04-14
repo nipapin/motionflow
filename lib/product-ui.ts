@@ -49,11 +49,11 @@ function titleCaseSlug(slug: string): string {
     .join(" ");
 }
 
-export type ProductKind = "template" | "stock-audio" | "sfx";
+export type ProductKind = "template" | "stock-audio" | "sound-fx";
 
 export function productKind(product: Product): ProductKind {
   const slug = product.index_category_slug?.toLowerCase() ?? "";
-  if (slug === "sound-fx") return "sfx";
+  if (slug === "sound-fx") return "sound-fx";
   if (slug === "stock-audio") return "stock-audio";
   return "template";
 }

@@ -1,8 +1,8 @@
 import HomePage from "@/components/layout/home-page";
-import { getMarketItems } from "@/lib/market-items";
+import { getHomeSections } from "@/lib/market-items";
 
 export default async function Home() {
-  const marketItems = await getMarketItems();
+  const sections = await getHomeSections();
 
-  return <HomePage marketItems={marketItems} />;
+  return <HomePage sections={sections} />;
 }

@@ -17,7 +17,7 @@ export function FavoritesList({ initialProducts }: FavoritesListProps) {
   const templates = initialProducts.filter((p) => productKind(p) === "template");
   const audio = initialProducts.filter((p) => {
     const k = productKind(p);
-    return k === "stock-audio" || k === "sfx";
+    return k === "stock-audio" || k === "sound-fx";
   });
 
   return (

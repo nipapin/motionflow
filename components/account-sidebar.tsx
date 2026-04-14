@@ -18,7 +18,7 @@ export function AccountSidebar() {
   const normalized = pathname.replace(/\/$/, "") || "/";
 
   return (
-    <nav className="rounded-xl border border-border/60 bg-card/40 backdrop-blur-sm p-2">
+    <nav className="rounded-xl border border-blue-500/30 bg-card/40 backdrop-blur-sm p-2 glow">
       <p className="px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
         Account
       </p>

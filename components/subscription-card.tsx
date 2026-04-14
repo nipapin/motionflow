@@ -49,7 +49,7 @@ function DetailRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-t border-border/40 py-3 first:border-t-0">
+      <div className="flex items-center justify-between gap-3 border-t border-blue-500/10 py-3 first:border-t-0">
       <div className="flex shrink-0 items-center gap-3">
         <span
           className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] ${
@@ -84,10 +84,10 @@ export function SubscriptionCard({ item, userEmail }: SubscriptionCardProps) {
   const validUntil = item.endDate ?? (item.endsAt ? formatDate(item.endsAt) : "—");
 
   return (
-    <article className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
+    <article className="overflow-hidden rounded-2xl border border-blue-500/30 bg-card shadow-sm glow">
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_1px_1fr]">
         {/* ── Summary (left / top) ── */}
-        <div className="flex flex-col items-center justify-center border-b border-border/40 p-5 text-center sm:p-7 lg:border-b-0 lg:p-8">
+        <div className="flex flex-col items-center justify-center border-b border-blue-500/10 p-5 text-center sm:p-7 lg:border-b-0 lg:p-8">
           <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-muted">
             {item.icon ? (
               <img
@@ -118,7 +118,7 @@ export function SubscriptionCard({ item, userEmail }: SubscriptionCardProps) {
         </div>
 
         {/* Vertical divider (lg only) */}
-        <div className="hidden bg-border/40 lg:block" role="presentation" />
+        <div className="hidden bg-blue-500/10 lg:block" role="presentation" />
 
         {/* ── Detail rows (right / bottom) ── */}
         <div className="p-4 sm:p-5 lg:py-8 lg:pl-9 lg:pr-8">

@@ -120,12 +120,38 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    scrollbar-width: thin;
+    scrollbar-color: hsl(214 32% 91%) transparent;
+  }
+  .dark * {
+    scrollbar-color: hsl(222 47% 14%) transparent;
   }
   body {
     @apply bg-background text-foreground antialiased;
   }
   ::selection {
     @apply bg-foreground/10;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(214 32% 80%);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(215 16% 47%);
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background: hsl(222 47% 14%);
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: hsl(222 47% 20%);
   }
 }
 

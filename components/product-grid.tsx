@@ -62,7 +62,7 @@ export function ProductGrid({
   const templateProducts = products.filter((p) => productKind(p) === "template");
   const audioProducts = products.filter((p) => {
     const k = productKind(p);
-    return k === "stock-audio" || k === "sfx";
+    return k === "stock-audio" || k === "sound-fx";
   });
 
   const getSimilarProducts = (product: Product) => {

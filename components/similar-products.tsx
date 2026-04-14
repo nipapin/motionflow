@@ -10,7 +10,7 @@ interface SimilarProductsProps {
 
 export function SimilarProducts({ products, kind, onProductClick }: SimilarProductsProps) {
   if (products.length === 0) return null;
-  if (kind === "stock-audio" || kind === "sfx") {
+  if (kind === "stock-audio" || kind === "sound-fx") {
     return (
       <div className="flex flex-col divide-y divide-border/50 rounded-2xl border border-border/50 overflow-hidden bg-card/50">
         {products.map((product) => (

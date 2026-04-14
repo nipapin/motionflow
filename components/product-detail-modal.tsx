@@ -111,7 +111,7 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
     return d.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
   })();
 
-  const isAudio = kind === "stock-audio" || kind === "sfx";
+  const isAudio = kind === "stock-audio" || kind === "sound-fx";
 
   const details: { icon: React.ReactNode; label: string; value: string }[] = [];
 
@@ -180,7 +180,7 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
       >
         <div className="dark w-[70vw] max-w-[70vw] mx-auto my-8 px-4 flex flex-col min-h-[calc(100vh-4rem)]">
           {/* Header */}
-          <div className="flex items-center justify-end mb-6 shrink-0">
+          <div className="flex items-center justify-end gap-2 mb-6 shrink-0">
             <button
               onClick={(e) => { e.stopPropagation(); void toggleFav(product.id); }}
               className={cn(
@@ -269,7 +269,7 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
                     </div>
                   </div>
                 )}
-                {kind === "stock-audio" && (
+                {isAudio && (
                   <div className="flex-1 w-full flex items-center justify-center">
                     <AudioTrack
                       key={product.id}
