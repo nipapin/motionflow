@@ -4,6 +4,7 @@ import {
   GOOGLE_OAUTH_STATE_MAX_AGE,
   googleCallbackUrl,
 } from "@/lib/auth/google-oauth";
+import { baseCookieOptions } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -30,10 +31,7 @@ export async function GET(req: NextRequest) {
 
   const res = NextResponse.redirect(authUrl.toString());
   res.cookies.set(GOOGLE_OAUTH_STATE_COOKIE, state, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
+    ...baseCookieOptions(),
     maxAge: GOOGLE_OAUTH_STATE_MAX_AGE,
   });
   return res;

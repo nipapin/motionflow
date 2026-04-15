@@ -7,6 +7,7 @@ import { AuthProvider } from '@/components/auth-provider'
 import { FavoritesProvider } from '@/components/favorites-provider'
 import { VideoMuteProvider } from '@/components/video-mute-provider'
 import { Toaster } from '@/components/ui/sonner'
+import { getSessionUser } from '@/lib/auth/get-session-user'
 import './globals.css'
 
 const geistSans = Geist({
@@ -42,11 +43,16 @@ export const metadata: Metadata = {
   },
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const sessionUser = await getSessionUser();
+  const initialUser = sessionUser
+    ? { ...sessionUser, canChangePassword: !sessionUser.oauthPasswordOnly }
+    : null;
+
   return (
     <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable}`}>
       <body className="font-sans antialiased">
@@ -57,7 +63,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <VideoMuteProvider>
-            <AuthProvider><FavoritesProvider>{children}</FavoritesProvider></AuthProvider>
+            <AuthProvider initialUser={initialUser}><FavoritesProvider>{children}</FavoritesProvider></AuthProvider>
           </VideoMuteProvider>
           <Toaster />
         </ThemeProvider>

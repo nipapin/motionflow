@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
 import { getPool } from "@/lib/db";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth/session";
+import { SESSION_COOKIE_NAME, baseCookieOptions, verifySessionToken } from "@/lib/auth/session";
 import { oauthPasswordOnlyFromGoogleId } from "@/lib/auth/users-table";
 
 type UserRow = RowDataPacket & {
@@ -21,10 +21,7 @@ export async function GET(req: NextRequest) {
   if (!session) {
     const res = NextResponse.json({ user: null }, { status: 200 });
     res.cookies.set(SESSION_COOKIE_NAME, "", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
+      ...baseCookieOptions(),
       maxAge: 0,
     });
     return res;
@@ -40,10 +37,7 @@ export async function GET(req: NextRequest) {
     if (!user) {
       const res = NextResponse.json({ user: null }, { status: 200 });
       res.cookies.set(SESSION_COOKIE_NAME, "", {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
+        ...baseCookieOptions(),
         maxAge: 0,
       });
       return res;

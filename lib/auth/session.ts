@@ -20,6 +20,17 @@ function getSigningKey(): Uint8Array {
   return new TextEncoder().encode(raw);
 }
 
+export function baseCookieOptions() {
+  const domain = process.env.COOKIE_DOMAIN || undefined;
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    ...(domain ? { domain } : {}),
+  };
+}
+
 export function sessionCookieMaxAgeSec(): number {
   const laravelMinutes = Number(process.env.SESSION_LIFETIME);
   if (Number.isFinite(laravelMinutes) && laravelMinutes > 0) {

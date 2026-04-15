@@ -9,6 +9,7 @@ import {
 } from "@/lib/auth/google-oauth";
 import {
   SESSION_COOKIE_NAME,
+  baseCookieOptions,
   sessionCookieMaxAgeSec,
   signSessionToken,
 } from "@/lib/auth/session";
@@ -55,10 +56,7 @@ function redirectWithError(req: NextRequest, code: string): NextResponse {
   url.searchParams.set("auth_error", code);
   const res = NextResponse.redirect(url);
   res.cookies.set(GOOGLE_OAUTH_STATE_COOKIE, "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
+    ...baseCookieOptions(),
     maxAge: 0,
   });
   return res;
@@ -169,17 +167,11 @@ export async function GET(req: NextRequest) {
     const home = new URL("/", oauthPublicOrigin(req));
     const res = NextResponse.redirect(home);
     res.cookies.set(GOOGLE_OAUTH_STATE_COOKIE, "", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
+      ...baseCookieOptions(),
       maxAge: 0,
     });
     res.cookies.set(SESSION_COOKIE_NAME, token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
+      ...baseCookieOptions(),
       maxAge: sessionCookieMaxAgeSec(),
     });
     return res;

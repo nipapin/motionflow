@@ -4,6 +4,7 @@ import type { RowDataPacket } from "mysql2";
 import { getPool } from "@/lib/db";
 import {
   SESSION_COOKIE_NAME,
+  baseCookieOptions,
   sessionCookieMaxAgeSec,
   signSessionToken,
 } from "@/lib/auth/session";
@@ -81,10 +82,7 @@ export async function POST(req: NextRequest) {
       user: { id: user.id, email: user.email, name: user.name },
     });
     res.cookies.set(SESSION_COOKIE_NAME, token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
+      ...baseCookieOptions(),
       maxAge: sessionCookieMaxAgeSec(),
     });
     return res;

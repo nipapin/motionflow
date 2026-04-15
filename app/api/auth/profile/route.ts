@@ -4,6 +4,7 @@ import type { RowDataPacket } from "mysql2";
 import { getPool } from "@/lib/db";
 import {
   SESSION_COOKIE_NAME,
+  baseCookieOptions,
   sessionCookieMaxAgeSec,
   signSessionToken,
   verifySessionToken,
@@ -257,10 +258,7 @@ export async function PATCH(req: NextRequest) {
       },
     });
     res.cookies.set(SESSION_COOKIE_NAME, newToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
+      ...baseCookieOptions(),
       maxAge: sessionCookieMaxAgeSec(),
     });
     return res;
