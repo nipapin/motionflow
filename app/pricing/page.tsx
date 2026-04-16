@@ -215,7 +215,7 @@ export default function PricingPage() {
           </p>
           <p className="text-muted-foreground text-sm mt-2">
             Questions?{" "}
-            <Link href="#" className="text-blue-400 hover:text-blue-300 transition-colors">
+            <Link href="/contact" className="text-blue-400 hover:text-blue-300 transition-colors">
               Contact us
             </Link>
           </p>

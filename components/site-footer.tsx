@@ -1,13 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 const footerLinks = [
-  { label: "Privacy Policy", href: "#" },
-  { label: "Terms of Use", href: "#" },
-  { label: "Refund Policy", href: "#" },
-  { label: "License", href: "#" },
-  { label: "Contact", href: "#" },
+  { label: "Privacy Policy", href: "/privacy" },
+  { label: "Terms of Use", href: "/terms" },
+  { label: "Refund Policy", href: "/refund" },
+  { label: "License", href: "/license" },
+  { label: "Contact", href: "/contact" },
 ] as const;
 
 interface SiteFooterProps {
@@ -27,9 +28,9 @@ export function SiteFooter({ className, sidebarCollapsed }: SiteFooterProps) {
       <div className="flex flex-col gap-2 py-3 px-4 text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:gap-4 lg:px-6">
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
           {footerLinks.map(({ label, href }) => (
-            <a key={label} href={href} className="hover:text-foreground smooth">
+            <Link key={label} href={href} className="hover:text-foreground smooth">
               {label}
-            </a>
+            </Link>
           ))}
         </div>
         <p className="text-[11px] text-muted-foreground/70 sm:shrink-0">
