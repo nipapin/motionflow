@@ -9,10 +9,15 @@ import {
 } from "@/lib/auth/google-oauth";
 import {
   SESSION_COOKIE_NAME,
+  LARAVEL_COOKIE_NAME,
   baseCookieOptions,
   sessionCookieMaxAgeSec,
   signSessionToken,
 } from "@/lib/auth/session";
+import {
+  createLaravelSession,
+  encryptLaravelCookie,
+} from "@/lib/auth/laravel-session";
 
 export const dynamic = "force-dynamic";
 
@@ -166,14 +171,15 @@ export async function GET(req: NextRequest) {
 
     const home = new URL("/", oauthPublicOrigin(req));
     const res = NextResponse.redirect(home);
-    res.cookies.set(GOOGLE_OAUTH_STATE_COOKIE, "", {
-      ...baseCookieOptions(),
-      maxAge: 0,
-    });
-    res.cookies.set(SESSION_COOKIE_NAME, token, {
-      ...baseCookieOptions(),
-      maxAge: sessionCookieMaxAgeSec(),
-    });
+    const cookieOpts = { ...baseCookieOptions(), maxAge: sessionCookieMaxAgeSec() };
+    res.cookies.set(GOOGLE_OAUTH_STATE_COOKIE, "", { ...baseCookieOptions(), maxAge: 0 });
+    res.cookies.set(SESSION_COOKIE_NAME, token, cookieOpts);
+
+    const laravelSessionId = await createLaravelSession(user.id);
+    if (laravelSessionId) {
+      res.cookies.set(LARAVEL_COOKIE_NAME, encryptLaravelCookie(laravelSessionId), cookieOpts);
+    }
+
     return res;
   } catch (e) {
     console.error("[auth/google/callback]", e);

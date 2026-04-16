@@ -244,12 +244,12 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
       </nav>
 
       <div className={cn("p-4 transition-all duration-300 overflow-hidden", collapsed ? "opacity-0 h-0 p-0" : "opacity-100")}>
-        <div className="rounded-2xl p-5 bg-gradient-to-br from-blue-500/10 via-purple-500/5 to-cyan-500/10 border border-blue-500/20">
+        <div className="rounded-2xl p-5 bg-linear-to-br from-blue-500/10 via-purple-500/5 to-cyan-500/10 border border-blue-500/20">
           <h4 className="font-semibold text-foreground mb-1.5 tracking-tight whitespace-nowrap">Go Unlimited</h4>
           <p className="text-sm text-muted-foreground mb-4 leading-relaxed">Unlimited downloads, all templates</p>
           <Button
             asChild
-            className="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl h-10 font-medium smooth hover-lift shadow-lg shadow-blue-500/25 cursor-pointer"
+            className="w-full bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl h-10 font-medium smooth hover-lift shadow-lg shadow-blue-500/25 cursor-pointer"
           >
             <Link href="/pricing">Upgrade Now</Link>
           </Button>
@@ -263,7 +263,7 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
       <Button
         variant="ghost"
         size="icon"
-        className="fixed top-4 left-4 z-[60] lg:hidden bg-background/95 backdrop-blur-sm border border-blue-500/30 shadow-lg h-10 w-10"
+        className="fixed top-4 left-4 z-60 lg:hidden bg-background/95 backdrop-blur-sm border border-blue-500/30 shadow-lg h-10 w-10"
         onClick={() => setMobileOpen(!mobileOpen)}
       >
         {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}

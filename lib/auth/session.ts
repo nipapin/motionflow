@@ -1,6 +1,9 @@
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 
-export const SESSION_COOKIE_NAME = "motionflow_session";
+export const SESSION_COOKIE_NAME = "next_motionflow_session";
+
+/** Cookie name used by Laravel. Next.js reads (and optionally writes) it for SSO. */
+export const LARAVEL_COOKIE_NAME = "motionflow_session";
 
 export type SessionPayload = JWTPayload & {
   sub: string;

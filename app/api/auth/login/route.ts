@@ -4,11 +4,16 @@ import type { RowDataPacket } from "mysql2";
 import { getPool } from "@/lib/db";
 import {
   SESSION_COOKIE_NAME,
+  LARAVEL_COOKIE_NAME,
   baseCookieOptions,
   sessionCookieMaxAgeSec,
   signSessionToken,
 } from "@/lib/auth/session";
 import { loginSchema } from "@/lib/validations/auth";
+import {
+  createLaravelSession,
+  encryptLaravelCookie,
+} from "@/lib/auth/laravel-session";
 
 type UserRow = RowDataPacket & {
   id: number;
@@ -81,10 +86,14 @@ export async function POST(req: NextRequest) {
       success: true as const,
       user: { id: user.id, email: user.email, name: user.name },
     });
-    res.cookies.set(SESSION_COOKIE_NAME, token, {
-      ...baseCookieOptions(),
-      maxAge: sessionCookieMaxAgeSec(),
-    });
+    const cookieOpts = { ...baseCookieOptions(), maxAge: sessionCookieMaxAgeSec() };
+    res.cookies.set(SESSION_COOKIE_NAME, token, cookieOpts);
+
+    const laravelSessionId = await createLaravelSession(user.id);
+    if (laravelSessionId) {
+      res.cookies.set(LARAVEL_COOKIE_NAME, encryptLaravelCookie(laravelSessionId), cookieOpts);
+    }
+
     return res;
   } catch (e) {
     console.error("[auth/login]", e);

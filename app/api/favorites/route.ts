@@ -1,14 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth/session";
+import {
+  SESSION_COOKIE_NAME,
+  LARAVEL_COOKIE_NAME,
+  verifySessionToken,
+} from "@/lib/auth/session";
 import { getFavoriteItemIds, toggleFavorite } from "@/lib/favorites";
+import {
+  decryptLaravelCookie,
+  readLaravelSessionUserId,
+} from "@/lib/auth/laravel-session";
 
 async function getUserId(req: NextRequest): Promise<number | null> {
-  const token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
-  if (!token) return null;
-  const session = await verifySessionToken(token);
-  if (!session) return null;
-  const id = Number(session.sub);
-  return Number.isFinite(id) && id > 0 ? id : null;
+  const jwtToken = req.cookies.get(SESSION_COOKIE_NAME)?.value;
+  if (jwtToken) {
+    const session = await verifySessionToken(jwtToken);
+    if (session) {
+      const id = Number(session.sub);
+      if (Number.isFinite(id) && id > 0) return id;
+    }
+  }
+  const laravelCookie = req.cookies.get(LARAVEL_COOKIE_NAME)?.value;
+  if (laravelCookie) {
+    const sessionId = decryptLaravelCookie(laravelCookie);
+    if (sessionId) return readLaravelSessionUserId(sessionId);
+  }
+  return null;
 }
 
 /** GET /api/favorites — return array of favorite item IDs for the current user */

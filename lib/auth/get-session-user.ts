@@ -1,8 +1,16 @@
 import { cookies } from "next/headers";
 import type { RowDataPacket } from "mysql2";
 import { getPool } from "@/lib/db";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth/session";
+import {
+  SESSION_COOKIE_NAME,
+  LARAVEL_COOKIE_NAME,
+  verifySessionToken,
+} from "@/lib/auth/session";
 import { oauthPasswordOnlyFromGoogleId } from "@/lib/auth/users-table";
+import {
+  decryptLaravelCookie,
+  readLaravelSessionUserId,
+} from "@/lib/auth/laravel-session";
 
 type UserRow = RowDataPacket & {
   id: number;
@@ -18,16 +26,7 @@ export type SessionUser = {
   oauthPasswordOnly: boolean;
 };
 
-export async function getSessionUser(): Promise<SessionUser | null> {
-  const token = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
-  if (!token) return null;
-
-  const session = await verifySessionToken(token);
-  if (!session) return null;
-
-  const id = Number(session.sub);
-  if (!Number.isFinite(id) || id <= 0) return null;
-
+async function loadUserById(id: number): Promise<SessionUser | null> {
   try {
     const pool = getPool();
     const [rows] = await pool.execute<UserRow[]>(
@@ -46,4 +45,33 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     console.error("[getSessionUser]", e);
     return null;
   }
+}
+
+export async function getSessionUser(): Promise<SessionUser | null> {
+  const jar = await cookies();
+
+  // 1. Try Next.js JWT cookie first
+  const jwtToken = jar.get(SESSION_COOKIE_NAME)?.value;
+  if (jwtToken) {
+    const session = await verifySessionToken(jwtToken);
+    if (session) {
+      const id = Number(session.sub);
+      if (Number.isFinite(id) && id > 0) {
+        const user = await loadUserById(id);
+        if (user) return user;
+      }
+    }
+  }
+
+  // 2. Fall back to Laravel session cookie
+  const laravelCookie = jar.get(LARAVEL_COOKIE_NAME)?.value;
+  if (laravelCookie) {
+    const sessionId = decryptLaravelCookie(laravelCookie);
+    if (sessionId) {
+      const userId = await readLaravelSessionUserId(sessionId);
+      if (userId) return loadUserById(userId);
+    }
+  }
+
+  return null;
 }

@@ -38,11 +38,11 @@ export default function PricingPage() {
   const router = useRouter();
   const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">("yearly");
 
-  const monthlyPrice = 15;
+  const monthlyPrice = 18;
   const yearlyPrice = monthlyPrice * 12 * 0.8;
   const yearlyMonthlyPrice = yearlyPrice / 12;
 
-  const ultimateMonthly = 29;
+  const ultimateMonthly = 36;
   const ultimateYearly = ultimateMonthly * 12 * 0.8;
   const ultimateYearlyMonthly = ultimateYearly / 12;
 
