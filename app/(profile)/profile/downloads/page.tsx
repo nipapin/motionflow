@@ -15,7 +15,22 @@ export default async function ProfileDownloadsPage() {
   const user = await getSessionUser();
   if (!user) redirect("/");
 
-  const list = await getDownloadsForUser(user.id);
+  const { items: list, queryFailed } = await getDownloadsForUser(user.id);
+
+  if (queryFailed) {
+    return (
+      <div className="space-y-2">
+        <h1 className="text-2xl font-semibold tracking-tight">My downloads</h1>
+        <div className="rounded-2xl border border-destructive/30 bg-card/40 px-6 py-10 text-center">
+          <p className="text-sm text-muted-foreground">
+            Downloads could not be loaded. Check that the database table{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 text-foreground">subscription_downloads</code>{" "}
+            exists and that MySQL env vars match your Laravel app. Server logs include the underlying error.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (list.length === 0) {
     return (
