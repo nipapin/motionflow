@@ -61,6 +61,7 @@ export default async function RootLayout({
           defaultTheme="dark"
           enableSystem={false}
           disableTransitionOnChange
+          storageKey="motionflow-theme"
         >
           <VideoMuteProvider>
             <AuthProvider initialUser={initialUser}><FavoritesProvider>{children}</FavoritesProvider></AuthProvider>
