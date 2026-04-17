@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
@@ -33,6 +33,16 @@ interface SidebarProps {
 
 export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollapsedChange, useLinks = true }: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [showUpgradeBlock, setShowUpgradeBlock] = useState(!collapsed);
+
+  useEffect(() => {
+    if (!collapsed) {
+      setShowUpgradeBlock(true);
+      return;
+    }
+    const id = window.setTimeout(() => setShowUpgradeBlock(false), 300);
+    return () => window.clearTimeout(id);
+  }, [collapsed]);
 
   const CategoryItem = ({ category }: { category: (typeof categories)[0] }) => {
     const content = (
@@ -44,8 +54,8 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
         ) : null}
         <span
           className={cn(
-            "whitespace-nowrap transition-all duration-300 overflow-hidden",
-            collapsed ? "opacity-0 w-0" : "opacity-100 w-auto",
+            "whitespace-nowrap overflow-hidden transition-[opacity,max-width] duration-300 ease-out",
+            collapsed ? "max-w-0 opacity-0" : "max-w-[220px] opacity-100",
           )}
         >
           {category.name}
@@ -95,8 +105,8 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
         <tool.icon className="w-5 h-5 shrink-0" />
         <span
           className={cn(
-            "whitespace-nowrap transition-all duration-300 overflow-hidden",
-            collapsed ? "opacity-0 w-0" : "opacity-100 w-auto",
+            "whitespace-nowrap overflow-hidden transition-[opacity,max-width] duration-300 ease-out",
+            collapsed ? "max-w-0 opacity-0" : "max-w-[220px] opacity-100",
           )}
         >
           {tool.name}
@@ -137,80 +147,101 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
 
   const sidebarContent = (
     <>
-      <div className={cn("p-6 flex items-center", collapsed ? "justify-center px-3" : "justify-between")}>
+      <div
+        className={cn(
+          "flex min-h-[72px] items-center gap-2 px-3 py-6 lg:px-4",
+          collapsed ? "justify-center" : "justify-between",
+        )}
+      >
         {useLinks ? (
-          <Link href="/" className="flex items-center gap-3 group overflow-hidden" onClick={() => setMobileOpen(false)}>
-            <div className="w-9 h-9 flex items-center justify-center shrink-0 smooth group-hover:scale-105">
+          <Link
+            href="/"
+            className={cn(
+              "group flex min-w-0 items-center gap-3",
+              collapsed ? "justify-center" : "min-w-0 flex-1",
+            )}
+            onClick={() => setMobileOpen(false)}
+          >
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center smooth group-hover:scale-105">
               <Image
                 src="/images/logo.png"
                 alt="Motion Flow"
                 width={36}
                 height={36}
-                className="w-full h-full object-contain dark:invert-0 invert"
+                className="h-full w-full object-contain invert dark:invert-0"
               />
             </div>
             <span
               className={cn(
-                "font-semibold text-lg text-foreground tracking-tight whitespace-nowrap transition-all duration-300",
-                collapsed ? "opacity-0 w-0" : "opacity-100 w-auto",
+                "overflow-hidden whitespace-nowrap font-semibold text-lg tracking-tight text-foreground transition-[opacity,max-width] duration-300 ease-out",
+                collapsed ? "max-w-0 opacity-0" : "max-w-[180px] opacity-100",
               )}
             >
               Motion Flow
             </span>
           </Link>
         ) : (
-          <button type="button" onClick={() => onCategoryChange("All")} className="flex items-center gap-3 group overflow-hidden">
-            <div className="w-9 h-9 flex items-center justify-center shrink-0 smooth group-hover:scale-105">
+          <button
+            type="button"
+            onClick={() => onCategoryChange("All")}
+            className={cn(
+              "group flex min-w-0 items-center gap-3",
+              collapsed ? "justify-center" : "min-w-0 flex-1",
+            )}
+          >
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center smooth group-hover:scale-105">
               <Image
                 src="/images/logo.png"
                 alt="Motion Flow"
                 width={36}
                 height={36}
-                className="w-full h-full object-contain dark:invert-0 invert"
+                className="h-full w-full object-contain invert dark:invert-0"
               />
             </div>
             <span
               className={cn(
-                "font-semibold text-lg text-foreground tracking-tight whitespace-nowrap transition-all duration-300",
-                collapsed ? "opacity-0 w-0" : "opacity-100 w-auto",
+                "overflow-hidden whitespace-nowrap font-semibold text-lg tracking-tight text-foreground transition-[opacity,max-width] duration-300 ease-out",
+                collapsed ? "max-w-0 opacity-0" : "max-w-[180px] opacity-100",
               )}
             >
               Motion Flow
             </span>
           </button>
         )}
-        <button
-          type="button"
-          onClick={() => onCollapsedChange(true)}
-          className={cn(
-            "text-muted-foreground hover:text-foreground transition-all duration-300 hidden lg:block",
-            collapsed ? "opacity-0 w-0 overflow-hidden" : "opacity-100",
-          )}
-          aria-label="Collapse sidebar"
-        >
-          <PanelLeftClose className="w-5 h-5" />
-        </button>
-      </div>
-
-      {collapsed && (
-        <div className="flex justify-center px-3 pb-2">
+        <div className="relative hidden h-8 w-8 shrink-0 lg:block">
           <button
             type="button"
             onClick={() => onCollapsedChange(false)}
-            className="text-muted-foreground hover:text-foreground transition-colors"
+            className={cn(
+              "absolute inset-0 flex items-center justify-center rounded-md text-muted-foreground transition-opacity duration-300 hover:text-foreground",
+              collapsed ? "opacity-100" : "pointer-events-none opacity-0",
+            )}
             aria-label="Expand sidebar"
+            tabIndex={collapsed ? 0 : -1}
           >
-            <PanelLeftOpen className="w-5 h-5" />
+            <PanelLeftOpen className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onCollapsedChange(true)}
+            className={cn(
+              "absolute inset-0 flex items-center justify-center rounded-md text-muted-foreground transition-opacity duration-300 hover:text-foreground",
+              collapsed ? "pointer-events-none opacity-0" : "opacity-100",
+            )}
+            aria-label="Collapse sidebar"
+            tabIndex={collapsed ? -1 : 0}
+          >
+            <PanelLeftClose className="h-5 w-5" />
           </button>
         </div>
-      )}
+      </div>
 
       <nav className="flex-1 overflow-y-auto p-4">
         <div className="mb-6">
           <h3
             className={cn(
-              "text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 px-3 whitespace-nowrap transition-all duration-300 overflow-hidden",
-              collapsed ? "opacity-0 h-0 mb-0" : "opacity-100 h-auto",
+              "px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-opacity duration-300",
+              collapsed ? "mb-0 h-0 overflow-hidden opacity-0" : "mb-3 opacity-100",
             )}
           >
             Categories
@@ -225,14 +256,14 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
         </div>
 
         <div className="mb-6">
-          <div className={cn("transition-all duration-300 overflow-hidden", collapsed ? "h-0 opacity-0" : "h-auto opacity-100")}>
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 px-3 whitespace-nowrap">
-              AI Tools
-            </h3>
-          </div>
-          <div
-            className={cn("border-t border-border transition-all duration-300", collapsed ? "my-3 opacity-100" : "my-0 opacity-0 h-0")}
-          />
+          <h3
+            className={cn(
+              "px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-opacity duration-300",
+              collapsed ? "mb-0 h-0 overflow-hidden opacity-0" : "mb-3 opacity-100",
+            )}
+          >
+            AI Tools
+          </h3>
           <ul className="space-y-1">
             {aiTools.map((tool) => (
               <li key={tool.name}>
@@ -243,18 +274,25 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
         </div>
       </nav>
 
-      <div className={cn("p-4 transition-all duration-300 overflow-hidden", collapsed ? "opacity-0 h-0 p-0" : "opacity-100")}>
-        <div className="rounded-2xl p-5 bg-linear-to-br from-blue-500/10 via-purple-500/5 to-cyan-500/10 border border-blue-500/20">
-          <h4 className="font-semibold text-foreground mb-1.5 tracking-tight whitespace-nowrap">Go Unlimited</h4>
-          <p className="text-sm text-muted-foreground mb-4 leading-relaxed">Unlimited downloads, all templates</p>
-          <Button
-            asChild
-            className="w-full bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl h-10 font-medium smooth hover-lift shadow-lg shadow-blue-500/25 cursor-pointer"
-          >
-            <Link href="/pricing">Upgrade Now</Link>
-          </Button>
+      {showUpgradeBlock && (
+        <div
+          className={cn(
+            "p-4 transition-opacity duration-300 ease-out",
+            collapsed ? "pointer-events-none opacity-0" : "opacity-100",
+          )}
+        >
+          <div className="rounded-2xl border border-blue-500/20 bg-linear-to-br from-blue-500/10 via-purple-500/5 to-cyan-500/10 p-5">
+            <h4 className="mb-1.5 whitespace-nowrap font-semibold tracking-tight text-foreground">Go Unlimited</h4>
+            <p className="mb-4 text-sm leading-relaxed text-muted-foreground">Unlimited downloads, all templates</p>
+            <Button
+              asChild
+              className="h-10 w-full cursor-pointer rounded-xl bg-linear-to-r from-blue-600 to-blue-500 font-medium text-white shadow-lg shadow-blue-500/25 smooth hover-lift hover:from-blue-500 hover:to-blue-400"
+            >
+              <Link href="/pricing">Upgrade Now</Link>
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
     </>
   );
 

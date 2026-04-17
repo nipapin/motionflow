@@ -34,7 +34,7 @@ export function SiteFooter({ className, sidebarCollapsed }: SiteFooterProps) {
           ))}
         </div>
         <p className="text-[11px] text-muted-foreground/70 sm:shrink-0">
-          2024 Motion Flow. All rights reserved.
+          {new Date().getFullYear()} Motion Flow. All rights reserved.
         </p>
       </div>
     </footer>

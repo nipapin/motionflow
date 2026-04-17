@@ -13,7 +13,6 @@ import { SubscriptionModal } from "@/components/subscription-modal";
 import type { Product } from "@/lib/product-types";
 import {
   productCardVideoSrc,
-  productCategoryLabel,
   productKind,
   productPreviewVideoUrl,
   productSoftwareLabel,
@@ -41,6 +40,7 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [signInOpen, setSignInOpen] = useState(false);
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
+  const [canDownload, setCanDownload] = useState<boolean | null>(null);
 
   const kind = productKind(product);
   const heroThumb = productThumbnailUrl(product);
@@ -93,6 +93,26 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
       window.history.replaceState(null, "", cleanPath);
     };
   }, [open, product.id, product.name]);
+
+  useEffect(() => {
+    if (!open || !user) {
+      setCanDownload(null);
+      return;
+    }
+    let cancelled = false;
+    setCanDownload(null);
+    fetch(`/api/me/can-download?itemId=${product.id}`)
+      .then((r) => r.json())
+      .then((data: { canDownload?: boolean }) => {
+        if (!cancelled) setCanDownload(!!data.canDownload);
+      })
+      .catch(() => {
+        if (!cancelled) setCanDownload(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, user, product.id]);
 
   if (!open) return null;
 
@@ -166,9 +186,13 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
   const handleAction = () => {
     if (!user) {
       setSignInOpen(true);
-    } else {
-      setSubscriptionOpen(true);
+      return;
     }
+    if (canDownload) {
+      window.location.href = `/api/download/${product.id}`;
+      return;
+    }
+    setSubscriptionOpen(true);
   };
 
   return (
@@ -298,10 +322,11 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
 
                     <Button
                       onClick={handleAction}
-                      className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-xl font-medium mt-6 mb-6 shadow-lg shadow-blue-500/25"
+                      disabled={!!user && canDownload === null}
+                      className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-xl font-medium mt-6 mb-6 shadow-lg shadow-blue-500/25 disabled:opacity-60"
                     >
                       <Download className="w-5 h-5 mr-2" />
-                      {user ? "Download" : "Sign in to Download"}
+                      {!user ? "Sign in to Download" : canDownload === null ? "Checking…" : "Download"}
                     </Button>
 
                     {/* Tags */}

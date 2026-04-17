@@ -106,3 +106,24 @@ export async function getSubscriptionsForUser(
     };
   });
 }
+
+function rowIsActive(r: SubRow): boolean {
+  if (r.status === 1) return true;
+  if (r.ends_at && r.status === -1 && new Date(r.ends_at) > new Date()) {
+    return true;
+  }
+  return false;
+}
+
+/** True if the user has at least one subscription row that counts as active (same rules as list UI). */
+export async function hasActiveSubscription(userId: number): Promise<boolean> {
+  const pool = getPool();
+  const [rows] = await pool.execute<SubRow[]>(
+    `SELECT author_id, status, subscription_id, plan, ends_at, created_at
+     FROM \`${TABLE}\`
+     WHERE buyer_id = ?
+     ORDER BY id DESC`,
+    [userId],
+  );
+  return rows.some(rowIsActive);
+}
