@@ -5,46 +5,45 @@ import Link from "next/link";
 import { X, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const REDIRECT_DELAY_MS = 1400;
-
 interface DownloadStartedModalProps {
   open: boolean;
   itemId: number | null;
+  onOpenChange: (open: boolean) => void;
 }
 
-export function DownloadStartedModal({ open, itemId }: DownloadStartedModalProps) {
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+export function DownloadStartedModal({ open, itemId, onOpenChange }: DownloadStartedModalProps) {
+  const firedForSessionRef = useRef(false);
 
-  const goToDownload = () => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    if (itemId != null) {
-      window.location.href = `/api/download/${itemId}`;
-    }
-  };
-
+  /** Start file download once when the modal opens (does not navigate away). */
   useEffect(() => {
-    if (!open || itemId == null) return;
-    timerRef.current = setTimeout(() => {
-      timerRef.current = null;
-      window.location.href = `/api/download/${itemId}`;
-    }, REDIRECT_DELAY_MS);
+    if (!open) {
+      firedForSessionRef.current = false;
+      return;
+    }
+    if (itemId == null || firedForSessionRef.current) return;
+    firedForSessionRef.current = true;
+
+    const iframe = document.createElement("iframe");
+    iframe.style.display = "none";
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.src = `/api/download/${itemId}`;
+    document.body.appendChild(iframe);
+
     return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
+      iframe.remove();
     };
   }, [open, itemId]);
+
+  const close = () => {
+    onOpenChange(false);
+  };
 
   if (!open || itemId == null) return null;
 
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={goToDownload}
+      onClick={close}
     >
       <div
         className="relative w-full max-w-md mx-4 bg-card/95 backdrop-blur-xl rounded-2xl border border-blue-500/20 p-8 shadow-2xl"
@@ -57,7 +56,7 @@ export function DownloadStartedModal({ open, itemId }: DownloadStartedModalProps
 
         <button
           type="button"
-          onClick={goToDownload}
+          onClick={close}
           className="absolute top-4 right-4 p-2 text-muted-foreground hover:text-foreground smooth rounded-lg hover:bg-foreground/5"
           aria-label="Close"
         >
@@ -76,12 +75,7 @@ export function DownloadStartedModal({ open, itemId }: DownloadStartedModalProps
             <Link
               href="/profile/downloads"
               className="font-medium text-primary underline-offset-4 hover:underline"
-              onClick={() => {
-                if (timerRef.current) {
-                  clearTimeout(timerRef.current);
-                  timerRef.current = null;
-                }
-              }}
+              onClick={close}
             >
               My downloads
             </Link>{" "}
@@ -90,7 +84,7 @@ export function DownloadStartedModal({ open, itemId }: DownloadStartedModalProps
 
           <Button
             type="button"
-            onClick={goToDownload}
+            onClick={close}
             className="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl h-12 font-medium smooth shadow-lg shadow-blue-500/25"
           >
             Continue

@@ -182,7 +182,14 @@ export function CategoryPageLayout({
 
       <SignInModal open={signInOpen} onOpenChange={setSignInOpen} onAuthSuccess={() => setSignInOpen(false)} />
       <SubscriptionModal open={subscriptionOpen} onOpenChange={setSubscriptionOpen} />
-      <DownloadStartedModal open={downloadStartedOpen} itemId={downloadItemId} />
+      <DownloadStartedModal
+        open={downloadStartedOpen}
+        itemId={downloadItemId}
+        onOpenChange={(o) => {
+          setDownloadStartedOpen(o);
+          if (!o) setDownloadItemId(null);
+        }}
+      />
     </>
   );
 }
