@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
@@ -34,13 +34,16 @@ interface SidebarProps {
 export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollapsedChange, useLinks = true }: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showUpgradeBlock, setShowUpgradeBlock] = useState(!collapsed);
+  const hasCollapsedOnce = useRef(false);
 
   useEffect(() => {
-    if (!collapsed) {
-      setShowUpgradeBlock(true);
+    if (collapsed) {
+      setShowUpgradeBlock(false);
+      hasCollapsedOnce.current = true;
       return;
     }
-    const id = window.setTimeout(() => setShowUpgradeBlock(false), 300);
+    const delayMs = hasCollapsedOnce.current ? 300 : 0;
+    const id = window.setTimeout(() => setShowUpgradeBlock(true), delayMs);
     return () => window.clearTimeout(id);
   }, [collapsed]);
 
@@ -149,16 +152,18 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
     <>
       <div
         className={cn(
-          "flex min-h-[72px] items-center gap-2 px-3 py-6 lg:px-4",
-          collapsed ? "justify-center" : "justify-between",
+          "relative flex w-full gap-0 px-3 lg:px-4",
+          collapsed
+            ? "flex-col items-center gap-2 py-5 lg:py-6"
+            : "min-h-[72px] flex-row items-center justify-between py-6",
         )}
       >
         {useLinks ? (
           <Link
             href="/"
             className={cn(
-              "group flex min-w-0 items-center gap-3",
-              collapsed ? "justify-center" : "min-w-0 flex-1",
+              "group flex min-w-0 items-center",
+              collapsed ? "justify-center gap-0" : "min-w-0 flex-1 gap-3",
             )}
             onClick={() => setMobileOpen(false)}
           >
@@ -185,8 +190,8 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
             type="button"
             onClick={() => onCategoryChange("All")}
             className={cn(
-              "group flex min-w-0 items-center gap-3",
-              collapsed ? "justify-center" : "min-w-0 flex-1",
+              "group flex min-w-0 items-center",
+              collapsed ? "justify-center gap-0" : "min-w-0 flex-1 gap-3",
             )}
           >
             <div className="flex h-9 w-9 shrink-0 items-center justify-center smooth group-hover:scale-105">
@@ -208,19 +213,12 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
             </span>
           </button>
         )}
-        <div className="relative hidden h-8 w-8 shrink-0 lg:block">
-          <button
-            type="button"
-            onClick={() => onCollapsedChange(false)}
-            className={cn(
-              "absolute inset-0 flex items-center justify-center rounded-md text-muted-foreground transition-opacity duration-300 hover:text-foreground",
-              collapsed ? "opacity-100" : "pointer-events-none opacity-0",
-            )}
-            aria-label="Expand sidebar"
-            tabIndex={collapsed ? 0 : -1}
-          >
-            <PanelLeftOpen className="h-5 w-5" />
-          </button>
+        <div
+          className={cn(
+            "relative hidden h-8 w-8 shrink-0 lg:block",
+            "transition-opacity duration-300 ease-out",
+          )}
+        >
           <button
             type="button"
             onClick={() => onCollapsedChange(true)}
@@ -232,6 +230,18 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
             tabIndex={collapsed ? -1 : 0}
           >
             <PanelLeftClose className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onCollapsedChange(false)}
+            className={cn(
+              "absolute inset-0 flex items-center justify-center rounded-md text-muted-foreground transition-opacity duration-300 hover:text-foreground",
+              collapsed ? "opacity-100" : "pointer-events-none opacity-0",
+            )}
+            aria-label="Expand sidebar"
+            tabIndex={collapsed ? 0 : -1}
+          >
+            <PanelLeftOpen className="h-5 w-5" />
           </button>
         </div>
       </div>
@@ -275,13 +285,8 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
       </nav>
 
       {showUpgradeBlock && (
-        <div
-          className={cn(
-            "p-4 transition-opacity duration-300 ease-out",
-            collapsed ? "pointer-events-none opacity-0" : "opacity-100",
-          )}
-        >
-          <div className="rounded-2xl border border-blue-500/20 bg-linear-to-br from-blue-500/10 via-purple-500/5 to-cyan-500/10 p-5">
+        <div className="shrink-0 w-full min-w-0 p-4">
+          <div className="w-full rounded-2xl border border-blue-500/20 bg-linear-to-br from-blue-500/10 via-purple-500/5 to-cyan-500/10 p-5 animate-in fade-in-0 duration-300">
             <h4 className="mb-1.5 whitespace-nowrap font-semibold tracking-tight text-foreground">Go Unlimited</h4>
             <p className="mb-4 text-sm leading-relaxed text-muted-foreground">Unlimited downloads, all templates</p>
             <Button

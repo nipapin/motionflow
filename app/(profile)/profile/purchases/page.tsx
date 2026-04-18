@@ -2,8 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/get-session-user";
+import { PurchaseItemCard } from "@/components/purchase-item-card";
+import {
+  motionflowInvoiceUrl,
+  motionflowItemDownloadUrl,
+  motionflowItemPageUrl,
+} from "@/lib/motionflow-urls";
 import { getPurchasesForUser } from "@/lib/purchases";
-import { OwnedItemCard, formatDate } from "@/components/owned-item-card";
 
 export const metadata: Metadata = {
   title: "My purchases",
@@ -44,17 +49,24 @@ export default async function ProfilePurchasesPage() {
         </p>
       </div>
       <ul className="space-y-4">
-        {list.map((row) => (
-          <li key={row.id}>
-            <OwnedItemCard
-              product={row.product}
-              titleFallback={`Item #${row.itemId}`}
-              metaLine={`Paid ${row.soldPrice.toFixed(2)} · License type ${row.license}`}
-              dateLabel={`Purchased ${formatDate(row.createdAt)}`}
-              downloadHref={`/api/download/${row.itemId}`}
-            />
-          </li>
-        ))}
+        {list.map((row) => {
+          const titleFallback = `Item #${row.itemId}`;
+          return (
+            <li key={row.id}>
+              <PurchaseItemCard
+                product={row.product}
+                titleFallback={titleFallback}
+                itemId={row.itemId}
+                soldItemId={row.id}
+                license={row.license}
+                purchaseCode={row.purchaseCode}
+                itemPageUrl={motionflowItemPageUrl(row.product, row.itemId, titleFallback)}
+                downloadUrl={motionflowItemDownloadUrl(row.product, row.itemId, titleFallback)}
+                invoiceUrl={motionflowInvoiceUrl(row.product, row.itemId, titleFallback, row.id)}
+              />
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
