@@ -10,6 +10,7 @@ import { useAuth } from "@/components/auth-provider";
 import { useFavorites } from "@/components/favorites-provider";
 import { SignInModal } from "@/components/sign-in-modal";
 import { SubscriptionModal } from "@/components/subscription-modal";
+import { DownloadStartedModal } from "@/components/download-started-modal";
 import type { Product } from "@/lib/product-types";
 import {
   productCardVideoSrc,
@@ -40,6 +41,8 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [signInOpen, setSignInOpen] = useState(false);
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
+  const [downloadStartedOpen, setDownloadStartedOpen] = useState(false);
+  const [downloadItemId, setDownloadItemId] = useState<number | null>(null);
   const [canDownload, setCanDownload] = useState<boolean | null>(null);
 
   const kind = productKind(product);
@@ -189,7 +192,8 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
       return;
     }
     if (canDownload) {
-      window.location.href = `/api/download/${product.id}`;
+      setDownloadItemId(product.id);
+      setDownloadStartedOpen(true);
       return;
     }
     setSubscriptionOpen(true);
@@ -374,6 +378,7 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
 
       <SignInModal open={signInOpen} onOpenChange={setSignInOpen} onAuthSuccess={() => setSignInOpen(false)} />
       <SubscriptionModal open={subscriptionOpen} onOpenChange={setSubscriptionOpen} />
+      <DownloadStartedModal open={downloadStartedOpen} itemId={downloadItemId} />
     </>
   );
 }

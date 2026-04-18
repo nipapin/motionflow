@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/get-session-user";
+import { DownloadsList } from "@/components/downloads-list";
 import { getDownloadsForUser } from "@/lib/downloads";
-import { OwnedItemCard, formatDate } from "@/components/owned-item-card";
+import { motionflowItemDownloadUrl } from "@/lib/motionflow-urls";
 
 export const metadata: Metadata = {
   title: "My downloads",
@@ -39,7 +40,7 @@ export default async function ProfileDownloadsPage() {
         <div className="flex flex-col items-center rounded-2xl border border-blue-500/30 bg-card/40 px-6 py-14 text-center glow">
           <h2 className="mb-2 text-lg font-medium">No downloads yet.</h2>
           <p className="mb-6 text-muted-foreground">
-            With an active subscription, downloads appear here. You can also open items you&apos;ve purchased.
+            Subscription downloads are listed here after you download an item while your subscription is active.
           </p>
           <Link
             href="/"
@@ -52,27 +53,17 @@ export default async function ProfileDownloadsPage() {
     );
   }
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">My downloads</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {list.length} download{list.length === 1 ? "" : "s"} recorded
-        </p>
-      </div>
-      <ul className="space-y-4">
-        {list.map((row) => (
-          <li key={row.id}>
-            <OwnedItemCard
-              product={row.product}
-              titleFallback={`Item #${row.itemId}`}
-              metaLine={row.purchaseCode ? `Code ${row.purchaseCode.slice(0, 8)}…` : undefined}
-              dateLabel={`Downloaded ${formatDate(row.createdAt)}`}
-              downloadHref={`/api/download/${row.itemId}`}
-            />
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
+  const clientItems = list.map((row) => {
+    const titleFallback = `Item #${row.itemId}`;
+    return {
+      id: row.id,
+      itemId: row.itemId,
+      product: row.product,
+      titleFallback,
+      createdAt: row.createdAt,
+      downloadUrl: motionflowItemDownloadUrl(row.product, row.itemId, titleFallback),
+    };
+  });
+
+  return <DownloadsList items={clientItems} />;
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { userOwnsItem } from "@/lib/purchases";
-import { hasActiveSubscription } from "@/lib/subscriptions";
+import { hasActiveMotionflowSubscription } from "@/lib/subscriptions";
 
 export async function GET(req: NextRequest) {
   const itemIdRaw = req.nextUrl.searchParams.get("itemId");
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   }
 
   const [subOk, owns] = await Promise.all([
-    hasActiveSubscription(user.id),
+    hasActiveMotionflowSubscription(user.id),
     userOwnsItem(user.id, itemId),
   ]);
 

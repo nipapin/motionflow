@@ -7,6 +7,7 @@ import { FilterBar } from "@/components/filter-bar";
 import { ProductGrid } from "@/components/product-grid";
 import { SignInModal } from "@/components/sign-in-modal";
 import { SubscriptionModal } from "@/components/subscription-modal";
+import { DownloadStartedModal } from "@/components/download-started-modal";
 import type { Product } from "@/lib/product-types";
 import { productMatchesSearch, productPopularityScore } from "@/lib/product-ui";
 
@@ -60,6 +61,8 @@ export function CategoryPageLayout({
   const [selectedSubCategory, setSelectedSubCategory] = useState("");
   const [signInOpen, setSignInOpen] = useState(false);
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
+  const [downloadStartedOpen, setDownloadStartedOpen] = useState(false);
+  const [downloadItemId, setDownloadItemId] = useState<number | null>(null);
 
   const [allProducts, setAllProducts] = useState(initialProducts);
   const [hasMore, setHasMore] = useState(initialHasMore);
@@ -76,12 +79,25 @@ export function CategoryPageLayout({
 
   const isLoggedIn = !!user;
 
-  const handleDownload = () => {
+  const handleDownload = async (product: Product) => {
     if (!isLoggedIn) {
       setSignInOpen(true);
-    } else {
-      setSubscriptionOpen(true);
+      return;
     }
+    try {
+      const res = await fetch(`/api/me/can-download?itemId=${product.id}`);
+      const data = (await res.json()) as { canDownload?: boolean };
+      if (data.canDownload) {
+        setDownloadItemId(product.id);
+        setDownloadStartedOpen(true);
+        return;
+      }
+    } catch {
+      setDownloadItemId(product.id);
+      setDownloadStartedOpen(true);
+      return;
+    }
+    setSubscriptionOpen(true);
   };
 
   const selectedSlug = useMemo(() => {
@@ -166,6 +182,7 @@ export function CategoryPageLayout({
 
       <SignInModal open={signInOpen} onOpenChange={setSignInOpen} onAuthSuccess={() => setSignInOpen(false)} />
       <SubscriptionModal open={subscriptionOpen} onOpenChange={setSubscriptionOpen} />
+      <DownloadStartedModal open={downloadStartedOpen} itemId={downloadItemId} />
     </>
   );
 }

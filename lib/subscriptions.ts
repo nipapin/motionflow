@@ -34,6 +34,14 @@ const TITLES: Record<number | string, string> = {
   1691: "Spunkram Library",
 };
 
+/** `author_id` values that are separate third‑party bundles; they are not the main Motionflow catalog subscription. */
+const THIRD_PARTY_SUBSCRIPTION_AUTHOR_IDS = new Set<number>([4141, 1691]);
+
+function rowIsMotionflowCatalogSubscription(r: SubRow): boolean {
+  if (r.author_id == null) return true;
+  return !THIRD_PARTY_SUBSCRIPTION_AUTHOR_IDS.has(r.author_id);
+}
+
 
 
 const PRODUCT_PAGES: Record<number | string, string> = {
@@ -59,6 +67,28 @@ function formatDateDMY(raw: string | null): string | null {
 
 const TABLE = "subscription_systems";
 
+/** When set, access ends after this instant (Paddle / DB `ends_at`). */
+function endsAtStillValid(endsAt: string | null): boolean {
+  if (!endsAt) return true;
+  return new Date(endsAt) > new Date();
+}
+
+function computeRowActiveState(r: SubRow): { active: boolean; cancelled: boolean } {
+  let active = false;
+  let cancelled = false;
+
+  if (r.ends_at && r.status === -1) {
+    cancelled = true;
+    if (new Date(r.ends_at) > new Date()) {
+      active = true;
+    }
+  } else if (r.status === 1) {
+    active = endsAtStillValid(r.ends_at);
+  }
+
+  return { active, cancelled };
+}
+
 export async function getSubscriptionsForUser(
   userId: number,
 ): Promise<SubscriptionListItem[]> {
@@ -77,20 +107,8 @@ export async function getSubscriptionsForUser(
     const subsFor = TITLES[authorKey] ?? "Motionflow Subscription";
     const icon = ICONS[authorKey] ?? ICONS[""];
 
-    let active = false;
-    let cancelled = false;
-    let endDate: string | null = formatDateDMY(r.ends_at);
-
-    if (r.status === 1) {
-      active = true;
-    }
-
-    if (r.ends_at && r.status === -1) {
-      cancelled = true;
-      if (new Date(r.ends_at) > new Date()) {
-        active = true;
-      }
-    }
+    const { active, cancelled } = computeRowActiveState(r);
+    const endDate: string | null = formatDateDMY(r.ends_at);
 
     return {
       subsFor,
@@ -108,15 +126,16 @@ export async function getSubscriptionsForUser(
 }
 
 function rowIsActive(r: SubRow): boolean {
-  if (r.status === 1) return true;
-  if (r.ends_at && r.status === -1 && new Date(r.ends_at) > new Date()) {
-    return true;
-  }
-  return false;
+  return computeRowActiveState(r).active;
 }
 
-/** True if the user has at least one subscription row that counts as active (same rules as list UI). */
-export async function hasActiveSubscription(userId: number): Promise<boolean> {
+/**
+ * Active Motionflow catalog subscription (“Motionflow Subscription” / “Your subscription is active” in the UI).
+ * Third‑party author bundles (e.g. Premiere Gal, Spunkram) do not unlock unlimited marketplace downloads.
+ */
+export async function hasActiveMotionflowSubscription(
+  userId: number,
+): Promise<boolean> {
   const pool = getPool();
   const [rows] = await pool.execute<SubRow[]>(
     `SELECT author_id, status, subscription_id, plan, ends_at, created_at
@@ -125,5 +144,5 @@ export async function hasActiveSubscription(userId: number): Promise<boolean> {
      ORDER BY id DESC`,
     [userId],
   );
-  return rows.some(rowIsActive);
+  return rows.some((r) => rowIsMotionflowCatalogSubscription(r) && rowIsActive(r));
 }

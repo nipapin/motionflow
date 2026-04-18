@@ -84,7 +84,7 @@ export function pauseGlobalAudioPlayback() {
 // --------------- helpers ---------------
 interface AudioTrackProps {
   product: Product;
-  onDownload?: () => void;
+  onDownload?: (product: Product) => void;
   onClick?: () => void;
   containerClassName?: string;
 }
@@ -422,7 +422,7 @@ export function AudioTrack({ product, onDownload, onClick, containerClassName }:
           aria-label="Download"
           onClick={(e) => {
             e.stopPropagation();
-            onDownload?.();
+            onDownload?.(product);
           }}
         >
           <Download className="w-4 h-4" />

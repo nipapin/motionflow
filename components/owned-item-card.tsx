@@ -51,7 +51,12 @@ export function OwnedItemCard({
           asChild
           className="w-full bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 sm:w-auto"
         >
-          <a href={downloadHref}>
+          <a
+            href={downloadHref}
+            {...(downloadHref.startsWith("http://") || downloadHref.startsWith("https://")
+              ? { target: "_blank", rel: "noopener noreferrer" }
+              : {})}
+          >
             <Download className="mr-2 h-4 w-4" />
             Download
           </a>

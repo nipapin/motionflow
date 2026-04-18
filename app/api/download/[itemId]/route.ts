@@ -5,14 +5,10 @@ import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getPool } from "@/lib/db";
 import { getMarketItemsByIds } from "@/lib/market-items";
 import { userOwnsItem } from "@/lib/purchases";
-import { hasActiveSubscription } from "@/lib/subscriptions";
+import { motionflowItemDownloadUrl } from "@/lib/motionflow-urls";
+import { hasActiveMotionflowSubscription } from "@/lib/subscriptions";
 
 const DL_TABLE = "subscription_downloads";
-
-function laravelDownloadBase(): string {
-  const raw = process.env.NEXT_PUBLIC_LARAVEL_DOWNLOAD_URL ?? "https://motionflow.com/download";
-  return raw.replace(/\/$/, "");
-}
 
 export async function GET(
   _req: NextRequest,
@@ -30,7 +26,7 @@ export async function GET(
   }
 
   const [subOk, owns] = await Promise.all([
-    hasActiveSubscription(user.id),
+    hasActiveMotionflowSubscription(user.id),
     userOwnsItem(user.id, itemId),
   ]);
 
@@ -53,6 +49,6 @@ export async function GET(
     [itemId, user.id, product.author_id, purchaseCode],
   );
 
-  const target = `${laravelDownloadBase()}/${itemId}`;
+  const target = motionflowItemDownloadUrl(product, itemId, product.name);
   return NextResponse.redirect(target, 307);
 }

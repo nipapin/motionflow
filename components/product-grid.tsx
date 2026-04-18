@@ -28,7 +28,7 @@ const softwareCategories = [
 interface ProductGridProps {
   products: Product[];
   title?: string;
-  onDownload?: () => void;
+  onDownload?: (product: Product) => void;
   showCategoryFilter?: boolean;
   selectedSoftware?: string;
   onSoftwareChange?: (software: string) => void;

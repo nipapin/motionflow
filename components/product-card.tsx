@@ -20,7 +20,7 @@ export type { Product, ProductFiles } from "@/lib/product-types";
 
 interface ProductCardProps {
   product: Product;
-  onDownload?: () => void;
+  onDownload?: (product: Product) => void;
   onClick?: () => void;
 }
 
@@ -217,7 +217,7 @@ export function ProductCard({ product, onDownload, onClick }: ProductCardProps) 
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onDownload?.();
+                onDownload?.(product);
               }}
               className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-110 smooth shrink-0"
               aria-label="Download"
