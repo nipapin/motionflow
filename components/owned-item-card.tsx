@@ -1,4 +1,3 @@
-import Image from "next/image";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Product } from "@/lib/product-types";
@@ -34,7 +33,7 @@ export function OwnedItemCard({
     <article className="flex flex-col gap-4 rounded-2xl border border-blue-500/30 bg-card/40 p-4 glow sm:flex-row sm:items-center">
       <div className="relative h-28 w-full shrink-0 overflow-hidden rounded-xl bg-muted sm:h-24 sm:w-40">
         {thumb ? (
-          <Image src={thumb} alt={name} fill className="object-cover" unoptimized sizes="160px" />
+          <img src={thumb} alt={name} className="absolute inset-0 size-full object-cover" />
         ) : (
           <div className="flex h-full items-center justify-center text-xs text-muted-foreground">No preview</div>
         )}
