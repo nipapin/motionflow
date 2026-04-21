@@ -6,7 +6,8 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "eslint .",
-    "start": "next start"
+    "start": "next start",
+    "deploy": "git pull && npm install && npm run build && npm run start"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
