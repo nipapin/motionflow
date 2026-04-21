@@ -30,8 +30,8 @@ const VIDEO_STYLE_HINTS: Record<string, string> = {
 };
 
 const ALLOWED_RATIOS = new Set(["16:9", "9:16", "1:1"]);
-const ALLOWED_DURATIONS = new Set([3, 5]);
-const ALLOWED_TARGET_RES = new Set(["720", "1080"]);
+const ALLOWED_DURATIONS = new Set([5, 10]);
+const ALLOWED_TARGET_RES = new Set(["720"]);
 
 const FPS = 24;
 
@@ -106,6 +106,15 @@ function extractMediaUrl(output: unknown): string | null {
     return null;
 }
 
+function isHttpsUrl(value: string): boolean {
+    try {
+        const u = new URL(value);
+        return u.protocol === "https:" || u.protocol === "http:";
+    } catch {
+        return false;
+    }
+}
+
 export async function POST(req: NextRequest) {
     try {
         const user = await getSessionUser();
@@ -135,6 +144,7 @@ export async function POST(req: NextRequest) {
             aspect_ratio?: string;
             duration?: number;
             target_resolution?: string;
+            first_frame_url?: string;
         };
 
         const prompt = body.prompt?.trim();
@@ -143,6 +153,7 @@ export async function POST(req: NextRequest) {
         const duration =
             typeof body.duration === "number" ? body.duration : 5;
         const target_resolution = body.target_resolution ?? "720";
+        const first_frame_url = body.first_frame_url?.trim();
 
         if (!prompt) {
             return NextResponse.json(
@@ -160,14 +171,25 @@ export async function POST(req: NextRequest) {
 
         if (!ALLOWED_DURATIONS.has(duration)) {
             return NextResponse.json(
-                { error: "Please choose a supported duration (3 or 5 seconds)." },
+                { error: "Please choose a supported duration (5 or 10 seconds)." },
                 { status: 400 },
             );
         }
 
         if (!ALLOWED_TARGET_RES.has(target_resolution)) {
             return NextResponse.json(
-                { error: "Please choose 720 or 1080 output resolution." },
+                { error: "Output resolution must be 720p." },
+                { status: 400 },
+            );
+        }
+
+        if (
+            first_frame_url !== undefined &&
+            first_frame_url.length > 0 &&
+            !isHttpsUrl(first_frame_url)
+        ) {
+            return NextResponse.json(
+                { error: "First frame must be a valid http(s) image URL." },
                 { status: 400 },
             );
         }
@@ -187,10 +209,9 @@ export async function POST(req: NextRequest) {
         const styleHint = VIDEO_STYLE_HINTS[style] ?? VIDEO_STYLE_HINTS.cinematic;
         const finalPrompt = `${prompt}. Style: ${styleHint}.`;
 
-        const resolution =
-            target_resolution === "1080" ? ("1080p" as const) : ("720p" as const);
+        const resolution = "720p" as const;
 
-        const seedInput = {
+        const seedInput: Record<string, string | number | boolean> = {
             prompt: finalPrompt,
             fps: FPS,
             duration,
@@ -198,6 +219,11 @@ export async function POST(req: NextRequest) {
             aspect_ratio,
             camera_fixed: false,
         };
+
+        /** Replicate Seedance: optional image URL as motion reference / first frame. */
+        if (first_frame_url) {
+            seedInput.image = first_frame_url;
+        }
 
         let seedOutput: unknown;
         try {
@@ -218,6 +244,9 @@ export async function POST(req: NextRequest) {
                     aspect_ratio,
                     duration,
                     target_resolution,
+                    ...(first_frame_url
+                        ? { first_frame_url: first_frame_url }
+                        : {}),
                 },
                 errorMessage: message,
             });
@@ -238,6 +267,9 @@ export async function POST(req: NextRequest) {
                     aspect_ratio,
                     duration,
                     target_resolution,
+                    ...(first_frame_url
+                        ? { first_frame_url: first_frame_url }
+                        : {}),
                 },
                 errorMessage: GENERIC_ERROR,
             });
@@ -267,6 +299,9 @@ export async function POST(req: NextRequest) {
                 aspect_ratio,
                 duration,
                 target_resolution,
+                ...(first_frame_url
+                    ? { first_frame_url: first_frame_url }
+                    : {}),
             },
             result: { video: videoUrl },
         });

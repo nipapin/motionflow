@@ -6,12 +6,12 @@ import {
   Download,
   RefreshCw,
   Clock,
-  Film,
   Trash2,
   X,
   Ratio,
   Palette,
-  Clapperboard,
+  ImageIcon,
+  Frame,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,23 +21,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useGenerations, type GenerationStatus } from "@/hooks/use-generations";
 import { GenerationsBadge } from "@/components/generations-badge";
 
+const TARGET_RESOLUTION = "720" as const;
+
 const durationOptions = [
-  { id: "3", label: "3 sec" },
   { id: "5", label: "5 sec" },
-];
-
-/** Extension clip length (seconds); UI matches main video duration options. */
-const extendDurationOptions = [
-  { id: "3", label: "3 sec" },
-  { id: "5", label: "5 sec" },
-];
-
-const resolutionOptions = [
-  { id: "720", label: "720p" },
-  { id: "1080", label: "1080p" },
+  { id: "10", label: "10 sec" },
 ];
 
 const aspectRatios = [
@@ -53,6 +51,26 @@ const stylePresets = [
   { id: "artistic", label: "Artistic" },
 ];
 
+/** Matches `/api/generations/image` styles for the “Generate” tab in First frame. */
+const ffImageStyles = [
+  { id: "realistic", label: "Realistic" },
+  { id: "anime", label: "Anime" },
+  { id: "3d", label: "3D Render" },
+  { id: "digital-art", label: "Digital Art" },
+  { id: "oil-painting", label: "Oil Painting" },
+  { id: "watercolor", label: "Watercolor" },
+];
+
+const ffImageRatios = [
+  { id: "1:1", label: "1:1" },
+  { id: "16:9", label: "16:9" },
+  { id: "9:16", label: "9:16" },
+];
+
+/** First-frame dialog tabs: active = site blue gradient. */
+const ffDialogTabTriggerClass =
+  "text-xs sm:text-sm text-muted-foreground data-[state=active]:border-transparent data-[state=active]:bg-linear-to-r data-[state=active]:from-blue-600 data-[state=active]:to-blue-500 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:shadow-blue-500/30 data-[state=active]:dark:from-blue-600 data-[state=active]:dark:to-blue-500";
+
 interface VideoHistory {
   id: string;
   prompt: string;
@@ -65,6 +83,7 @@ interface VideoHistory {
   kind?: "generate" | "extend";
   recordStatus?: "ok" | "failed";
   errorMessage?: string;
+  firstFrameUrl?: string;
 }
 
 type ApiGenerationRecord = {
@@ -94,7 +113,7 @@ function mapVideoRecord(row: ApiGenerationRecord): VideoHistory {
         ? String(s.extend_duration ?? "")
         : String(s.duration ?? ""),
     resolution:
-      typeof s.target_resolution === "string" ? s.target_resolution : "1080",
+      typeof s.target_resolution === "string" ? s.target_resolution : "720",
     aspectRatio:
       typeof s.aspect_ratio === "string" ? s.aspect_ratio : "16:9",
     videoUrl,
@@ -102,6 +121,8 @@ function mapVideoRecord(row: ApiGenerationRecord): VideoHistory {
     kind,
     recordStatus: row.status === "failed" ? "failed" : "ok",
     errorMessage: row.error_message ?? undefined,
+    firstFrameUrl:
+      typeof s.first_frame_url === "string" ? s.first_frame_url : undefined,
   };
 }
 
@@ -117,7 +138,6 @@ export function VideoGenerator() {
 
   const [prompt, setPrompt] = useState("");
   const [selectedDuration, setSelectedDuration] = useState("5");
-  const [selectedResolution, setSelectedResolution] = useState("1080");
   const [selectedAspectRatio, setSelectedAspectRatio] = useState("16:9");
   const [selectedStyle, setSelectedStyle] = useState("cinematic");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -125,18 +145,23 @@ export function VideoGenerator() {
   const [history, setHistory] = useState<VideoHistory[]>([]);
   const [lightboxVideo, setLightboxVideo] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const [extendSourceUrl, setExtendSourceUrl] = useState<string | null>(null);
-  const [extendPrompt, setExtendPrompt] = useState("");
-  const [extendDurationSec, setExtendDurationSec] = useState("5");
-  const [isExtending, setIsExtending] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+
+  const [firstFrameUrl, setFirstFrameUrl] = useState<string | null>(null);
+  const [firstFrameDialogOpen, setFirstFrameDialogOpen] = useState(false);
+  const [ffUploading, setFfUploading] = useState(false);
+  const [ffGenLoading, setFfGenLoading] = useState(false);
+  const [libraryItems, setLibraryItems] = useState<{ id: string; url: string }[]>(
+    [],
+  );
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [ffPrompt, setFfPrompt] = useState("");
+  const [ffStyle, setFfStyle] = useState("realistic");
+  const [ffRatio, setFfRatio] = useState("1:1");
 
   const remaining = generations?.remaining ?? 0;
   const noGenerationsLeft =
     authenticated && !generationsLoading && remaining <= 0;
-
-  const busy = isGenerating || isExtending;
 
   useEffect(() => {
     if (!authenticated) {
@@ -161,7 +186,6 @@ export function VideoGenerator() {
         );
         if (firstOk) {
           setGeneratedVideo(firstOk.videoUrl);
-          setExtendSourceUrl(firstOk.videoUrl);
         }
       } finally {
         if (!cancelled) setHistoryLoading(false);
@@ -172,13 +196,49 @@ export function VideoGenerator() {
     };
   }, [authenticated]);
 
+  useEffect(() => {
+    if (!firstFrameDialogOpen || !authenticated) return;
+    let cancelled = false;
+    setLibraryLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch(
+          "/api/me/generation-records?tool=image&limit=100",
+          {
+            credentials: "include",
+            cache: "no-store",
+          },
+        );
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { items?: ApiGenerationRecord[] };
+        const flat: { id: string; url: string }[] = [];
+        for (const row of data.items ?? []) {
+          if (row.status !== "ok" || !row.result) continue;
+          const imgs = row.result.images;
+          if (!Array.isArray(imgs)) continue;
+          imgs.forEach((u, i) => {
+            if (typeof u === "string") {
+              flat.push({ id: `${row.id}-${i}`, url: u });
+            }
+          });
+        }
+        if (!cancelled) setLibraryItems(flat);
+      } finally {
+        if (!cancelled) setLibraryLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [firstFrameDialogOpen, authenticated]);
+
   const handleGenerate = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErrorMessage(null);
 
     if (
       !prompt.trim() ||
-      busy ||
+      isGenerating ||
       !authenticated ||
       noGenerationsLeft
     ) {
@@ -196,7 +256,8 @@ export function VideoGenerator() {
           style: selectedStyle,
           aspect_ratio: selectedAspectRatio,
           duration: Number(selectedDuration),
-          target_resolution: selectedResolution,
+          target_resolution: TARGET_RESOLUTION,
+          ...(firstFrameUrl ? { first_frame_url: firstFrameUrl } : {}),
         }),
       });
 
@@ -228,19 +289,19 @@ export function VideoGenerator() {
       }
 
       setGeneratedVideo(url);
-      setExtendSourceUrl(url);
       setHistory((prev) => [
         {
           id: data.record_id ?? Date.now().toString(),
           prompt: prompt.trim(),
           style: selectedStyle,
           durationSec: selectedDuration,
-          resolution: selectedResolution,
+          resolution: TARGET_RESOLUTION,
           aspectRatio: selectedAspectRatio,
           videoUrl: url,
           timestamp: new Date(),
           kind: "generate",
           recordStatus: "ok",
+          firstFrameUrl: firstFrameUrl ?? undefined,
         },
         ...prev,
       ]);
@@ -250,6 +311,93 @@ export function VideoGenerator() {
       setErrorMessage(message);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleFfFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setFfUploading(true);
+    setErrorMessage(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/generations/video/first-frame-upload", {
+        method: "POST",
+        body: fd,
+        credentials: "include",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        url?: string;
+        error?: string;
+      };
+      if (!res.ok) {
+        throw new Error(data.error || `Upload failed (${res.status})`);
+      }
+      if (!data.url) {
+        throw new Error("No URL returned");
+      }
+      setFirstFrameUrl(data.url);
+      setFirstFrameDialogOpen(false);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to upload image";
+      setErrorMessage(message);
+    } finally {
+      setFfUploading(false);
+    }
+  };
+
+  const handleFfGenerate = async () => {
+    if (!ffPrompt.trim() || ffGenLoading || !authenticated || noGenerationsLeft) {
+      return;
+    }
+    setFfGenLoading(true);
+    setErrorMessage(null);
+    try {
+      const res = await fetch("/api/generations/image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: ffPrompt.trim(),
+          style: ffStyle,
+          aspect_ratio: ffRatio,
+        }),
+        credentials: "include",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        images?: string[];
+        error?: string;
+        generations?: GenerationStatus;
+      };
+      if (!res.ok) {
+        if (data.generations) {
+          setGenerationsStatus(data.generations);
+        } else {
+          refreshGenerations();
+        }
+        throw new Error(data.error || `Request failed (${res.status})`);
+      }
+      const url = data.images?.[0];
+      if (!url) {
+        throw new Error("No image returned");
+      }
+      if (data.generations) {
+        setGenerationsStatus(data.generations);
+      } else {
+        refreshGenerations();
+      }
+      setFirstFrameUrl(url);
+      setFirstFrameDialogOpen(false);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to generate image";
+      setErrorMessage(message);
+    } finally {
+      setFfGenLoading(false);
     }
   };
 
@@ -268,97 +416,16 @@ export function VideoGenerator() {
     }
   };
 
-  const handleExtend = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setErrorMessage(null);
-    if (
-      !extendSourceUrl ||
-      !extendPrompt.trim() ||
-      isGenerating ||
-      isExtending ||
-      !authenticated ||
-      noGenerationsLeft
-    ) {
-      return;
-    }
-
-    setIsExtending(true);
-    try {
-      const res = await fetch("/api/generations/video/extend", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          video: extendSourceUrl,
-          prompt: extendPrompt.trim(),
-          duration: Number(extendDurationSec),
-        }),
-      });
-
-      const data = (await res.json().catch(() => ({}))) as {
-        video?: string;
-        error?: string;
-        generations?: GenerationStatus;
-        record_id?: string;
-      };
-
-      if (!res.ok) {
-        if (data.generations) {
-          setGenerationsStatus(data.generations);
-        } else {
-          refreshGenerations();
-        }
-        throw new Error(data.error || `Request failed (${res.status})`);
-      }
-
-      const url = data.video;
-      if (!url) {
-        throw new Error("No video returned");
-      }
-
-      if (data.generations) {
-        setGenerationsStatus(data.generations);
-      } else {
-        refreshGenerations();
-      }
-
-      setGeneratedVideo(url);
-      setExtendSourceUrl(url);
-      setExtendPrompt("");
-      setHistory((prev) => [
-        {
-          id: data.record_id ?? Date.now().toString(),
-          prompt: extendPrompt.trim(),
-          style: selectedStyle,
-          durationSec: extendDurationSec,
-          resolution: selectedResolution,
-          aspectRatio: selectedAspectRatio,
-          videoUrl: url,
-          timestamp: new Date(),
-          kind: "extend",
-          recordStatus: "ok",
-        },
-        ...prev,
-      ]);
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to extend video";
-      setErrorMessage(message);
-    } finally {
-      setIsExtending(false);
-    }
-  };
-
-  const selectVideoForExtend = (url: string) => {
+  const selectHistoryVideo = (url: string) => {
     if (!url) return;
-    setExtendSourceUrl(url);
     setGeneratedVideo(url);
   };
 
   const triggerClasses =
     "w-full h-11 bg-background/50 border-blue-500/30 text-foreground rounded-xl px-4 hover:border-blue-500/60 focus-visible:border-blue-500/60 focus-visible:ring-blue-500/30";
 
-  const resLabel =
-    selectedResolution === "720" ? "720p" : "1080p";
+  const resLabel = (code: string) =>
+    code === "1080" ? "1080p" : "720p";
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -399,6 +466,195 @@ export function VideoGenerator() {
           </div>
 
           <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5 space-y-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-medium text-foreground mb-1">
+                  First frame (optional)
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Image-to-video: motion starts from this still.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Dialog
+                  open={firstFrameDialogOpen}
+                  onOpenChange={setFirstFrameDialogOpen}
+                >
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="border border-blue-500/40 bg-blue-500/10 text-foreground hover:bg-blue-500/20"
+                    onClick={() => setFirstFrameDialogOpen(true)}
+                  >
+                    <Frame className="w-4 h-4 mr-2 shrink-0" />
+                    First frame
+                  </Button>
+                  <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
+                    <DialogHeader>
+                      <DialogTitle>Choose first frame</DialogTitle>
+                    </DialogHeader>
+                    <Tabs defaultValue="generate" className="w-full mt-2">
+                      <TabsList className="grid w-full grid-cols-3 h-auto gap-1.5 rounded-xl border border-blue-500/25 bg-muted/40 p-1.5">
+                        <TabsTrigger value="generate" className={ffDialogTabTriggerClass}>
+                          Generate
+                        </TabsTrigger>
+                        <TabsTrigger value="library" className={ffDialogTabTriggerClass}>
+                          Library
+                        </TabsTrigger>
+                        <TabsTrigger value="upload" className={ffDialogTabTriggerClass}>
+                          From device
+                        </TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="generate" className="pt-4 space-y-4">
+                        <p className="text-sm text-muted-foreground">
+                          Creates a still using one image generation, then uses it
+                          as the first frame.
+                        </p>
+                        <textarea
+                          value={ffPrompt}
+                          onChange={(e) => setFfPrompt(e.target.value)}
+                          placeholder="Describe the starting image..."
+                          rows={3}
+                          className="w-full bg-background/50 border border-blue-500/30 rounded-xl p-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:border-blue-500/60"
+                        />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                              Style
+                            </label>
+                            <Select value={ffStyle} onValueChange={setFfStyle}>
+                              <SelectTrigger className={triggerClasses}>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {ffImageStyles.map((s) => (
+                                  <SelectItem key={s.id} value={s.id}>
+                                    {s.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                              Aspect
+                            </label>
+                            <Select value={ffRatio} onValueChange={setFfRatio}>
+                              <SelectTrigger className={triggerClasses}>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {ffImageRatios.map((r) => (
+                                  <SelectItem key={r.id} value={r.id}>
+                                    {r.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          disabled={
+                            !ffPrompt.trim() ||
+                            ffGenLoading ||
+                            !authenticated ||
+                            noGenerationsLeft
+                          }
+                          className="w-full bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl"
+                          onClick={() => void handleFfGenerate()}
+                        >
+                          {ffGenLoading ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                              Generating image…
+                            </>
+                          ) : (
+                            <>
+                              <ImageIcon className="w-4 h-4 mr-2" />
+                              Generate image & use
+                            </>
+                          )}
+                        </Button>
+                      </TabsContent>
+                      <TabsContent value="library" className="pt-4 space-y-3">
+                        <p className="text-sm text-muted-foreground">
+                          Images from your past image generations.
+                        </p>
+                        {libraryLoading ? (
+                          <p className="text-sm text-muted-foreground py-8 text-center">
+                            Loading…
+                          </p>
+                        ) : libraryItems.length === 0 ? (
+                          <p className="text-sm text-muted-foreground py-8 text-center">
+                            No images yet. Generate some on the Image page first.
+                          </p>
+                        ) : (
+                          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-72 overflow-y-auto pr-1">
+                            {libraryItems.map((item) => (
+                              <button
+                                key={item.id}
+                                type="button"
+                                className="relative aspect-square rounded-lg overflow-hidden border border-blue-500/25 bg-black hover:border-blue-500/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
+                                onClick={() => {
+                                  setFirstFrameUrl(item.url);
+                                  setFirstFrameDialogOpen(false);
+                                }}
+                              >
+                                <img
+                                  src={item.url}
+                                  alt=""
+                                  className="w-full h-full object-cover"
+                                />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </TabsContent>
+                      <TabsContent value="upload" className="pt-4 space-y-3">
+                        <p className="text-sm text-muted-foreground">
+                          Upload a JPEG, PNG, WebP, or GIF (max 15 MB).
+                        </p>
+                        <label className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-blue-500/40 bg-background/40 px-4 py-10 cursor-pointer hover:border-blue-500/60 smooth">
+                          <ImageIcon className="w-10 h-10 text-blue-400/80" />
+                          <span className="text-sm text-foreground">
+                            {ffUploading ? "Uploading…" : "Click to select a file"}
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,image/gif"
+                            className="sr-only"
+                            disabled={ffUploading}
+                            onChange={handleFfFileChange}
+                          />
+                        </label>
+                      </TabsContent>
+                    </Tabs>
+                  </DialogContent>
+                </Dialog>
+                {firstFrameUrl ? (
+                  <>
+                    <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-blue-500/30 bg-black shrink-0">
+                      <img
+                        src={firstFrameUrl}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground"
+                      onClick={() => setFirstFrameUrl(null)}
+                    >
+                      Clear
+                    </Button>
+                  </>
+                ) : null}
+              </div>
+            </div>
+
             <div>
               <label
                 htmlFor="video-style"
@@ -467,38 +723,13 @@ export function VideoGenerator() {
                 </SelectContent>
               </Select>
             </div>
-
-            <div>
-              <label
-                htmlFor="video-resolution"
-                className="text-sm font-medium text-foreground mb-3 flex items-center gap-2"
-              >
-                <Film className="w-4 h-4 text-blue-400" />
-                Resolution
-              </label>
-              <Select
-                value={selectedResolution}
-                onValueChange={setSelectedResolution}
-              >
-                <SelectTrigger id="video-resolution" className={triggerClasses}>
-                  <SelectValue placeholder="Select resolution" />
-                </SelectTrigger>
-                <SelectContent>
-                  {resolutionOptions.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
 
           <Button
             type="submit"
             disabled={
               !prompt.trim() ||
-              busy ||
+              isGenerating ||
               !authenticated ||
               noGenerationsLeft
             }
@@ -561,23 +792,7 @@ export function VideoGenerator() {
                   />
                 </div>
 
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="text-sm text-muted-foreground">
-                    <span className="text-foreground font-medium">
-                      Duration:
-                    </span>{" "}
-                    {selectedDuration} sec
-                    <span className="text-foreground font-medium mx-2">|</span>
-                    <span className="text-foreground font-medium">
-                      Resolution:
-                    </span>{" "}
-                    {resLabel}
-                    <span className="text-foreground font-medium mx-2">|</span>
-                    <span className="text-foreground font-medium">
-                      Aspect:
-                    </span>{" "}
-                    {selectedAspectRatio}
-                  </div>
+                <div className="flex flex-wrap items-center justify-end gap-3">
                   <Button
                     className="bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-lg"
                     asChild
@@ -593,85 +808,6 @@ export function VideoGenerator() {
                     </a>
                   </Button>
                 </div>
-
-                {extendSourceUrl && (
-                  <form
-                    onSubmit={handleExtend}
-                    className="rounded-xl border border-blue-500/20 bg-background/30 p-4 space-y-3"
-                  >
-                    <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                      <Clapperboard className="w-4 h-4 text-blue-400 shrink-0" />
-                      Extend video
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Describe what happens next; the clip is continued from the
-                      last frame. Uses one generation.
-                    </p>
-                    <label
-                      htmlFor="extend-prompt"
-                      className="text-xs font-medium text-muted-foreground block"
-                    >
-                      Continuation prompt
-                    </label>
-                    <textarea
-                      id="extend-prompt"
-                      value={extendPrompt}
-                      onChange={(e) => setExtendPrompt(e.target.value)}
-                      placeholder='e.g. "The camera slowly pulls back to reveal the full landscape"'
-                      rows={3}
-                      className="w-full bg-background/50 border border-blue-500/30 rounded-xl p-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:border-blue-500/60 smooth"
-                    />
-                    <div>
-                      <label
-                        htmlFor="extend-duration"
-                        className="text-xs font-medium text-muted-foreground mb-2 block"
-                      >
-                        Extension length
-                      </label>
-                      <Select
-                        value={extendDurationSec}
-                        onValueChange={setExtendDurationSec}
-                      >
-                        <SelectTrigger
-                          id="extend-duration"
-                          className={triggerClasses}
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {extendDurationOptions.map((opt) => (
-                            <SelectItem key={opt.id} value={opt.id}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <Button
-                      type="submit"
-                      disabled={
-                        !extendPrompt.trim() ||
-                        busy ||
-                        !authenticated ||
-                        noGenerationsLeft
-                      }
-                      variant="secondary"
-                      className="w-full h-11 border border-blue-500/40 bg-blue-500/10 text-foreground hover:bg-blue-500/20"
-                    >
-                      {isExtending ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                          Extending…
-                        </>
-                      ) : (
-                        <>
-                          <Clapperboard className="w-4 h-4 mr-2" />
-                          Extend (1 generation)
-                        </>
-                      )}
-                    </Button>
-                  </form>
-                )}
               </div>
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-center py-16">
@@ -744,9 +880,14 @@ export function VideoGenerator() {
                           <>
                             {stylePresets.find((s) => s.id === item.style)
                               ?.label}{" "}
-                            | {item.durationSec}s |{" "}
-                            {item.resolution === "1080" ? "1080p" : "720p"} |{" "}
+                            | {item.durationSec}s | {resLabel(item.resolution)} |{" "}
                             {item.aspectRatio}
+                            {item.firstFrameUrl ? (
+                              <span className="text-foreground/80">
+                                {" "}
+                                · first frame
+                              </span>
+                            ) : null}
                           </>
                         )}{" "}
                         | {item.timestamp.toLocaleTimeString()}
@@ -755,12 +896,12 @@ export function VideoGenerator() {
                     <div className="flex items-center gap-1 shrink-0">
                       <button
                         type="button"
-                        title="Extend this video"
-                        onClick={() => selectVideoForExtend(item.videoUrl)}
+                        title="Show in preview"
+                        onClick={() => selectHistoryVideo(item.videoUrl)}
                         disabled={!item.videoUrl}
                         className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth disabled:opacity-40 disabled:pointer-events-none"
                       >
-                        <Clapperboard className="w-4 h-4" />
+                        <Video className="w-4 h-4" />
                       </button>
                       {item.videoUrl ? (
                         <a
