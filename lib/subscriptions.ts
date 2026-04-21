@@ -9,6 +9,9 @@ export interface SubscriptionListItem {
   icon: string;
   invertIcon: boolean;
   productPage: string;
+  /** Paddle catalog ids when stored (`pro_…` / `pri_…`). */
+  paddleProductId: string | null;
+  paddlePriceId: string | null;
   active: boolean;
   cancelled: boolean;
   endDate: string | null;
@@ -27,6 +30,8 @@ type SubRow = RowDataPacket & {
   plan: string | null;
   ends_at: string | null;
   created_at: string | null;
+  paddle_product_id: string | null;
+  paddle_price_id: string | null;
 };
 
 const TITLES: Record<number | string, string> = {
@@ -34,15 +39,32 @@ const TITLES: Record<number | string, string> = {
   1691: "Spunkram Library",
 };
 
+/**
+ * Labels / URLs / icons by Paddle product id (`pro_…`), when present on the row.
+ * Add entries from Catalog → Products in the Paddle dashboard.
+ */
+const PADDLE_PRODUCT_TITLES: Record<string, string> = {};
+
+const PADDLE_PRODUCT_PAGES: Record<string, string> = {
+  "": "https://motionflow.pro",
+};
+
+const PADDLE_PRODUCT_ICONS: Record<string, string> = {
+  "": "/assets/logo_square.png",
+};
+
 /** `author_id` values that are separate third‑party bundles; they are not the main Motionflow catalog subscription. */
 const THIRD_PARTY_SUBSCRIPTION_AUTHOR_IDS = new Set<number>([4141, 1691]);
 
+/** Same as `THIRD_PARTY_SUBSCRIPTION_AUTHOR_IDS` but for rows keyed by Paddle `pro_…` (fill when you know catalog ids). */
+const THIRD_PARTY_PADDLE_PRODUCT_IDS = new Set<string>([]);
+
 function rowIsMotionflowCatalogSubscription(r: SubRow): boolean {
+  const pid = r.paddle_product_id?.trim();
+  if (pid && THIRD_PARTY_PADDLE_PRODUCT_IDS.has(pid)) return false;
   if (r.author_id == null) return true;
   return !THIRD_PARTY_SUBSCRIPTION_AUTHOR_IDS.has(r.author_id);
 }
-
-
 
 const PRODUCT_PAGES: Record<number | string, string> = {
   4141: "https://premieregal.motionflow.pro",
@@ -55,6 +77,34 @@ const ICONS: Record<number | string, string> = {
   1691: "/assets/spunkram-logo.png",
   "": "/assets/logo_square.png",
 };
+
+function resolveSubscriptionPresentation(r: SubRow): {
+  subsFor: string;
+  icon: string;
+  productPage: string;
+  invertIcon: boolean;
+} {
+  const paddlePid = r.paddle_product_id?.trim() ?? "";
+  if (paddlePid && PADDLE_PRODUCT_TITLES[paddlePid]) {
+    const icon = PADDLE_PRODUCT_ICONS[paddlePid] ?? PADDLE_PRODUCT_ICONS[""];
+    const hasBrandedIcon = paddlePid in PADDLE_PRODUCT_ICONS && PADDLE_PRODUCT_ICONS[paddlePid] !== PADDLE_PRODUCT_ICONS[""];
+    return {
+      subsFor: PADDLE_PRODUCT_TITLES[paddlePid],
+      icon,
+      productPage: PADDLE_PRODUCT_PAGES[paddlePid] ?? PADDLE_PRODUCT_PAGES[""],
+      invertIcon: !hasBrandedIcon,
+    };
+  }
+
+  const authorKey = r.author_id ?? "";
+  const hasKnownAuthor = r.author_id != null && r.author_id in ICONS;
+  return {
+    subsFor: TITLES[authorKey] ?? "Motionflow Subscription",
+    icon: ICONS[authorKey] ?? ICONS[""],
+    productPage: PRODUCT_PAGES[authorKey] ?? PRODUCT_PAGES[""],
+    invertIcon: !hasKnownAuthor,
+  };
+}
 
 function formatDateDMY(raw: string | null): string | null {
   if (!raw) return null;
@@ -94,7 +144,8 @@ export async function getSubscriptionsForUser(
 ): Promise<SubscriptionListItem[]> {
   const pool = getPool();
   const [rows] = await pool.execute<SubRow[]>(
-    `SELECT author_id, status, subscription_id, plan, ends_at, created_at
+    `SELECT author_id, status, subscription_id, plan, ends_at, created_at,
+            paddle_product_id, paddle_price_id
      FROM \`${TABLE}\`
      WHERE buyer_id = ?
      ORDER BY id DESC`,
@@ -102,21 +153,17 @@ export async function getSubscriptionsForUser(
   );
 
   return rows.map((r) => {
-    const authorKey = r.author_id ?? "";
-    const hasKnownAuthor = r.author_id != null && r.author_id in ICONS;
-    const subsFor = TITLES[authorKey] ?? "Motionflow Subscription";
-    const icon = ICONS[authorKey] ?? ICONS[""];
+    const pres = resolveSubscriptionPresentation(r);
 
     const { active, cancelled } = computeRowActiveState(r);
     const endDate: string | null = formatDateDMY(r.ends_at);
 
     return {
-      subsFor,
+      ...pres,
       plan: r.plan ?? null,
       subscriptionId: String(r.subscription_id ?? ""),
-      icon,
-      invertIcon: !hasKnownAuthor,
-      productPage: PRODUCT_PAGES[authorKey] ?? PRODUCT_PAGES[""],
+      paddleProductId: r.paddle_product_id?.trim() ?? null,
+      paddlePriceId: r.paddle_price_id?.trim() ?? null,
       active,
       cancelled,
       endDate,
@@ -138,7 +185,8 @@ export async function hasActiveMotionflowSubscription(
 ): Promise<boolean> {
   const pool = getPool();
   const [rows] = await pool.execute<SubRow[]>(
-    `SELECT author_id, status, subscription_id, plan, ends_at, created_at
+    `SELECT author_id, status, subscription_id, plan, ends_at, created_at,
+            paddle_product_id, paddle_price_id
      FROM \`${TABLE}\`
      WHERE buyer_id = ?
      ORDER BY id DESC`,

@@ -1,20 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { Video, Download, RefreshCw, Play, Pause, Clock, Film, Coins, Trash2, X } from "lucide-react";
+import { Video, Download, RefreshCw, Play, Pause, Clock, Film, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useGenerations } from "@/hooks/use-generations";
+import { GenerationsBadge } from "@/components/generations-badge";
 
 const durationOptions = [
-  { id: "3s", label: "3 sec", cost: 5 },
-  { id: "5s", label: "5 sec", cost: 8 },
-  { id: "10s", label: "10 sec", cost: 15 },
+  { id: "3s", label: "3 sec" },
+  { id: "5s", label: "5 sec" },
+  { id: "10s", label: "10 sec" },
 ];
 
 const qualityOptions = [
-  { id: "720p", label: "720p", multiplier: 1 },
-  { id: "1080p", label: "1080p", multiplier: 1.5 },
-  { id: "4k", label: "4K", multiplier: 2 },
+  { id: "720p", label: "720p" },
+  { id: "1080p", label: "1080p" },
+  { id: "4k", label: "4K" },
 ];
 
 const stylePresets = [
@@ -65,6 +67,13 @@ const mockHistory: VideoHistory[] = [
 ];
 
 export function VideoGenerator() {
+  const {
+    status: generations,
+    loading: generationsLoading,
+    authenticated,
+    consume,
+  } = useGenerations();
+
   const [prompt, setPrompt] = useState("");
   const [selectedDuration, setSelectedDuration] = useState("5s");
   const [selectedQuality, setSelectedQuality] = useState("1080p");
@@ -72,26 +81,34 @@ export function VideoGenerator() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedVideo, setGeneratedVideo] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [credits, setCredits] = useState(100);
   const [history, setHistory] = useState<VideoHistory[]>(mockHistory);
   const [lightboxVideo, setLightboxVideo] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const baseCost = durationOptions.find(d => d.id === selectedDuration)?.cost || 8;
-  const qualityMultiplier = qualityOptions.find(q => q.id === selectedQuality)?.multiplier || 1;
-  const totalCost = Math.round(baseCost * qualityMultiplier);
+  const remaining = generations?.remaining ?? 0;
+  const noGenerationsLeft =
+    authenticated && !generationsLoading && remaining <= 0;
 
   const handleGenerate = async () => {
-    if (!prompt.trim() || credits < totalCost) return;
-    
+    setErrorMessage(null);
+    if (!prompt.trim() || !authenticated || noGenerationsLeft) return;
+
     setIsGenerating(true);
-    setCredits(prev => prev - totalCost);
-    
-    // Simulate generation
+
+    try {
+      await consume("video");
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error ? err.message : "Failed to start generation",
+      );
+      setIsGenerating(false);
+      return;
+    }
+
     setTimeout(() => {
       const newVideo = "https://images.unsplash.com/photo-1536240478700-b869070f9279?w=800&h=450&fit=crop";
       setGeneratedVideo(newVideo);
-      
-      // Add to history
+
       setHistory(prev => [{
         id: Date.now().toString(),
         prompt,
@@ -101,7 +118,7 @@ export function VideoGenerator() {
         thumbnail: newVideo,
         timestamp: new Date(),
       }, ...prev]);
-      
+
       setIsGenerating(false);
     }, 3000);
   };
@@ -118,16 +135,11 @@ export function VideoGenerator() {
           <p className="text-muted-foreground">Create stunning videos from text descriptions using AI</p>
         </div>
         
-        {/* Credits Display */}
-        <div className="flex items-center gap-3 px-5 py-3 rounded-xl border border-blue-500/30 bg-card/50">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-            <Coins className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Available Credits</p>
-            <p className="text-xl font-semibold text-foreground">{credits}</p>
-          </div>
-        </div>
+        <GenerationsBadge
+          status={generations}
+          loading={generationsLoading}
+          authenticated={authenticated}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -186,7 +198,6 @@ export function VideoGenerator() {
                   )}
                 >
                   <span>{option.label}</span>
-                  <span className="text-xs opacity-60">{option.cost} cr</span>
                 </button>
               ))}
             </div>
@@ -212,24 +223,20 @@ export function VideoGenerator() {
                   )}
                 >
                   <span>{option.label}</span>
-                  <span className="text-xs opacity-60">x{option.multiplier}</span>
                 </button>
               ))}
-            </div>
-          </div>
-
-          {/* Cost Summary */}
-          <div className="rounded-xl bg-blue-500/10 border border-blue-500/20 p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Generation cost:</span>
-              <span className="text-lg font-semibold text-foreground">{totalCost} credits</span>
             </div>
           </div>
 
           {/* Generate Button */}
           <Button
             onClick={handleGenerate}
-            disabled={!prompt.trim() || isGenerating || credits < totalCost}
+            disabled={
+              !prompt.trim() ||
+              isGenerating ||
+              !authenticated ||
+              noGenerationsLeft
+            }
             className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl font-medium smooth shadow-lg shadow-blue-500/25 disabled:opacity-50"
           >
             {isGenerating ? (
@@ -245,8 +252,21 @@ export function VideoGenerator() {
             )}
           </Button>
 
-          {credits < totalCost && !isGenerating && (
-            <p className="text-sm text-red-400 text-center">Not enough credits. Please purchase more.</p>
+          {!authenticated && (
+            <p className="text-sm text-red-400 text-center">
+              Please sign in to generate videos.
+            </p>
+          )}
+
+          {noGenerationsLeft && (
+            <p className="text-sm text-red-400 text-center">
+              You&apos;ve reached your generation limit. Upgrade your plan to keep
+              creating.
+            </p>
+          )}
+
+          {errorMessage && (
+            <p className="text-sm text-red-400 text-center">{errorMessage}</p>
           )}
 
           {isGenerating && (

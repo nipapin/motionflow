@@ -1,17 +1,19 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { Volume2, Download, Play, Pause, RefreshCw, Coins, Trash2, X, Mic } from "lucide-react";
+import { useState } from "react";
+import { Volume2, Download, Play, Pause, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useGenerations } from "@/hooks/use-generations";
+import { GenerationsBadge } from "@/components/generations-badge";
 
 const voicePresets = [
-  { id: "female-1", label: "Sarah", gender: "Female", accent: "American", cost: 1 },
-  { id: "male-1", label: "James", gender: "Male", accent: "British", cost: 1 },
-  { id: "female-2", label: "Emma", gender: "Female", accent: "British", cost: 1 },
-  { id: "male-2", label: "Michael", gender: "Male", accent: "American", cost: 1 },
-  { id: "female-3", label: "Sofia", gender: "Female", accent: "Spanish", cost: 2 },
-  { id: "male-3", label: "David", gender: "Male", accent: "Australian", cost: 2 },
+  { id: "female-1", label: "Sarah", gender: "Female", accent: "American" },
+  { id: "male-1", label: "James", gender: "Male", accent: "British" },
+  { id: "female-2", label: "Emma", gender: "Female", accent: "British" },
+  { id: "male-2", label: "Michael", gender: "Male", accent: "American" },
+  { id: "female-3", label: "Sofia", gender: "Female", accent: "Spanish" },
+  { id: "male-3", label: "David", gender: "Male", accent: "Australian" },
 ];
 
 const speedOptions = [
@@ -55,29 +57,47 @@ const mockHistory: SpeechHistory[] = [
 ];
 
 export function TextToSpeech() {
+  const {
+    status: generations,
+    loading: generationsLoading,
+    authenticated,
+    consume,
+  } = useGenerations();
+
   const [text, setText] = useState("");
   const [selectedVoice, setSelectedVoice] = useState("female-1");
   const [selectedSpeed, setSelectedSpeed] = useState("1");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedAudio, setGeneratedAudio] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [credits, setCredits] = useState(100);
   const [history, setHistory] = useState<SpeechHistory[]>(mockHistory);
   const [playingHistoryId, setPlayingHistoryId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const currentVoiceCost = voicePresets.find(v => v.id === selectedVoice)?.cost || 1;
   const characterCount = text.length;
-  const estimatedCost = Math.ceil(characterCount / 100) * currentVoiceCost;
+  const remaining = generations?.remaining ?? 0;
+  const noGenerationsLeft =
+    authenticated && !generationsLoading && remaining <= 0;
 
   const handleGenerate = async () => {
-    if (!text.trim() || credits < estimatedCost) return;
-    
+    setErrorMessage(null);
+    if (!text.trim() || !authenticated || noGenerationsLeft) return;
+
     setIsGenerating(true);
-    setCredits(prev => prev - estimatedCost);
-    
+
+    try {
+      await consume("tts");
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error ? err.message : "Failed to start generation",
+      );
+      setIsGenerating(false);
+      return;
+    }
+
     setTimeout(() => {
       setGeneratedAudio("generated-audio-url");
-      
+
       setHistory(prev => [{
         id: Date.now().toString(),
         text: text.substring(0, 100) + (text.length > 100 ? "..." : ""),
@@ -87,7 +107,7 @@ export function TextToSpeech() {
         audioUrl: "#",
         timestamp: new Date(),
       }, ...prev]);
-      
+
       setIsGenerating(false);
     }, 2000);
   };
@@ -112,15 +132,11 @@ export function TextToSpeech() {
           <p className="text-muted-foreground">Convert text into natural-sounding speech with AI voices</p>
         </div>
         
-        <div className="flex items-center gap-3 px-5 py-3 rounded-xl border border-blue-500/30 bg-card/50">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-            <Coins className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Available Credits</p>
-            <p className="text-xl font-semibold text-foreground">{credits}</p>
-          </div>
-        </div>
+        <GenerationsBadge
+          status={generations}
+          loading={generationsLoading}
+          authenticated={authenticated}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -188,7 +204,12 @@ export function TextToSpeech() {
 
           <Button
             onClick={handleGenerate}
-            disabled={!text.trim() || isGenerating || credits < estimatedCost}
+            disabled={
+              !text.trim() ||
+              isGenerating ||
+              !authenticated ||
+              noGenerationsLeft
+            }
             className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl font-medium smooth shadow-lg shadow-blue-500/25 disabled:opacity-50"
           >
             {isGenerating ? (
@@ -199,13 +220,24 @@ export function TextToSpeech() {
             ) : (
               <>
                 <Volume2 className="w-5 h-5 mr-2" />
-                Generate Speech ({estimatedCost || 1} credits)
+                Generate Speech
               </>
             )}
           </Button>
-          
-          {credits < estimatedCost && !isGenerating && text.trim() && (
-            <p className="text-sm text-red-400 text-center">Not enough credits. Please purchase more.</p>
+
+          {!authenticated && (
+            <p className="text-sm text-red-400 text-center">Please sign in to generate speech.</p>
+          )}
+
+          {noGenerationsLeft && (
+            <p className="text-sm text-red-400 text-center">
+              You&apos;ve reached your generation limit. Upgrade your plan to keep
+              creating.
+            </p>
+          )}
+
+          {errorMessage && (
+            <p className="text-sm text-red-400 text-center">{errorMessage}</p>
           )}
         </div>
 

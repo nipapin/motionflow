@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Mic, MicOff, Upload, Download, RefreshCw, Coins, Trash2, Copy, Check, FileAudio } from "lucide-react";
+import { Mic, MicOff, Upload, Download, RefreshCw, Trash2, Copy, Check, FileAudio } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useGenerations } from "@/hooks/use-generations";
+import { GenerationsBadge } from "@/components/generations-badge";
 
 const languageOptions = [
   { id: "en", label: "English" },
@@ -49,18 +51,29 @@ const mockHistory: TranscriptionHistory[] = [
 ];
 
 export function SpeechToText() {
+  const {
+    status: generations,
+    loading: generationsLoading,
+    authenticated,
+    consume,
+  } = useGenerations();
+
   const [isRecording, setIsRecording] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [selectedLanguage, setSelectedLanguage] = useState("en");
   const [selectedFormat, setSelectedFormat] = useState("text");
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcribedText, setTranscribedText] = useState("");
-  const [credits, setCredits] = useState(75);
   const [history, setHistory] = useState<TranscriptionHistory[]>(mockHistory);
   const [copied, setCopied] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const remaining = generations?.remaining ?? 0;
+  const noGenerationsLeft =
+    authenticated && !generationsLoading && remaining <= 0;
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -91,14 +104,22 @@ export function SpeechToText() {
   };
 
   const handleTranscribe = async () => {
+    setErrorMessage(null);
     if (!uploadedFile && !isRecording && recordingTime === 0) return;
-    
-    const cost = 5;
-    if (credits < cost) return;
-    
+    if (!authenticated || noGenerationsLeft) return;
+
     setIsTranscribing(true);
-    setCredits(prev => prev - cost);
-    
+
+    try {
+      await consume("stt");
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error ? err.message : "Failed to start transcription",
+      );
+      setIsTranscribing(false);
+      return;
+    }
+
     setTimeout(() => {
       const result = uploadedFile 
         ? "This is the transcribed text from your uploaded audio file. The AI has processed the speech and converted it into text format. You can now edit, copy, or download this transcription."
@@ -139,15 +160,11 @@ export function SpeechToText() {
           <p className="text-muted-foreground">Convert audio recordings and files into accurate text transcriptions</p>
         </div>
         
-        <div className="flex items-center gap-3 px-5 py-3 rounded-xl border border-blue-500/30 bg-card/50">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-            <Coins className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Available Credits</p>
-            <p className="text-xl font-semibold text-foreground">{credits}</p>
-          </div>
-        </div>
+        <GenerationsBadge
+          status={generations}
+          loading={generationsLoading}
+          authenticated={authenticated}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -262,7 +279,12 @@ export function SpeechToText() {
 
           <Button
             onClick={handleTranscribe}
-            disabled={(!uploadedFile && recordingTime === 0) || isTranscribing || credits < 5}
+            disabled={
+              (!uploadedFile && recordingTime === 0) ||
+              isTranscribing ||
+              !authenticated ||
+              noGenerationsLeft
+            }
             className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl font-medium smooth shadow-lg shadow-blue-500/25 disabled:opacity-50"
           >
             {isTranscribing ? (
@@ -273,10 +295,27 @@ export function SpeechToText() {
             ) : (
               <>
                 <FileAudio className="w-5 h-5 mr-2" />
-                Transcribe (5 credits)
+                Transcribe
               </>
             )}
           </Button>
+
+          {!authenticated && (
+            <p className="text-sm text-red-400 text-center">
+              Please sign in to transcribe audio.
+            </p>
+          )}
+
+          {noGenerationsLeft && (
+            <p className="text-sm text-red-400 text-center">
+              You&apos;ve reached your generation limit. Upgrade your plan to keep
+              creating.
+            </p>
+          )}
+
+          {errorMessage && (
+            <p className="text-sm text-red-400 text-center">{errorMessage}</p>
+          )}
         </div>
 
         <div className="lg:col-span-2 space-y-6">
