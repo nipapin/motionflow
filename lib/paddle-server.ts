@@ -2,6 +2,7 @@ import "server-only";
 import crypto from "node:crypto";
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
+import { normalizePaddleProductNameToken } from "@/lib/paddle-product-label";
 
 const SUBSCRIPTIONS_TABLE = "subscription_systems";
 const PAYMENT_SYSTEM = "paddle";
@@ -33,10 +34,17 @@ interface PaddleItem {
   quantity?: number;
   recurring?: boolean;
   trial_dates?: { starts_at: string | null; ends_at: string | null } | null;
+  /** Populated on many webhook payloads when items include the related product. */
+  product?: {
+    id?: string;
+    name?: string | null;
+  } | null;
   price?: {
     id?: string;
     /** Linked catalog product (`pro_…`). */
     product_id?: string;
+    /** Shown at checkout; often the billing interval label if product name is absent. */
+    name?: string | null;
     unit_price?: PaddleUnitPrice | null;
     billing_cycle?: PaddleBillingCycle | null;
   } | null;
@@ -219,6 +227,15 @@ function pickPaddleCatalogIds(
   return { priceId, productId };
 }
 
+/** Prefer `product.name`, else `price.name`; stored token is normalized (see `normalizePaddleProductNameToken`). */
+function pickPaddleProductName(items: PaddleItem[] | undefined): string | null {
+  const item = items?.[0];
+  const raw = item?.product?.name?.trim() || item?.price?.name?.trim() || null;
+  if (!raw) return null;
+  const token = normalizePaddleProductNameToken(raw);
+  return token || raw;
+}
+
 function toMysqlDateTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
@@ -307,7 +324,8 @@ async function releasePaddleLock(conn: PoolConnection, key: string): Promise<voi
  *     ADD UNIQUE KEY uniq_subscription_id (subscription_id);
  *
  *   See `db/migrations/2026_04_21_subscription_systems_paddle_ids.sql` for
- *   `paddle_product_id` / `paddle_price_id` columns.
+ *   `paddle_product_id` / `paddle_price_id` columns, and
+ *   `2026_04_22_subscription_systems_paddle_product_name.sql` for display name.
  */
 export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
   ok: boolean;
@@ -331,6 +349,7 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
   const plan = pickTransactionPlan(txn);
   const quantity = Number(txn.items?.[0]?.quantity) || 1;
   const { priceId: paddlePriceId, productId: paddleProductId } = pickPaddleCatalogIds(txn.items);
+  const paddleProductName = pickPaddleProductName(txn.items);
 
   // ends_at: subscription transactions carry billing_period; one-time purchases
   // (lifetime) leave it NULL.
@@ -351,14 +370,37 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
     if (!lock.acquired) return { ok: false, reason: "could_not_acquire_lock" };
     lockKey = lock.key;
 
+    const insertParams = [
+      userId,
+      rowSubscriptionId,
+      paymentId,
+      1,
+      subtotal,
+      grandTotal,
+      Math.round(grandTotal),
+      taxAmount,
+      PAYMENT_SYSTEM,
+      "personal",
+      plan,
+      paddleProductId,
+      paddlePriceId,
+      paddleProductName,
+      quantity,
+      argumentsJson,
+      trialEndsAt,
+      endsAt,
+    ];
+    const valuePlaceholders = insertParams.map(() => "?").join(", ");
+
     await conn.execute<ResultSetHeader>(
       `INSERT INTO \`${SUBSCRIPTIONS_TABLE}\`
          (\`buyer_id\`, \`subscription_id\`, \`payment_id\`, \`status\`,
           \`amount\`, \`amount_summary\`, \`price\`, \`system_tax\`,
           \`system\`, \`type\`, \`plan\`, \`paddle_product_id\`, \`paddle_price_id\`,
+          \`paddle_product_name\`,
           \`count\`, \`arguments\`,
           \`trial_ends_at\`, \`ends_at\`, \`created_at\`, \`updated_at\`)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+       VALUES (${valuePlaceholders}, NOW(), NOW())
        ON DUPLICATE KEY UPDATE
          \`buyer_id\`       = VALUES(\`buyer_id\`),
          \`payment_id\`     = VALUES(\`payment_id\`),
@@ -371,30 +413,13 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
          \`plan\`           = VALUES(\`plan\`),
          \`paddle_product_id\` = COALESCE(VALUES(\`paddle_product_id\`), \`paddle_product_id\`),
          \`paddle_price_id\`   = COALESCE(VALUES(\`paddle_price_id\`), \`paddle_price_id\`),
+         \`paddle_product_name\` = COALESCE(VALUES(\`paddle_product_name\`), \`paddle_product_name\`),
          \`count\`          = VALUES(\`count\`),
          \`arguments\`      = VALUES(\`arguments\`),
          \`trial_ends_at\`  = VALUES(\`trial_ends_at\`),
          \`ends_at\`        = COALESCE(VALUES(\`ends_at\`), \`ends_at\`),
          \`updated_at\`     = NOW()`,
-      [
-        userId,
-        rowSubscriptionId,
-        paymentId,
-        1,
-        subtotal,
-        grandTotal,
-        Math.round(grandTotal),
-        taxAmount,
-        PAYMENT_SYSTEM,
-        "personal",
-        plan,
-        paddleProductId,
-        paddlePriceId,
-        quantity,
-        argumentsJson,
-        trialEndsAt,
-        endsAt,
-      ],
+      insertParams,
     );
 
     // currency stamp for analytics — kept in a separate column historically;
@@ -429,6 +454,7 @@ export async function refreshSubscription(sub: PaddleSubscription): Promise<{
   const endsAt = pickEndsAt(sub);
   const trialEndsAt = pickTrialEndsAt(sub);
   const { priceId: paddlePriceId, productId: paddleProductId } = pickPaddleCatalogIds(sub.items);
+  const paddleProductName = pickPaddleProductName(sub.items);
 
   const pool = getPool();
   const [result] = await pool.execute<ResultSetHeader>(
@@ -439,9 +465,10 @@ export async function refreshSubscription(sub: PaddleSubscription): Promise<{
             \`ends_at\`       = COALESCE(?, \`ends_at\`),
             \`paddle_product_id\` = COALESCE(?, \`paddle_product_id\`),
             \`paddle_price_id\`   = COALESCE(?, \`paddle_price_id\`),
+            \`paddle_product_name\` = COALESCE(?, \`paddle_product_name\`),
             \`updated_at\`    = NOW()
       WHERE \`subscription_id\` = ?`,
-    [status, plan, trialEndsAt, endsAt, paddleProductId, paddlePriceId, sub.id],
+    [status, plan, trialEndsAt, endsAt, paddleProductId, paddlePriceId, paddleProductName, sub.id],
   );
 
   if (result.affectedRows === 0) {

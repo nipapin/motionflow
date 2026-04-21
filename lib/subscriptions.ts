@@ -1,6 +1,10 @@
 import "server-only";
 import type { RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
+import {
+  applyMotionflowProductTitleTemplate,
+  normalizePaddleProductNameToken,
+} from "@/lib/paddle-product-label";
 
 export interface SubscriptionListItem {
   subsFor: string;
@@ -12,6 +16,8 @@ export interface SubscriptionListItem {
   /** Paddle catalog ids when stored (`pro_…` / `pri_…`). */
   paddleProductId: string | null;
   paddlePriceId: string | null;
+  /** Raw display name from Paddle when stored (see `subsFor` for resolved title). */
+  paddleProductName: string | null;
   active: boolean;
   cancelled: boolean;
   endDate: string | null;
@@ -32,6 +38,7 @@ type SubRow = RowDataPacket & {
   created_at: string | null;
   paddle_product_id: string | null;
   paddle_price_id: string | null;
+  paddle_product_name: string | null;
 };
 
 const TITLES: Record<number | string, string> = {
@@ -78,6 +85,14 @@ const ICONS: Record<number | string, string> = {
   "": "/assets/logo_square.png",
 };
 
+/** Main catalog: `MOTIONFLOW_SUBSCRIPTION_TITLE_TEMPLATE`; third‑party: normalized name only. */
+function formatMotionflowCatalogTitle(r: SubRow, raw: string): string {
+  if (!rowIsMotionflowCatalogSubscription(r)) {
+    return normalizePaddleProductNameToken(raw) || raw.trim();
+  }
+  return applyMotionflowProductTitleTemplate(raw);
+}
+
 function resolveSubscriptionPresentation(r: SubRow): {
   subsFor: string;
   icon: string;
@@ -89,17 +104,27 @@ function resolveSubscriptionPresentation(r: SubRow): {
     const icon = PADDLE_PRODUCT_ICONS[paddlePid] ?? PADDLE_PRODUCT_ICONS[""];
     const hasBrandedIcon = paddlePid in PADDLE_PRODUCT_ICONS && PADDLE_PRODUCT_ICONS[paddlePid] !== PADDLE_PRODUCT_ICONS[""];
     return {
-      subsFor: PADDLE_PRODUCT_TITLES[paddlePid],
+      subsFor: formatMotionflowCatalogTitle(r, PADDLE_PRODUCT_TITLES[paddlePid]),
       icon,
       productPage: PADDLE_PRODUCT_PAGES[paddlePid] ?? PADDLE_PRODUCT_PAGES[""],
       invertIcon: !hasBrandedIcon,
     };
   }
 
+  const paddleName = r.paddle_product_name?.trim();
+  if (paddleName) {
+    return {
+      subsFor: formatMotionflowCatalogTitle(r, paddleName),
+      icon: ICONS[""],
+      productPage: PRODUCT_PAGES[""],
+      invertIcon: true,
+    };
+  }
+
   const authorKey = r.author_id ?? "";
   const hasKnownAuthor = r.author_id != null && r.author_id in ICONS;
   return {
-    subsFor: TITLES[authorKey] ?? "Motionflow Subscription",
+    subsFor: TITLES[authorKey] ?? applyMotionflowProductTitleTemplate("Subscription"),
     icon: ICONS[authorKey] ?? ICONS[""],
     productPage: PRODUCT_PAGES[authorKey] ?? PRODUCT_PAGES[""],
     invertIcon: !hasKnownAuthor,
@@ -145,7 +170,7 @@ export async function getSubscriptionsForUser(
   const pool = getPool();
   const [rows] = await pool.execute<SubRow[]>(
     `SELECT author_id, status, subscription_id, plan, ends_at, created_at,
-            paddle_product_id, paddle_price_id
+            paddle_product_id, paddle_price_id, paddle_product_name
      FROM \`${TABLE}\`
      WHERE buyer_id = ?
      ORDER BY id DESC`,
@@ -164,6 +189,7 @@ export async function getSubscriptionsForUser(
       subscriptionId: String(r.subscription_id ?? ""),
       paddleProductId: r.paddle_product_id?.trim() ?? null,
       paddlePriceId: r.paddle_price_id?.trim() ?? null,
+      paddleProductName: r.paddle_product_name?.trim() ?? null,
       active,
       cancelled,
       endDate,
@@ -177,7 +203,7 @@ function rowIsActive(r: SubRow): boolean {
 }
 
 /**
- * Active Motionflow catalog subscription (“Motionflow Subscription” / “Your subscription is active” in the UI).
+ * Active Motionflow catalog subscription (see `MOTIONFLOW_SUBSCRIPTION_TITLE_TEMPLATE` in `paddle-product-label.ts`).
  * Third‑party author bundles (e.g. Premiere Gal, Spunkram) do not unlock unlimited marketplace downloads.
  */
 export async function hasActiveMotionflowSubscription(
@@ -186,7 +212,7 @@ export async function hasActiveMotionflowSubscription(
   const pool = getPool();
   const [rows] = await pool.execute<SubRow[]>(
     `SELECT author_id, status, subscription_id, plan, ends_at, created_at,
-            paddle_product_id, paddle_price_id
+            paddle_product_id, paddle_price_id, paddle_product_name
      FROM \`${TABLE}\`
      WHERE buyer_id = ?
      ORDER BY id DESC`,
