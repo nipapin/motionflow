@@ -3,9 +3,20 @@
 import { useState } from "react";
 import { Volume2, Download, Play, Pause, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/components/auth-provider";
+import { CreatorAiGateModal } from "@/components/creator-ai-gate-modal";
+import { SignInModal } from "@/components/sign-in-modal";
 import { cn } from "@/lib/utils";
-import { useGenerations } from "@/hooks/use-generations";
+import { useCreatorAiGateAfterSignIn } from "@/hooks/use-creator-ai-gate-after-sign-in";
+import {
+  ConsumeGenerationError,
+  useGenerations,
+} from "@/hooks/use-generations";
 import { GenerationsBadge } from "@/components/generations-badge";
+import {
+  CREATOR_AI_REQUIRED_CODE,
+  getAiGenerateBlockReason,
+} from "@/lib/ai-generation-gate";
 
 const voicePresets = [
   { id: "female-1", label: "Sarah", gender: "Female", accent: "American" },
@@ -57,6 +68,7 @@ const mockHistory: SpeechHistory[] = [
 ];
 
 export function TextToSpeech() {
+  const { user } = useAuth();
   const {
     status: generations,
     loading: generationsLoading,
@@ -64,6 +76,21 @@ export function TextToSpeech() {
     authenticated,
     consume,
   } = useGenerations();
+
+  const [signInOpen, setSignInOpen] = useState(false);
+  const [creatorAiGateOpen, setCreatorAiGateOpen] = useState(false);
+  const [creatorAiVariant, setCreatorAiVariant] = useState<
+    "subscribe" | "upgrade"
+  >("subscribe");
+
+  const { markGuestWantedGenerate } = useCreatorAiGateAfterSignIn(
+    user,
+    generations,
+    generationsLoading,
+    signInOpen,
+    setCreatorAiGateOpen,
+    setCreatorAiVariant,
+  );
 
   const [text, setText] = useState("");
   const [selectedVoice, setSelectedVoice] = useState("female-1");
@@ -77,18 +104,56 @@ export function TextToSpeech() {
 
   const characterCount = text.length;
   const remaining = generations?.remaining ?? 0;
-  const noGenerationsLeft =
-    authenticated && !generationsLoading && remaining <= 0;
+  const atLimitForCreatorAi =
+    user &&
+    generations?.plan === "creator_ai" &&
+    !generationsLoading &&
+    remaining <= 0;
 
   const handleGenerate = async () => {
     setErrorMessage(null);
-    if (!text.trim() || !authenticated || noGenerationsLeft) return;
+    if (!text.trim() || isGenerating || generationsLoading) return;
+
+    const block = getAiGenerateBlockReason(
+      user,
+      generations,
+      generationsLoading,
+    );
+    if (block === "sign_in") {
+      markGuestWantedGenerate();
+      setSignInOpen(true);
+      return;
+    }
+    if (block === "needs_creator_ai") {
+      setCreatorAiVariant(
+        generations?.plan === "creator" ? "upgrade" : "subscribe",
+      );
+      setCreatorAiGateOpen(true);
+      return;
+    }
+    if (block === "limit") {
+      setErrorMessage(
+        "You've reached your generation limit for this period.",
+      );
+      return;
+    }
 
     setIsGenerating(true);
 
     try {
       await consume("tts");
     } catch (err) {
+      if (
+        err instanceof ConsumeGenerationError &&
+        err.code === CREATOR_AI_REQUIRED_CODE
+      ) {
+        setCreatorAiVariant(
+          err.plan === "creator" ? "upgrade" : "subscribe",
+        );
+        setCreatorAiGateOpen(true);
+        setIsGenerating(false);
+        return;
+      }
       setErrorMessage(
         err instanceof Error ? err.message : "Failed to start generation",
       );
@@ -205,13 +270,8 @@ export function TextToSpeech() {
           </div>
 
           <Button
-            onClick={handleGenerate}
-            disabled={
-              !text.trim() ||
-              isGenerating ||
-              !authenticated ||
-              noGenerationsLeft
-            }
+            onClick={() => void handleGenerate()}
+            disabled={!text.trim() || isGenerating || generationsLoading}
             className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl font-medium smooth shadow-lg shadow-blue-500/25 disabled:opacity-50"
           >
             {isGenerating ? (
@@ -227,14 +287,9 @@ export function TextToSpeech() {
             )}
           </Button>
 
-          {!authenticated && (
-            <p className="text-sm text-red-400 text-center">Please sign in to generate speech.</p>
-          )}
-
-          {noGenerationsLeft && (
+          {atLimitForCreatorAi && (
             <p className="text-sm text-red-400 text-center">
-              You&apos;ve reached your generation limit. Upgrade your plan to keep
-              creating.
+              You&apos;ve reached your generation limit for this period.
             </p>
           )}
 
@@ -340,6 +395,17 @@ export function TextToSpeech() {
           </div>
         </div>
       </div>
+
+      <SignInModal
+        open={signInOpen}
+        onOpenChange={setSignInOpen}
+        onAuthSuccess={() => setSignInOpen(false)}
+      />
+      <CreatorAiGateModal
+        open={creatorAiGateOpen}
+        onOpenChange={setCreatorAiGateOpen}
+        variant={creatorAiVariant}
+      />
     </div>
   );
 }

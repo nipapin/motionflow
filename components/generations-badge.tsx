@@ -11,31 +11,24 @@ interface GenerationsBadgeProps {
   error?: string | null;
 }
 
+/**
+ * Monthly generation quota for Motionflow Creator (5/mo) and Creator + AI (100/mo).
+ * Guests and users without a paid catalog plan get no badge.
+ */
 export function GenerationsBadge({
   status,
   loading,
   authenticated,
-  error = null,
 }: GenerationsBadgeProps) {
-  let primary: string;
-  let secondary: string;
-
-  if (!authenticated) {
-    primary = "Sign in";
-    secondary = "to use AI tools";
-  } else if (loading) {
-    primary = "—";
-    secondary = "Loading…";
-  } else if (error && !status) {
-    primary = "—";
-    secondary = error;
-  } else if (!status) {
-    primary = "—";
-    secondary = "Loading…";
-  } else {
-    primary = `${status.remaining} / ${status.limit}`;
-    secondary = "Generations remaining";
+  if (!authenticated || loading) {
+    return null;
   }
+  if (!status || (status.plan !== "creator" && status.plan !== "creator_ai")) {
+    return null;
+  }
+
+  const primary = `${status.remaining} / ${status.limit}`;
+  const secondary = "Generations remaining";
 
   return (
     <div className="flex items-center gap-3 px-5 py-3 rounded-xl border border-blue-500/30 bg-card/50">

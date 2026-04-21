@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Moon, Sun, User, ShoppingBag, CreditCard, Download, Bookmark, LogOut } from "lucide-react";
+import { Moon, Sun, User, ShoppingBag, CreditCard, Download, Bookmark, LogOut, Sparkles } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { SignInModal } from "@/components/sign-in-modal";
@@ -79,6 +79,7 @@ export default function ProfileShellLayout({
                     <div className="flex flex-col gap-1">
                       {[
                         { icon: User, label: "Profile", href: "/profile" },
+                        { icon: Sparkles, label: "My generations", href: "/profile/generations" },
                         { icon: ShoppingBag, label: "My purchases", href: "/profile/purchases" },
                         { icon: CreditCard, label: "My subscriptions", href: "/profile/subscriptions" },
                         { icon: Download, label: "My downloads", href: "/profile/downloads" },

@@ -1,12 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useEffect, type FormEvent } from "react";
 import {
   Video,
   Download,
   RefreshCw,
   Clock,
-  Trash2,
   X,
   Ratio,
   Palette,
@@ -28,8 +28,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/components/auth-provider";
+import { CreatorAiGateModal } from "@/components/creator-ai-gate-modal";
+import { SignInModal } from "@/components/sign-in-modal";
+import { useCreatorAiGateAfterSignIn } from "@/hooks/use-creator-ai-gate-after-sign-in";
 import { useGenerations, type GenerationStatus } from "@/hooks/use-generations";
 import { GenerationsBadge } from "@/components/generations-badge";
+import {
+  CREATOR_AI_REQUIRED_CODE,
+  getAiGenerateBlockReason,
+} from "@/lib/ai-generation-gate";
 
 const TARGET_RESOLUTION = "720" as const;
 
@@ -43,6 +51,12 @@ const aspectRatios = [
   { id: "9:16", label: "9:16 — Portrait" },
   { id: "1:1", label: "1:1 — Square" },
 ];
+
+function ratioIdToCssAspect(ratioId: string): string {
+  if (ratioId === "9:16") return "9 / 16";
+  if (ratioId === "1:1") return "1 / 1";
+  return "16 / 9";
+}
 
 const stylePresets = [
   { id: "cinematic", label: "Cinematic" },
@@ -107,7 +121,7 @@ function mapVideoRecord(row: ApiGenerationRecord): VideoHistory {
   return {
     id: row.id,
     prompt: typeof s.prompt === "string" ? s.prompt : "",
-    style: typeof s.style === "string" ? s.style : "cinematic",
+    style: typeof s.style === "string" ? s.style : "realistic",
     durationSec:
       kind === "extend"
         ? String(s.extend_duration ?? "")
@@ -127,6 +141,7 @@ function mapVideoRecord(row: ApiGenerationRecord): VideoHistory {
 }
 
 export function VideoGenerator() {
+  const { user } = useAuth();
   const {
     status: generations,
     loading: generationsLoading,
@@ -136,16 +151,30 @@ export function VideoGenerator() {
     refresh: refreshGenerations,
   } = useGenerations();
 
+  const [signInOpen, setSignInOpen] = useState(false);
+  const [creatorAiGateOpen, setCreatorAiGateOpen] = useState(false);
+  const [creatorAiVariant, setCreatorAiVariant] = useState<
+    "subscribe" | "upgrade"
+  >("subscribe");
+
+  const { markGuestWantedGenerate } = useCreatorAiGateAfterSignIn(
+    user,
+    generations,
+    generationsLoading,
+    signInOpen,
+    setCreatorAiGateOpen,
+    setCreatorAiVariant,
+  );
+
   const [prompt, setPrompt] = useState("");
   const [selectedDuration, setSelectedDuration] = useState("5");
   const [selectedAspectRatio, setSelectedAspectRatio] = useState("16:9");
-  const [selectedStyle, setSelectedStyle] = useState("cinematic");
+  const [previewAspectRatio, setPreviewAspectRatio] = useState("16:9");
+  const [selectedStyle, setSelectedStyle] = useState("realistic");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedVideo, setGeneratedVideo] = useState<string | null>(null);
-  const [history, setHistory] = useState<VideoHistory[]>([]);
   const [lightboxVideo, setLightboxVideo] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [historyLoading, setHistoryLoading] = useState(false);
 
   const [firstFrameUrl, setFirstFrameUrl] = useState<string | null>(null);
   const [firstFrameDialogOpen, setFirstFrameDialogOpen] = useState(false);
@@ -160,16 +189,17 @@ export function VideoGenerator() {
   const [ffRatio, setFfRatio] = useState("1:1");
 
   const remaining = generations?.remaining ?? 0;
-  const noGenerationsLeft =
-    authenticated && !generationsLoading && remaining <= 0;
+  const atLimitForCreatorAi =
+    user &&
+    generations?.plan === "creator_ai" &&
+    !generationsLoading &&
+    remaining <= 0;
 
   useEffect(() => {
-    if (!authenticated) {
-      setHistory([]);
+    if (!user) {
       return;
     }
     let cancelled = false;
-    setHistoryLoading(true);
     void (async () => {
       try {
         const res = await fetch("/api/me/generation-records?tool=video&limit=100", {
@@ -180,24 +210,24 @@ export function VideoGenerator() {
         const data = (await res.json()) as { items?: ApiGenerationRecord[] };
         const mapped = (data.items ?? []).map(mapVideoRecord);
         if (cancelled) return;
-        setHistory(mapped);
         const firstOk = mapped.find(
           (h) => h.recordStatus === "ok" && h.videoUrl,
         );
         if (firstOk) {
           setGeneratedVideo(firstOk.videoUrl);
+          setPreviewAspectRatio(firstOk.aspectRatio);
         }
-      } finally {
-        if (!cancelled) setHistoryLoading(false);
+      } catch {
+        /* ignore */
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [authenticated]);
+  }, [user?.id]);
 
   useEffect(() => {
-    if (!firstFrameDialogOpen || !authenticated) return;
+    if (!firstFrameDialogOpen || !user) return;
     let cancelled = false;
     setLibraryLoading(true);
     void (async () => {
@@ -230,18 +260,37 @@ export function VideoGenerator() {
     return () => {
       cancelled = true;
     };
-  }, [firstFrameDialogOpen, authenticated]);
+  }, [firstFrameDialogOpen, user?.id]);
 
   const handleGenerate = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErrorMessage(null);
 
-    if (
-      !prompt.trim() ||
-      isGenerating ||
-      !authenticated ||
-      noGenerationsLeft
-    ) {
+    if (!prompt.trim() || isGenerating || generationsLoading) {
+      return;
+    }
+
+    const block = getAiGenerateBlockReason(
+      user,
+      generations,
+      generationsLoading,
+    );
+    if (block === "sign_in") {
+      markGuestWantedGenerate();
+      setSignInOpen(true);
+      return;
+    }
+    if (block === "needs_creator_ai") {
+      setCreatorAiVariant(
+        generations?.plan === "creator" ? "upgrade" : "subscribe",
+      );
+      setCreatorAiGateOpen(true);
+      return;
+    }
+    if (block === "limit") {
+      setErrorMessage(
+        "You've reached your generation limit for this period. See pricing for options.",
+      );
       return;
     }
 
@@ -264,9 +313,18 @@ export function VideoGenerator() {
       const data = (await res.json().catch(() => ({}))) as {
         video?: string;
         error?: string;
+        code?: string;
+        plan?: string;
         generations?: GenerationStatus;
         record_id?: string;
       };
+
+      if (res.status === 403 && data.code === CREATOR_AI_REQUIRED_CODE) {
+        void refreshGenerations();
+        setCreatorAiVariant(data.plan === "creator" ? "upgrade" : "subscribe");
+        setCreatorAiGateOpen(true);
+        return;
+      }
 
       if (!res.ok) {
         if (data.generations) {
@@ -289,22 +347,7 @@ export function VideoGenerator() {
       }
 
       setGeneratedVideo(url);
-      setHistory((prev) => [
-        {
-          id: data.record_id ?? Date.now().toString(),
-          prompt: prompt.trim(),
-          style: selectedStyle,
-          durationSec: selectedDuration,
-          resolution: TARGET_RESOLUTION,
-          aspectRatio: selectedAspectRatio,
-          videoUrl: url,
-          timestamp: new Date(),
-          kind: "generate",
-          recordStatus: "ok",
-          firstFrameUrl: firstFrameUrl ?? undefined,
-        },
-        ...prev,
-      ]);
+      setPreviewAspectRatio(selectedAspectRatio);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to generate video";
@@ -320,8 +363,30 @@ export function VideoGenerator() {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    setFfUploading(true);
     setErrorMessage(null);
+    const block = getAiGenerateBlockReason(
+      user,
+      generations,
+      generationsLoading,
+    );
+    if (block === "sign_in") {
+      markGuestWantedGenerate();
+      setSignInOpen(true);
+      return;
+    }
+    if (block === "needs_creator_ai") {
+      setCreatorAiVariant(
+        generations?.plan === "creator" ? "upgrade" : "subscribe",
+      );
+      setCreatorAiGateOpen(true);
+      return;
+    }
+    if (block === "limit") {
+      setErrorMessage("You've reached your generation limit for this period.");
+      return;
+    }
+
+    setFfUploading(true);
     try {
       const fd = new FormData();
       fd.append("file", file);
@@ -333,7 +398,15 @@ export function VideoGenerator() {
       const data = (await res.json().catch(() => ({}))) as {
         url?: string;
         error?: string;
+        code?: string;
+        plan?: string;
       };
+      if (res.status === 403 && data.code === CREATOR_AI_REQUIRED_CODE) {
+        void refreshGenerations();
+        setCreatorAiVariant(data.plan === "creator" ? "upgrade" : "subscribe");
+        setCreatorAiGateOpen(true);
+        return;
+      }
       if (!res.ok) {
         throw new Error(data.error || `Upload failed (${res.status})`);
       }
@@ -352,9 +425,34 @@ export function VideoGenerator() {
   };
 
   const handleFfGenerate = async () => {
-    if (!ffPrompt.trim() || ffGenLoading || !authenticated || noGenerationsLeft) {
+    if (!ffPrompt.trim() || ffGenLoading || generationsLoading) {
       return;
     }
+
+    const block = getAiGenerateBlockReason(
+      user,
+      generations,
+      generationsLoading,
+    );
+    if (block === "sign_in") {
+      markGuestWantedGenerate();
+      setSignInOpen(true);
+      return;
+    }
+    if (block === "needs_creator_ai") {
+      setCreatorAiVariant(
+        generations?.plan === "creator" ? "upgrade" : "subscribe",
+      );
+      setCreatorAiGateOpen(true);
+      return;
+    }
+    if (block === "limit") {
+      setErrorMessage(
+        "You've reached your generation limit for this period.",
+      );
+      return;
+    }
+
     setFfGenLoading(true);
     setErrorMessage(null);
     try {
@@ -371,8 +469,16 @@ export function VideoGenerator() {
       const data = (await res.json().catch(() => ({}))) as {
         images?: string[];
         error?: string;
+        code?: string;
+        plan?: string;
         generations?: GenerationStatus;
       };
+      if (res.status === 403 && data.code === CREATOR_AI_REQUIRED_CODE) {
+        void refreshGenerations();
+        setCreatorAiVariant(data.plan === "creator" ? "upgrade" : "subscribe");
+        setCreatorAiGateOpen(true);
+        return;
+      }
       if (!res.ok) {
         if (data.generations) {
           setGenerationsStatus(data.generations);
@@ -401,31 +507,8 @@ export function VideoGenerator() {
     }
   };
 
-  const removeFromHistory = async (id: string) => {
-    try {
-      const res = await fetch(`/api/me/generation-records/${id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) {
-        throw new Error("Delete failed");
-      }
-      setHistory((prev) => prev.filter((h) => h.id !== id));
-    } catch {
-      setErrorMessage("Could not remove this item from history.");
-    }
-  };
-
-  const selectHistoryVideo = (url: string) => {
-    if (!url) return;
-    setGeneratedVideo(url);
-  };
-
   const triggerClasses =
     "w-full h-11 bg-background/50 border-blue-500/30 text-foreground rounded-xl px-4 hover:border-blue-500/60 focus-visible:border-blue-500/60 focus-visible:ring-blue-500/30";
-
-  const resLabel = (code: string) =>
-    code === "1080" ? "1080p" : "720p";
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -556,10 +639,7 @@ export function VideoGenerator() {
                         <Button
                           type="button"
                           disabled={
-                            !ffPrompt.trim() ||
-                            ffGenLoading ||
-                            !authenticated ||
-                            noGenerationsLeft
+                            !ffPrompt.trim() || ffGenLoading || generationsLoading
                           }
                           className="w-full bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl"
                           onClick={() => void handleFfGenerate()}
@@ -727,12 +807,7 @@ export function VideoGenerator() {
 
           <Button
             type="submit"
-            disabled={
-              !prompt.trim() ||
-              isGenerating ||
-              !authenticated ||
-              noGenerationsLeft
-            }
+            disabled={!prompt.trim() || isGenerating || generationsLoading}
             className="w-full h-12 bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl font-medium smooth shadow-lg shadow-blue-500/25 disabled:opacity-50"
           >
             {isGenerating ? (
@@ -748,16 +823,10 @@ export function VideoGenerator() {
             )}
           </Button>
 
-          {!authenticated && (
+          {atLimitForCreatorAi && (
             <p className="text-sm text-red-400 text-center">
-              Please sign in to generate videos.
-            </p>
-          )}
-
-          {noGenerationsLeft && (
-            <p className="text-sm text-red-400 text-center">
-              You&apos;ve reached your generation limit. Upgrade your plan to keep
-              creating.
+              You&apos;ve reached your generation limit for this period. See
+              pricing for options.
             </p>
           )}
 
@@ -776,12 +845,7 @@ export function VideoGenerator() {
                 <div
                   className="relative rounded-xl overflow-hidden border border-blue-500/20 bg-black"
                   style={{
-                    aspectRatio:
-                      selectedAspectRatio === "9:16"
-                        ? "9 / 16"
-                        : selectedAspectRatio === "1:1"
-                          ? "1 / 1"
-                          : "16 / 9",
+                    aspectRatio: ratioIdToCssAspect(previewAspectRatio),
                   }}
                 >
                   <video
@@ -823,116 +887,29 @@ export function VideoGenerator() {
               </div>
             )}
           </div>
-
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
-            <h3 className="text-lg font-medium text-foreground mb-4">
-              Previous Generations
-            </h3>
-            {historyLoading ? (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                Loading history…
-              </p>
-            ) : history.length > 0 ? (
-              <div className="space-y-3">
-                {history.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center gap-4 p-3 rounded-xl border border-blue-500/20 bg-background/30 hover:border-blue-500/40 smooth group"
-                  >
-                    <button
-                      type="button"
-                      className="relative w-24 h-14 rounded-lg overflow-hidden shrink-0 cursor-pointer hover:opacity-80 smooth bg-black disabled:opacity-50 disabled:cursor-not-allowed"
-                      onClick={() =>
-                        item.videoUrl ? setLightboxVideo(item.videoUrl) : undefined
-                      }
-                      disabled={!item.videoUrl}
-                    >
-                      {item.videoUrl ? (
-                        <video
-                          src={item.videoUrl}
-                          muted
-                          playsInline
-                          preload="metadata"
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-[10px] text-muted-foreground px-1">
-                          Failed
-                        </div>
-                      )}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-foreground truncate">
-                        {item.prompt}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                        {item.recordStatus === "failed" && item.errorMessage ? (
-                          <span className="text-red-400/90">{item.errorMessage}</span>
-                        ) : item.kind === "extend" ? (
-                          <>
-                            <span className="text-foreground/90">Extend</span>
-                            {" · "}
-                            {item.prompt}
-                            {" · "}
-                            {item.durationSec}s
-                          </>
-                        ) : (
-                          <>
-                            {stylePresets.find((s) => s.id === item.style)
-                              ?.label}{" "}
-                            | {item.durationSec}s | {resLabel(item.resolution)} |{" "}
-                            {item.aspectRatio}
-                            {item.firstFrameUrl ? (
-                              <span className="text-foreground/80">
-                                {" "}
-                                · first frame
-                              </span>
-                            ) : null}
-                          </>
-                        )}{" "}
-                        | {item.timestamp.toLocaleTimeString()}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        type="button"
-                        title="Show in preview"
-                        onClick={() => selectHistoryVideo(item.videoUrl)}
-                        disabled={!item.videoUrl}
-                        className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth disabled:opacity-40 disabled:pointer-events-none"
-                      >
-                        <Video className="w-4 h-4" />
-                      </button>
-                      {item.videoUrl ? (
-                        <a
-                          href={item.videoUrl}
-                          download
-                          target="_blank"
-                          rel="noreferrer"
-                          className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth"
-                        >
-                          <Download className="w-4 h-4" />
-                        </a>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() => removeFromHistory(item.id)}
-                        className="p-2 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 smooth"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                No previous generations
-              </p>
-            )}
-          </div>
+          {user ? (
+            <p className="text-center text-sm text-muted-foreground">
+              <Link
+                href="/profile/generations"
+                className="text-blue-400 hover:underline"
+              >
+                View all generations
+              </Link>
+            </p>
+          ) : null}
         </div>
       </div>
+
+      <SignInModal
+        open={signInOpen}
+        onOpenChange={setSignInOpen}
+        onAuthSuccess={() => setSignInOpen(false)}
+      />
+      <CreatorAiGateModal
+        open={creatorAiGateOpen}
+        onOpenChange={setCreatorAiGateOpen}
+        variant={creatorAiVariant}
+      />
 
       {lightboxVideo && (
         <div

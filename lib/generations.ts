@@ -10,8 +10,8 @@ import {
 
 /** Lifetime cap for users without an active Motionflow Creator subscription. */
 export const FREE_GENERATIONS_LIMIT = 5;
-/** Generations per Paddle billing period for Motionflow Creator. */
-export const CREATOR_BILLING_PERIOD_GENERATIONS_LIMIT = 10;
+/** Generations per Paddle billing period for Motionflow Creator (no AI bundle). */
+export const CREATOR_BILLING_PERIOD_GENERATIONS_LIMIT = 5;
 /** Generations per Paddle billing period for Motionflow Creator + AI. */
 export const CREATOR_AI_BILLING_PERIOD_GENERATIONS_LIMIT = 100;
 

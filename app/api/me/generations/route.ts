@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
+import { requireCreatorAiForGeneration } from "@/lib/creator-ai-generation-access";
 import {
-  consumeGeneration,
-  getGenerationsStatus,
-  parseTool,
+    consumeGeneration,
+    getGenerationsStatus,
+    parseTool,
 } from "@/lib/generations";
 
 export async function GET() {
@@ -32,15 +33,20 @@ export async function POST(req: NextRequest) {
 
   const body = (await req.json().catch(() => ({}))) as { tool?: unknown };
   const tool = parseTool(body.tool);
-  if (!tool) {
-    return NextResponse.json(
-      { error: "Unknown tool" },
-      { status: 400 },
-    );
-  }
+    if (!tool) {
+        return NextResponse.json(
+            { error: "Unknown tool" },
+            { status: 400 },
+        );
+    }
 
-  try {
-    const result = await consumeGeneration(user.id, tool);
+    const creatorAi = await requireCreatorAiForGeneration(user.id);
+    if (!creatorAi.ok) {
+        return creatorAi.response;
+    }
+
+    try {
+        const result = await consumeGeneration(user.id, tool);
     if (!result.ok) {
       return NextResponse.json(
         {

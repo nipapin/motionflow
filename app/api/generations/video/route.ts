@@ -5,6 +5,7 @@ import {
     consumeGeneration,
     getGenerationsStatus,
 } from "@/lib/generations";
+import { requireCreatorAiForGeneration } from "@/lib/creator-ai-generation-access";
 import { insertGenerationRecord } from "@/lib/generation-records";
 
 export const runtime = "nodejs";
@@ -125,6 +126,11 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        const creatorAi = await requireCreatorAiForGeneration(user.id);
+        if (!creatorAi.ok) {
+            return creatorAi.response;
+        }
+
         if (!process.env.REPLICATE_API_TOKEN) {
             console.error(
                 "[video generation] REPLICATE_API_TOKEN is not configured",
@@ -148,7 +154,7 @@ export async function POST(req: NextRequest) {
         };
 
         const prompt = body.prompt?.trim();
-        const style = body.style ?? "cinematic";
+        const style = body.style ?? "realistic";
         const aspect_ratio = body.aspect_ratio ?? "16:9";
         const duration =
             typeof body.duration === "number" ? body.duration : 5;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Mail, Lock, Eye, EyeOff, User } from "lucide-react";
 import {
   Dialog,
@@ -44,6 +45,7 @@ export function SignInModal({
   onAuthSuccess,
   initialMode = "signin",
 }: SignInModalProps) {
+  const router = useRouter();
   const { refresh } = useAuth();
   const [mode, setMode] = useState<Mode>(initialMode);
   const [showPassword, setShowPassword] = useState(false);
@@ -104,6 +106,7 @@ export function SignInModal({
       const data = (await res.json()) as AuthJson;
       if (data.success) {
         await refresh(authUserFromLoginPayload(data.user));
+        router.refresh();
         onAuthSuccess?.();
         handleOpenChange(false);
       } else {
@@ -137,6 +140,7 @@ export function SignInModal({
       const data = (await res.json()) as AuthJson;
       if (data.success) {
         await refresh(authUserFromLoginPayload(data.user));
+        router.refresh();
         onAuthSuccess?.();
         handleOpenChange(false);
       } else {

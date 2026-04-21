@@ -1,7 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useAuth } from "@/components/auth-provider";
+import { CREATOR_AI_REQUIRED_CODE } from "@/lib/ai-generation-gate";
 import type { MotionflowGenerationPlan } from "@/lib/generation-plan";
+
+export class ConsumeGenerationError extends Error {
+  constructor(
+    message: string,
+    public readonly code?: string,
+    public readonly plan?: MotionflowGenerationPlan,
+  ) {
+    super(message);
+    this.name = "ConsumeGenerationError";
+  }
+}
 
 export interface GenerationStatus {
   used: number;
@@ -31,6 +44,7 @@ function parseGenerationPlan(value: unknown): MotionflowGenerationPlan {
 }
 
 export function useGenerations(): UseGenerationsResult {
+  const { user } = useAuth();
   const [status, setStatusState] = useState<GenerationStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -74,9 +88,10 @@ export function useGenerations(): UseGenerationsResult {
     }
   }, []);
 
+  /** Re-fetch when session appears/changes (e.g. after sign-in modal) so UI is not stuck logged-out. */
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    void refresh();
+  }, [refresh, user?.id]);
 
   const consume = useCallback(
     async (tool: GenerationTool): Promise<GenerationStatus> => {
@@ -89,7 +104,7 @@ export function useGenerations(): UseGenerationsResult {
 
       const data = (await res.json().catch(() => ({}))) as Partial<
         GenerationStatus
-      > & { error?: string };
+      > & { error?: string; code?: string };
 
       if (!res.ok) {
         if (
@@ -104,6 +119,13 @@ export function useGenerations(): UseGenerationsResult {
             hasSubscription: Boolean(data.hasSubscription),
             plan: parseGenerationPlan(data.plan),
           });
+        }
+        if (data.code === CREATOR_AI_REQUIRED_CODE) {
+          throw new ConsumeGenerationError(
+            data.error || "This feature is included with Creator + AI.",
+            data.code,
+            parseGenerationPlan(data.plan),
+          );
         }
         throw new Error(data.error || `Request failed (${res.status})`);
       }

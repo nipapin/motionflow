@@ -1,12 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useEffect, type FormEvent } from "react";
 import {
   Wand2,
   Download,
   RefreshCw,
   ImageIcon,
-  Trash2,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,8 +17,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useAuth } from "@/components/auth-provider";
+import { CreatorAiGateModal } from "@/components/creator-ai-gate-modal";
+import { SignInModal } from "@/components/sign-in-modal";
+import { useCreatorAiGateAfterSignIn } from "@/hooks/use-creator-ai-gate-after-sign-in";
 import { useGenerations, type GenerationStatus } from "@/hooks/use-generations";
 import { GenerationsBadge } from "@/components/generations-badge";
+import {
+  CREATOR_AI_REQUIRED_CODE,
+  getAiGenerateBlockReason,
+} from "@/lib/ai-generation-gate";
 
 const stylePresets = [
   { id: "realistic", label: "Realistic" },
@@ -39,6 +47,12 @@ const aspectRatios = [
   // { id: "2:3", label: "2:3 — Photo Portrait" },
   // { id: "21:9", label: "21:9 — Cinematic" },
 ];
+
+function ratioIdToCssAspect(ratioId: string): string {
+  if (ratioId === "9:16") return "9 / 16";
+  if (ratioId === "1:1") return "1 / 1";
+  return "16 / 9";
+}
 
 interface GenerationHistory {
   id: string;
@@ -82,6 +96,7 @@ function mapImageRecord(row: ApiGenerationRecord): GenerationHistory {
 }
 
 export function ImageGenerator() {
+  const { user } = useAuth();
   const {
     status: generations,
     loading: generationsLoading,
@@ -91,27 +106,42 @@ export function ImageGenerator() {
     refresh: refreshGenerations,
   } = useGenerations();
 
+  const [signInOpen, setSignInOpen] = useState(false);
+  const [creatorAiGateOpen, setCreatorAiGateOpen] = useState(false);
+  const [creatorAiVariant, setCreatorAiVariant] = useState<
+    "subscribe" | "upgrade"
+  >("subscribe");
+
+  const { markGuestWantedGenerate } = useCreatorAiGateAfterSignIn(
+    user,
+    generations,
+    generationsLoading,
+    signInOpen,
+    setCreatorAiGateOpen,
+    setCreatorAiVariant,
+  );
+
   const [prompt, setPrompt] = useState("");
   const [selectedStyle, setSelectedStyle] = useState("realistic");
   const [selectedRatio, setSelectedRatio] = useState("1:1");
+  const [previewRatio, setPreviewRatio] = useState("1:1");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
-  const [history, setHistory] = useState<GenerationHistory[]>([]);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [historyLoading, setHistoryLoading] = useState(false);
 
   const remaining = generations?.remaining ?? 0;
-  const noGenerationsLeft =
-    authenticated && !generationsLoading && remaining <= 0;
+  const atLimitForCreatorAi =
+    user &&
+    generations?.plan === "creator_ai" &&
+    !generationsLoading &&
+    remaining <= 0;
 
   useEffect(() => {
-    if (!authenticated) {
-      setHistory([]);
+    if (!user) {
       return;
     }
     let cancelled = false;
-    setHistoryLoading(true);
     void (async () => {
       try {
         const res = await fetch("/api/me/generation-records?tool=image&limit=100", {
@@ -122,27 +152,51 @@ export function ImageGenerator() {
         const data = (await res.json()) as { items?: ApiGenerationRecord[] };
         const mapped = (data.items ?? []).map(mapImageRecord);
         if (cancelled) return;
-        setHistory(mapped);
         const firstOk = mapped.find(
           (h) => h.recordStatus === "ok" && h.images.length > 0,
         );
         if (firstOk) {
           setGeneratedImages(firstOk.images);
+          setPreviewRatio(firstOk.ratio);
         }
-      } finally {
-        if (!cancelled) setHistoryLoading(false);
+      } catch {
+        /* ignore */
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [authenticated]);
+  }, [user?.id]);
 
   const handleGenerate = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErrorMessage(null);
 
-    if (!prompt.trim() || isGenerating || !authenticated || noGenerationsLeft) {
+    if (!prompt.trim() || isGenerating || generationsLoading) {
+      return;
+    }
+
+    const block = getAiGenerateBlockReason(
+      user,
+      generations,
+      generationsLoading,
+    );
+    if (block === "sign_in") {
+      markGuestWantedGenerate();
+      setSignInOpen(true);
+      return;
+    }
+    if (block === "needs_creator_ai") {
+      setCreatorAiVariant(
+        generations?.plan === "creator" ? "upgrade" : "subscribe",
+      );
+      setCreatorAiGateOpen(true);
+      return;
+    }
+    if (block === "limit") {
+      setErrorMessage(
+        "You've reached your generation limit. Upgrade or wait for the next billing period.",
+      );
       return;
     }
 
@@ -162,9 +216,18 @@ export function ImageGenerator() {
       const data = (await res.json().catch(() => ({}))) as {
         images?: string[];
         error?: string;
+        code?: string;
+        plan?: string;
         generations?: GenerationStatus;
         record_id?: string;
       };
+
+      if (res.status === 403 && data.code === CREATOR_AI_REQUIRED_CODE) {
+        void refreshGenerations();
+        setCreatorAiVariant(data.plan === "creator" ? "upgrade" : "subscribe");
+        setCreatorAiGateOpen(true);
+        return;
+      }
 
       if (!res.ok) {
         if (data.generations) {
@@ -186,39 +249,13 @@ export function ImageGenerator() {
         refreshGenerations();
       }
       setGeneratedImages(images);
-      setHistory((prev) => [
-        {
-          id: data.record_id ?? Date.now().toString(),
-          prompt: prompt.trim(),
-          style: selectedStyle,
-          ratio: selectedRatio,
-          images,
-          timestamp: new Date(),
-          recordStatus: "ok",
-        },
-        ...prev,
-      ]);
+      setPreviewRatio(selectedRatio);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to generate image";
       setErrorMessage(message);
     } finally {
       setIsGenerating(false);
-    }
-  };
-
-  const removeFromHistory = async (id: string) => {
-    try {
-      const res = await fetch(`/api/me/generation-records/${id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) {
-        throw new Error("Delete failed");
-      }
-      setHistory((prev) => prev.filter((h) => h.id !== id));
-    } catch {
-      setErrorMessage("Could not remove this item from history.");
     }
   };
 
@@ -307,12 +344,7 @@ export function ImageGenerator() {
 
           <Button
             type="submit"
-            disabled={
-              !prompt.trim() ||
-              isGenerating ||
-              !authenticated ||
-              noGenerationsLeft
-            }
+            disabled={!prompt.trim() || isGenerating || generationsLoading}
             className="w-full h-12 bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl font-medium smooth shadow-lg shadow-blue-500/25 disabled:opacity-50"
           >
             {isGenerating ? (
@@ -328,16 +360,10 @@ export function ImageGenerator() {
             )}
           </Button>
 
-          {!authenticated && (
+          {atLimitForCreatorAi && (
             <p className="text-sm text-red-400 text-center">
-              Please sign in to generate images.
-            </p>
-          )}
-
-          {noGenerationsLeft && (
-            <p className="text-sm text-red-400 text-center">
-              You&apos;ve reached your generation limit. Upgrade your plan to keep
-              creating.
+              You&apos;ve reached your generation limit for this period. See
+              pricing for options.
             </p>
           )}
 
@@ -347,38 +373,42 @@ export function ImageGenerator() {
         </form>
 
         <div className="lg:col-span-2 space-y-6">
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5 min-h-[400px]">
+          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5 min-h-[350px]">
             <h3 className="text-lg font-medium text-foreground mb-4">
               Generated Images
             </h3>
             {generatedImages.length > 0 ? (
-              <div className="grid grid-cols-2 gap-4">
-                {generatedImages.map((img, index) => (
-                  <div
-                    key={index}
-                    className="relative group rounded-xl overflow-hidden border border-blue-500/20 cursor-pointer aspect-square bg-black/40 flex items-center justify-center"
-                    onClick={() => setLightboxImage(img)}
+              <div className="space-y-4">
+                <div
+                  className="relative rounded-xl overflow-hidden border border-blue-500/20 bg-black cursor-pointer"
+                  style={{
+                    aspectRatio: ratioIdToCssAspect(previewRatio),
+                  }}
+                  onClick={() => setLightboxImage(generatedImages[0])}
+                >
+                  <img
+                    src={generatedImages[0]}
+                    alt="Generated image"
+                    className="w-full h-full object-contain max-h-[min(70vh,560px)]"
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center justify-end gap-3">
+                  <Button
+                    className="bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-lg"
+                    asChild
                   >
-                    <img
-                      src={img}
-                      alt={`Generated ${index + 1}`}
-                      className="max-w-full max-h-full object-contain"
-                    />
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 smooth flex items-center justify-center gap-3">
-                      <Button
-                        size="sm"
-                        className="bg-white text-black hover:bg-white/90 rounded-lg"
-                        onClick={(e) => e.stopPropagation()}
-                        asChild
-                      >
-                        <a href={img} download target="_blank" rel="noreferrer">
-                          <Download className="w-4 h-4 mr-1" />
-                          Download
-                        </a>
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                    <a
+                      href={generatedImages[0]}
+                      download
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Download Image
+                    </a>
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-center py-16">
@@ -394,81 +424,29 @@ export function ImageGenerator() {
               </div>
             )}
           </div>
-
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
-            <h3 className="text-lg font-medium text-foreground mb-4">
-              Previous Generations
-            </h3>
-            {historyLoading ? (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                Loading history…
-              </p>
-            ) : history.length > 0 ? (
-              <div className="space-y-3">
-                {history.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center gap-4 p-3 rounded-xl border border-blue-500/20 bg-background/30 hover:border-blue-500/40 smooth group"
-                  >
-                    {item.images[0] ? (
-                      <img
-                        src={item.images[0]}
-                        alt={item.prompt}
-                        className="w-16 h-16 rounded-lg object-cover shrink-0 cursor-pointer hover:opacity-80 smooth"
-                        onClick={() => setLightboxImage(item.images[0])}
-                      />
-                    ) : (
-                      <div className="w-16 h-16 rounded-lg bg-muted shrink-0 flex items-center justify-center text-xs text-muted-foreground text-center px-1">
-                        {item.recordStatus === "failed" ? "Failed" : "—"}
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-foreground truncate">
-                        {item.prompt}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {item.recordStatus === "failed" && item.errorMessage ? (
-                          <span className="text-red-400/90">{item.errorMessage}</span>
-                        ) : (
-                          <>
-                            {stylePresets.find((s) => s.id === item.style)?.label}{" "}
-                            | {item.ratio}
-                          </>
-                        )}{" "}
-                        | {item.timestamp.toLocaleTimeString()}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {item.images[0] ? (
-                        <a
-                          href={item.images[0]}
-                          download
-                          target="_blank"
-                          rel="noreferrer"
-                          className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth"
-                        >
-                          <Download className="w-4 h-4" />
-                        </a>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() => removeFromHistory(item.id)}
-                        className="p-2 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 smooth"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                No previous generations
-              </p>
-            )}
-          </div>
+          {user ? (
+            <p className="text-center text-sm text-muted-foreground">
+              <Link
+                href="/profile/generations"
+                className="text-blue-400 hover:underline"
+              >
+                View all generations
+              </Link>
+            </p>
+          ) : null}
         </div>
       </div>
+
+      <SignInModal
+        open={signInOpen}
+        onOpenChange={setSignInOpen}
+        onAuthSuccess={() => setSignInOpen(false)}
+      />
+      <CreatorAiGateModal
+        open={creatorAiGateOpen}
+        onOpenChange={setCreatorAiGateOpen}
+        variant={creatorAiVariant}
+      />
 
       {lightboxImage && (
         <div

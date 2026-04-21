@@ -5,7 +5,11 @@ import {
     consumeGeneration,
     getGenerationsStatus,
 } from "@/lib/generations";
+import { requireCreatorAiForGeneration } from "@/lib/creator-ai-generation-access";
 import { insertGenerationRecord } from "@/lib/generation-records";
+import { mirrorReplicateDeliveryImageUrls } from "@/lib/replicate-mirror-output";
+
+export const runtime = "nodejs";
 
 const replicate = new Replicate({
     auth: process.env.REPLICATE_API_TOKEN,
@@ -88,6 +92,11 @@ export async function POST(req: NextRequest) {
                 { error: "Please sign in to generate images." },
                 { status: 401 },
             );
+        }
+
+        const creatorAi = await requireCreatorAiForGeneration(user.id);
+        if (!creatorAi.ok) {
+            return creatorAi.response;
         }
 
         if (!process.env.REPLICATE_API_TOKEN) {
@@ -208,6 +217,31 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        let persistedImages: string[];
+        try {
+            persistedImages = await mirrorReplicateDeliveryImageUrls(
+                replicate,
+                images,
+            );
+        } catch (mirrorErr) {
+            console.error("[image generation] mirror to files failed:", mirrorErr);
+            const msg =
+                mirrorErr instanceof Error
+                    ? mirrorErr.message
+                    : "Could not save generated images. Please try again.";
+            void insertGenerationRecord({
+                userId: user.id,
+                tool: "image",
+                status: "failed",
+                settings: { prompt, style, aspect_ratio },
+                errorMessage: msg,
+            });
+            return NextResponse.json(
+                { error: msg },
+                { status: 502 },
+            );
+        }
+
         const consumed = await consumeGeneration(user.id, "image");
         if (!consumed.ok) {
             return NextResponse.json(
@@ -225,11 +259,11 @@ export async function POST(req: NextRequest) {
             tool: "image",
             status: "ok",
             settings: { prompt, style, aspect_ratio },
-            result: { images },
+            result: { images: persistedImages },
         });
 
         return NextResponse.json({
-            images,
+            images: persistedImages,
             prompt,
             style,
             aspect_ratio,

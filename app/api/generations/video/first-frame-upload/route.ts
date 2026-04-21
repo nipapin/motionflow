@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Replicate from "replicate";
 import { getSessionUser } from "@/lib/auth/get-session-user";
+import { requireCreatorAiForGeneration } from "@/lib/creator-ai-generation-access";
 
 export const runtime = "nodejs";
 
@@ -24,6 +25,11 @@ export async function POST(req: NextRequest) {
                 { error: "Please sign in to upload images." },
                 { status: 401 },
             );
+        }
+
+        const creatorAi = await requireCreatorAiForGeneration(user.id);
+        if (!creatorAi.ok) {
+            return creatorAi.response;
         }
 
         if (!process.env.REPLICATE_API_TOKEN) {

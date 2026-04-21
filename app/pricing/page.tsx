@@ -224,7 +224,10 @@ export default function PricingPage() {
           </div>
 
           {/* Creator + AI Plan */}
-          <div className="relative rounded-3xl border-2 border-blue-500/50 bg-gradient-to-br from-card via-card to-blue-500/5 backdrop-blur-sm p-8 shadow-xl shadow-blue-500/10">
+          <div
+            id="creator-ai"
+            className="relative rounded-3xl border-2 border-blue-500/50 bg-gradient-to-br from-card via-card to-blue-500/5 backdrop-blur-sm p-8 shadow-xl shadow-blue-500/10 scroll-mt-24"
+          >
             <div className="absolute -top-3 left-1/2 -translate-x-1/2">
               <span className="bg-gradient-to-r from-blue-600 to-blue-500 text-white text-xs font-semibold px-4 py-1.5 rounded-full whitespace-nowrap shadow-lg shadow-blue-500/30">
                 Best Value

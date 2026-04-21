@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
-import { Search, Moon, Sun, User, ShoppingBag, CreditCard, Download, Bookmark, LogOut, X } from "lucide-react";
+import { Search, Moon, Sun, User, ShoppingBag, CreditCard, Download, Bookmark, LogOut, X, Sparkles } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -118,6 +118,7 @@ export function Header({ searchQuery, onSearchChange, sidebarCollapsed }: Header
                     <div className="flex flex-col gap-1">
                       {[
                         { icon: User, label: "Profile", href: "/profile" },
+                        { icon: Sparkles, label: "My generations", href: "/profile/generations" },
                         { icon: ShoppingBag, label: "My purchases", href: "/profile/purchases" },
                         { icon: CreditCard, label: "My subscriptions", href: "/profile/subscriptions" },
                         { icon: Download, label: "My downloads", href: "/profile/downloads" },
