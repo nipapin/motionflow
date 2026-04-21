@@ -212,6 +212,32 @@ function pickEndsAt(sub: PaddleSubscription): string | null {
   return raw ? toMysqlDateTime(raw) : null;
 }
 
+/** Mirrors Paddle `current_billing_period` for quota reset windows. */
+function pickCurrentBillingPeriodFromSubscription(sub: PaddleSubscription): {
+  startsAt: string | null;
+  endsAt: string | null;
+} {
+  const p = sub.current_billing_period;
+  if (!p) return { startsAt: null, endsAt: null };
+  return {
+    startsAt: p.starts_at ? toMysqlDateTime(p.starts_at) : null,
+    endsAt: p.ends_at ? toMysqlDateTime(p.ends_at) : null,
+  };
+}
+
+/** From `transaction.completed` payload when `billing_period` is present. */
+function pickCurrentBillingPeriodFromTransaction(txn: PaddleTransaction): {
+  startsAt: string | null;
+  endsAt: string | null;
+} {
+  const p = txn.billing_period;
+  if (!p) return { startsAt: null, endsAt: null };
+  return {
+    startsAt: p.starts_at ? toMysqlDateTime(p.starts_at) : null,
+    endsAt: p.ends_at ? toMysqlDateTime(p.ends_at) : null,
+  };
+}
+
 function pickTrialEndsAt(sub: PaddleSubscription): string | null {
   const raw = sub.items?.[0]?.trial_dates?.ends_at ?? null;
   return raw ? toMysqlDateTime(raw) : null;
@@ -324,8 +350,9 @@ async function releasePaddleLock(conn: PoolConnection, key: string): Promise<voi
  *     ADD UNIQUE KEY uniq_subscription_id (subscription_id);
  *
  *   See `db/migrations/2026_04_21_subscription_systems_paddle_ids.sql` for
- *   `paddle_product_id` / `paddle_price_id` columns, and
- *   `2026_04_22_subscription_systems_paddle_product_name.sql` for display name.
+ *   `paddle_product_id` / `paddle_price_id` columns,
+ *   `2026_04_22_subscription_systems_paddle_product_name.sql` for display name, and
+ *   `2026_04_23_subscription_systems_paddle_billing_period.sql` for quota windows.
  */
 export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
   ok: boolean;
@@ -360,6 +387,8 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
     ? toMysqlDateTime(txn.items[0].trial_dates!.ends_at!)
     : null;
 
+  const billingPeriod = pickCurrentBillingPeriodFromTransaction(txn);
+
   const argumentsJson = buildArgumentsJson(txn.payments);
 
   const pool = getPool();
@@ -389,6 +418,8 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
       argumentsJson,
       trialEndsAt,
       endsAt,
+      billingPeriod.startsAt,
+      billingPeriod.endsAt,
     ];
     const valuePlaceholders = insertParams.map(() => "?").join(", ");
 
@@ -399,7 +430,9 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
           \`system\`, \`type\`, \`plan\`, \`paddle_product_id\`, \`paddle_price_id\`,
           \`paddle_product_name\`,
           \`count\`, \`arguments\`,
-          \`trial_ends_at\`, \`ends_at\`, \`created_at\`, \`updated_at\`)
+          \`trial_ends_at\`, \`ends_at\`,
+          \`paddle_billing_period_starts_at\`, \`paddle_billing_period_ends_at\`,
+          \`created_at\`, \`updated_at\`)
        VALUES (${valuePlaceholders}, NOW(), NOW())
        ON DUPLICATE KEY UPDATE
          \`buyer_id\`       = VALUES(\`buyer_id\`),
@@ -418,6 +451,8 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
          \`arguments\`      = VALUES(\`arguments\`),
          \`trial_ends_at\`  = VALUES(\`trial_ends_at\`),
          \`ends_at\`        = COALESCE(VALUES(\`ends_at\`), \`ends_at\`),
+         \`paddle_billing_period_starts_at\` = COALESCE(VALUES(\`paddle_billing_period_starts_at\`), \`paddle_billing_period_starts_at\`),
+         \`paddle_billing_period_ends_at\` = COALESCE(VALUES(\`paddle_billing_period_ends_at\`), \`paddle_billing_period_ends_at\`),
          \`updated_at\`     = NOW()`,
       insertParams,
     );
@@ -455,6 +490,7 @@ export async function refreshSubscription(sub: PaddleSubscription): Promise<{
   const trialEndsAt = pickTrialEndsAt(sub);
   const { priceId: paddlePriceId, productId: paddleProductId } = pickPaddleCatalogIds(sub.items);
   const paddleProductName = pickPaddleProductName(sub.items);
+  const billingPeriod = pickCurrentBillingPeriodFromSubscription(sub);
 
   const pool = getPool();
   const [result] = await pool.execute<ResultSetHeader>(
@@ -466,9 +502,22 @@ export async function refreshSubscription(sub: PaddleSubscription): Promise<{
             \`paddle_product_id\` = COALESCE(?, \`paddle_product_id\`),
             \`paddle_price_id\`   = COALESCE(?, \`paddle_price_id\`),
             \`paddle_product_name\` = COALESCE(?, \`paddle_product_name\`),
+            \`paddle_billing_period_starts_at\` = COALESCE(?, \`paddle_billing_period_starts_at\`),
+            \`paddle_billing_period_ends_at\` = COALESCE(?, \`paddle_billing_period_ends_at\`),
             \`updated_at\`    = NOW()
       WHERE \`subscription_id\` = ?`,
-    [status, plan, trialEndsAt, endsAt, paddleProductId, paddlePriceId, paddleProductName, sub.id],
+    [
+      status,
+      plan,
+      trialEndsAt,
+      endsAt,
+      paddleProductId,
+      paddlePriceId,
+      paddleProductName,
+      billingPeriod.startsAt,
+      billingPeriod.endsAt,
+      sub.id,
+    ],
   );
 
   if (result.affectedRows === 0) {

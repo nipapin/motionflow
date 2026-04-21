@@ -1,10 +1,13 @@
 import "server-only";
 import type { RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
+import type { MotionflowGenerationPlan } from "@/lib/generation-plan";
 import {
   applyMotionflowProductTitleTemplate,
   normalizePaddleProductNameToken,
 } from "@/lib/paddle-product-label";
+
+export type { MotionflowGenerationPlan } from "@/lib/generation-plan";
 
 export interface SubscriptionListItem {
   subsFor: string;
@@ -30,6 +33,7 @@ export function formatTokenPreview(id: string): string {
 }
 
 type SubRow = RowDataPacket & {
+  id: number;
   author_id: number | null;
   status: number;
   subscription_id: string;
@@ -39,6 +43,8 @@ type SubRow = RowDataPacket & {
   paddle_product_id: string | null;
   paddle_price_id: string | null;
   paddle_product_name: string | null;
+  paddle_billing_period_starts_at: string | null;
+  paddle_billing_period_ends_at: string | null;
 };
 
 const TITLES: Record<number | string, string> = {
@@ -219,4 +225,121 @@ export async function hasActiveMotionflowSubscription(
     [userId],
   );
   return rows.some((r) => rowIsMotionflowCatalogSubscription(r) && rowIsActive(r));
+}
+
+/** Paddle `pro_…` ids for the Creator + AI product (optional; also inferred from product name). */
+const CREATOR_AI_PADDLE_PRODUCT_IDS = new Set(
+  (process.env.PADDLE_PRODUCT_CREATOR_AI_IDS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+);
+
+/** Paddle `pri_…` price ids for Creator + AI (optional; use when product name is ambiguous). */
+const CREATOR_AI_PADDLE_PRICE_IDS = new Set(
+  (process.env.PADDLE_PRICE_CREATOR_AI_IDS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+);
+
+function rowIsCreatorPlusAi(r: SubRow): boolean {
+  const priceId = r.paddle_price_id?.trim();
+  if (priceId && CREATOR_AI_PADDLE_PRICE_IDS.has(priceId)) return true;
+  const pid = r.paddle_product_id?.trim();
+  if (pid && CREATOR_AI_PADDLE_PRODUCT_IDS.has(pid)) return true;
+  const raw = r.paddle_product_name?.trim();
+  if (!raw) return false;
+  const token = normalizePaddleProductNameToken(raw);
+  if (
+    /\bcreator\s*\+\s*ai\b/i.test(token) ||
+    /\bcreator\s+ai\b/i.test(token) ||
+    /\+\s*ai\b/i.test(token)
+  ) {
+    return true;
+  }
+  // e.g. "Creator AI", "AI Creator Pack" — require both tokens for Motionflow catalog rows
+  if (/\bcreator\b/i.test(token) && /\bai\b/i.test(token)) return true;
+  return false;
+}
+
+const GENERATION_SUBSCRIPTION_SQL = `SELECT id, author_id, status, subscription_id, plan, ends_at, created_at,
+            paddle_product_id, paddle_price_id, paddle_product_name,
+            paddle_billing_period_starts_at, paddle_billing_period_ends_at
+     FROM \`${TABLE}\`
+     WHERE buyer_id = ?
+     ORDER BY id DESC`;
+
+function sortSubscriptionRowsByIdDesc(a: SubRow, b: SubRow): number {
+  return (Number(b.id) || 0) - (Number(a.id) || 0);
+}
+
+/**
+ * Pick quota row: prefer Creator + AI among all active catalog rows (not only the newest row),
+ * so a newer cancelled Creator subscription does not override an older active Creator + AI row.
+ */
+function pickTierRowForGenerations(activeCatalog: SubRow[]): SubRow | null {
+  if (activeCatalog.length === 0) return null;
+  const sorted = [...activeCatalog].sort(sortSubscriptionRowsByIdDesc);
+  const aiRow = sorted.find((r) => rowIsCreatorPlusAi(r));
+  if (aiRow) return aiRow;
+  return sorted[0] ?? null;
+}
+
+/** Billing window from Paddle (see `paddle-server` webhook persistence). */
+export interface MotionflowGenerationContext {
+  plan: MotionflowGenerationPlan;
+  paddleBillingPeriodStartsAt: string | null;
+  paddleBillingPeriodEndsAt: string | null;
+}
+
+/**
+ * Plan tier + current Paddle billing period bounds for generation quotas.
+ * The billing row is the newest active catalog row, preferring Creator + AI.
+ */
+export async function getMotionflowGenerationContext(
+  userId: number,
+): Promise<MotionflowGenerationContext> {
+  const pool = getPool();
+  const [rows] = await pool.execute<SubRow[]>(GENERATION_SUBSCRIPTION_SQL, [
+    userId,
+  ]);
+
+  const activeCatalog = rows.filter(
+    (r) => rowIsMotionflowCatalogSubscription(r) && rowIsActive(r),
+  );
+  const tierRow = pickTierRowForGenerations(activeCatalog);
+
+  if (tierRow && rowIsCreatorPlusAi(tierRow)) {
+    return {
+      plan: "creator_ai",
+      paddleBillingPeriodStartsAt:
+        tierRow.paddle_billing_period_starts_at ?? null,
+      paddleBillingPeriodEndsAt: tierRow.paddle_billing_period_ends_at ?? null,
+    };
+  }
+  if (tierRow) {
+    return {
+      plan: "creator",
+      paddleBillingPeriodStartsAt:
+        tierRow.paddle_billing_period_starts_at ?? null,
+      paddleBillingPeriodEndsAt: tierRow.paddle_billing_period_ends_at ?? null,
+    };
+  }
+  return {
+    plan: "none",
+    paddleBillingPeriodStartsAt: null,
+    paddleBillingPeriodEndsAt: null,
+  };
+}
+
+/**
+ * Which Motionflow catalog plan should apply for AI generation quotas.
+ * Creator + AI takes precedence if the user has both rows for some reason.
+ */
+export async function getMotionflowGenerationPlan(
+  userId: number,
+): Promise<MotionflowGenerationPlan> {
+  const ctx = await getMotionflowGenerationContext(userId);
+  return ctx.plan;
 }

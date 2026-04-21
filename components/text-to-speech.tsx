@@ -60,6 +60,7 @@ export function TextToSpeech() {
   const {
     status: generations,
     loading: generationsLoading,
+    error: generationsError,
     authenticated,
     consume,
   } = useGenerations();
@@ -136,6 +137,7 @@ export function TextToSpeech() {
           status={generations}
           loading={generationsLoading}
           authenticated={authenticated}
+          error={generationsError}
         />
       </div>
 

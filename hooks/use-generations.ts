@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import type { MotionflowGenerationPlan } from "@/lib/generation-plan";
 
 export interface GenerationStatus {
   used: number;
   limit: number;
   remaining: number;
   hasSubscription: boolean;
+  plan: MotionflowGenerationPlan;
 }
 
 export type GenerationTool = "image" | "video" | "tts" | "stt";
@@ -21,6 +23,11 @@ export interface UseGenerationsResult {
   consume: (tool: GenerationTool) => Promise<GenerationStatus>;
   /** Replace local status (used by routes that already debited server-side). */
   setStatus: (next: GenerationStatus) => void;
+}
+
+function parseGenerationPlan(value: unknown): MotionflowGenerationPlan {
+  if (value === "creator" || value === "creator_ai") return value;
+  return "none";
 }
 
 export function useGenerations(): UseGenerationsResult {
@@ -58,6 +65,7 @@ export function useGenerations(): UseGenerationsResult {
         limit: Number(data.limit ?? 0),
         remaining: Number(data.remaining ?? 0),
         hasSubscription: Boolean(data.hasSubscription),
+        plan: parseGenerationPlan(data.plan),
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load status");
@@ -94,6 +102,7 @@ export function useGenerations(): UseGenerationsResult {
             limit: data.limit,
             remaining: data.remaining,
             hasSubscription: Boolean(data.hasSubscription),
+            plan: parseGenerationPlan(data.plan),
           });
         }
         throw new Error(data.error || `Request failed (${res.status})`);
@@ -104,6 +113,7 @@ export function useGenerations(): UseGenerationsResult {
         limit: Number(data.limit ?? 0),
         remaining: Number(data.remaining ?? 0),
         hasSubscription: Boolean(data.hasSubscription),
+        plan: parseGenerationPlan(data.plan),
       };
       setStatusState(next);
       return next;

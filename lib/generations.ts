@@ -1,27 +1,19 @@
 import "server-only";
+import type { PoolConnection } from "mysql2/promise";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
+import type { MotionflowGenerationPlan } from "@/lib/generation-plan";
+import {
+  getMotionflowGenerationContext,
+  type MotionflowGenerationContext,
+} from "@/lib/subscriptions";
 
-/** Lifetime generation cap for users without an active AI subscription. */
+/** Lifetime cap for users without an active Motionflow Creator subscription. */
 export const FREE_GENERATIONS_LIMIT = 5;
-/** Lifetime generation cap for users with an active AI subscription (Creator + AI plan). */
-export const PRO_GENERATIONS_LIMIT = 100;
-
-/**
- * Returns whether the user holds an active **AI** subscription (Creator + AI plan).
- *
- * The plain Motionflow ("Creator") subscription unlocks the marketplace catalog
- * but does NOT include AI tools — only the Creator + AI plan does.
- *
- * TODO: wire this up to the real AI subscription source once the product exists in
- * `subscription_systems` (or wherever AI plans are stored). For now nobody is
- * recognised as an AI subscriber, so every user is on the free tier (5 generations).
- */
-export async function hasActiveAiSubscription(
-  _userId: number,
-): Promise<boolean> {
-  return false;
-}
+/** Generations per Paddle billing period for Motionflow Creator. */
+export const CREATOR_BILLING_PERIOD_GENERATIONS_LIMIT = 10;
+/** Generations per Paddle billing period for Motionflow Creator + AI. */
+export const CREATOR_AI_BILLING_PERIOD_GENERATIONS_LIMIT = 100;
 
 export const GENERATION_TOOLS = ["image", "video", "tts", "stt"] as const;
 export type GenerationTool = (typeof GENERATION_TOOLS)[number];
@@ -30,7 +22,10 @@ export interface GenerationStatus {
   used: number;
   limit: number;
   remaining: number;
+  /** True when the user has Creator or Creator + AI (paid monthly quota). */
   hasSubscription: boolean;
+  /** Plan that sets the limit and whether usage is monthly or lifetime. */
+  plan: MotionflowGenerationPlan;
 }
 
 const TABLE = "user_generations";
@@ -66,20 +61,72 @@ export function parseTool(value: unknown): GenerationTool | null {
   return isValidTool(value) ? value : null;
 }
 
-async function getLimit(userId: number): Promise<{ limit: number; hasSubscription: boolean }> {
-  const hasSubscription = await hasActiveAiSubscription(userId);
-  return {
-    hasSubscription,
-    limit: hasSubscription ? PRO_GENERATIONS_LIMIT : FREE_GENERATIONS_LIMIT,
-  };
+/** Fallback when `subscription_systems.paddle_billing_period_*` is not filled yet. */
+function utcMonthBounds(): { start: string; endExclusive: string } {
+  const d = new Date();
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth();
+  const start = new Date(Date.UTC(y, m, 1, 0, 0, 0));
+  const endExclusive = new Date(Date.UTC(y, m + 1, 1, 0, 0, 0));
+  const fmt = (x: Date) => x.toISOString().slice(0, 19).replace("T", " ");
+  return { start: fmt(start), endExclusive: fmt(endExclusive) };
 }
 
-async function countUsed(userId: number): Promise<number> {
-  const pool = getPool();
+function resolveUsageWindow(
+  ctx: MotionflowGenerationContext,
+): { start: string; endExclusive: string } {
+  const start = ctx.paddleBillingPeriodStartsAt;
+  const end = ctx.paddleBillingPeriodEndsAt;
+  if (start && end) {
+    return { start, endExclusive: end };
+  }
+  return utcMonthBounds();
+}
+
+function getLimitForPlan(plan: MotionflowGenerationPlan): {
+  limit: number;
+  hasSubscription: boolean;
+} {
+  switch (plan) {
+    case "creator_ai":
+      return {
+        hasSubscription: true,
+        limit: CREATOR_AI_BILLING_PERIOD_GENERATIONS_LIMIT,
+      };
+    case "creator":
+      return {
+        hasSubscription: true,
+        limit: CREATOR_BILLING_PERIOD_GENERATIONS_LIMIT,
+      };
+    default:
+      return { hasSubscription: false, limit: FREE_GENERATIONS_LIMIT };
+  }
+}
+
+async function countUsed(
+  userId: number,
+  plan: MotionflowGenerationPlan,
+  usageWindow: { start: string; endExclusive: string },
+  conn?: PoolConnection,
+): Promise<number> {
   type CountRow = RowDataPacket & { c: number };
-  const [rows] = await pool.execute<CountRow[]>(
-    `SELECT COUNT(*) AS c FROM \`${TABLE}\` WHERE user_id = ?`,
-    [userId],
+  const executor = conn ?? getPool();
+  if (plan === "none") {
+    const lock = conn ? " FOR UPDATE" : "";
+    const [rows] = await executor.execute<CountRow[]>(
+      `SELECT COUNT(*) AS c FROM \`${TABLE}\` WHERE user_id = ?${lock}`,
+      [userId],
+    );
+    return Number(rows[0]?.c ?? 0);
+  }
+  const { start, endExclusive } = usageWindow;
+  const lock = conn ? " FOR UPDATE" : "";
+  const [rows] = await executor.execute<CountRow[]>(
+    `SELECT COUNT(*) AS c FROM \`${TABLE}\`
+     WHERE user_id = ?
+       AND created_at >= ?
+       AND created_at < ?${lock}`,
+    [userId, start, endExclusive],
   );
   return Number(rows[0]?.c ?? 0);
 }
@@ -88,12 +135,13 @@ export async function getGenerationsStatus(
   userId: number,
 ): Promise<GenerationStatus> {
   await ensureTable();
-  const [{ limit, hasSubscription }, used] = await Promise.all([
-    getLimit(userId),
-    countUsed(userId),
-  ]);
+  const ctx = await getMotionflowGenerationContext(userId);
+  const plan = ctx.plan;
+  const { limit, hasSubscription } = getLimitForPlan(plan);
+  const usageWindow = resolveUsageWindow(ctx);
+  const used = await countUsed(userId, plan, usageWindow);
   const remaining = Math.max(0, limit - used);
-  return { used, limit, remaining, hasSubscription };
+  return { used, limit, remaining, hasSubscription, plan };
 }
 
 export type ConsumeResult =
@@ -114,14 +162,11 @@ export async function consumeGeneration(
   try {
     await conn.beginTransaction();
 
-    const { limit, hasSubscription } = await getLimit(userId);
-
-    type CountRow = RowDataPacket & { c: number };
-    const [countRows] = await conn.execute<CountRow[]>(
-      `SELECT COUNT(*) AS c FROM \`${TABLE}\` WHERE user_id = ? FOR UPDATE`,
-      [userId],
-    );
-    const used = Number(countRows[0]?.c ?? 0);
+    const ctx = await getMotionflowGenerationContext(userId);
+    const plan = ctx.plan;
+    const { limit, hasSubscription } = getLimitForPlan(plan);
+    const usageWindow = resolveUsageWindow(ctx);
+    const used = await countUsed(userId, plan, usageWindow, conn);
 
     if (used >= limit) {
       await conn.rollback();
@@ -133,6 +178,7 @@ export async function consumeGeneration(
           limit,
           remaining: 0,
           hasSubscription,
+          plan,
         },
       };
     }
@@ -152,6 +198,7 @@ export async function consumeGeneration(
         limit,
         remaining: Math.max(0, limit - newUsed),
         hasSubscription,
+        plan,
       },
     };
   } catch (err) {

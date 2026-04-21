@@ -7,12 +7,15 @@ interface GenerationsBadgeProps {
   status: GenerationStatus | null;
   loading: boolean;
   authenticated: boolean;
+  /** Set when the quota API failed (avoids looking like infinite loading). */
+  error?: string | null;
 }
 
 export function GenerationsBadge({
   status,
   loading,
   authenticated,
+  error = null,
 }: GenerationsBadgeProps) {
   let primary: string;
   let secondary: string;
@@ -20,14 +23,18 @@ export function GenerationsBadge({
   if (!authenticated) {
     primary = "Sign in";
     secondary = "to use AI tools";
-  } else if (loading || !status) {
+  } else if (loading) {
+    primary = "—";
+    secondary = "Loading…";
+  } else if (error && !status) {
+    primary = "—";
+    secondary = error;
+  } else if (!status) {
     primary = "—";
     secondary = "Loading…";
   } else {
     primary = `${status.remaining} / ${status.limit}`;
-    secondary = status.hasSubscription
-      ? "AI plan generations"
-      : "Free generations";
+    secondary = "Generations remaining";
   }
 
   return (

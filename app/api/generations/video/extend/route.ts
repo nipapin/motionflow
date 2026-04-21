@@ -7,31 +7,18 @@ import {
 } from "@/lib/generations";
 import { insertGenerationRecord } from "@/lib/generation-records";
 
+export const runtime = "nodejs";
+export const maxDuration = 300;
+
 const replicate = new Replicate({
     auth: process.env.REPLICATE_API_TOKEN,
 });
 
-const STYLE_HINTS: Record<string, string> = {
-    realistic:
-        "ultra realistic photograph, photorealistic, sharp focus, natural lighting, high detail, 8k",
-    anime: "anime style, vibrant colors, cel shading, studio quality illustration",
-    "3d": "3d render, octane render, cinema 4d, ray tracing, ultra detailed, volumetric lighting",
-    "digital-art":
-        "digital art, concept art, trending on artstation, highly detailed, vivid colors",
-    "oil-painting":
-        "oil painting, thick brush strokes, classical art, museum quality, rich textures",
-    watercolor:
-        "watercolor painting, soft washes, delicate brushwork, paper texture, pastel colors",
-};
-
-const ALLOWED_RATIOS = new Set([
-    "1:1",
-    "16:9",
-    "9:16",
-]);
+/** https://replicate.com/xai/grok-imagine-video-extension */
+const GROK_EXTEND_MODEL = "xai/grok-imagine-video-extension" as const;
 
 const GENERIC_ERROR =
-    "We couldn't generate the image right now. Please try again in a moment.";
+    "We couldn't extend the video right now. Please try again in a moment.";
 
 function mapReplicateError(error: unknown): { status: number; message: string } {
     const raw = error instanceof Error ? error.message : String(error ?? "");
@@ -42,7 +29,7 @@ function mapReplicateError(error: unknown): { status: number; message: string } 
         return {
             status: 503,
             message:
-                "The image service is temporarily unavailable. Please try again later.",
+                "The video service is temporarily unavailable. Please try again later.",
         };
     }
 
@@ -50,14 +37,15 @@ function mapReplicateError(error: unknown): { status: number; message: string } 
         return {
             status: 503,
             message:
-                "The image service is temporarily unavailable. Please try again later or contact support.",
+                "The video service is temporarily unavailable. Please try again later or contact support.",
         };
     }
 
     if (status === 429 || /rate.?limit/i.test(raw)) {
         return {
             status: 429,
-            message: "Too many requests right now. Please wait a moment and try again.",
+            message:
+                "Too many requests right now. Please wait a moment and try again.",
         };
     }
 
@@ -73,56 +61,89 @@ function mapReplicateError(error: unknown): { status: number; message: string } 
         return {
             status: 503,
             message:
-                "The image service is having issues right now. Please try again shortly.",
+                "The video service is having issues right now. Please try again shortly.",
         };
     }
 
     return { status: 500, message: GENERIC_ERROR };
 }
 
+function extractMediaUrl(output: unknown): string | null {
+    if (typeof output === "string" && /^https?:\/\//i.test(output)) {
+        return output;
+    }
+    const items = Array.isArray(output) ? output : [output];
+    for (const item of items) {
+        if (!item || typeof item !== "object") continue;
+        const fo = item as FileOutput;
+        if (typeof fo.url !== "function") continue;
+        try {
+            const u = fo.url();
+            if (typeof u === "string") return u;
+            if (u != null) return u.toString();
+        } catch {
+            /* ignore */
+        }
+    }
+    return null;
+}
+
+/** Extension clip length (seconds); aligned with product (3 or 5 only). */
+const ALLOWED_EXT_DURATIONS = new Set([3, 5]);
+
 export async function POST(req: NextRequest) {
     try {
         const user = await getSessionUser();
         if (!user) {
             return NextResponse.json(
-                { error: "Please sign in to generate images." },
+                { error: "Please sign in to extend videos." },
                 { status: 401 },
             );
         }
 
         if (!process.env.REPLICATE_API_TOKEN) {
             console.error(
-                "[image generation] REPLICATE_API_TOKEN is not configured",
+                "[video extend] REPLICATE_API_TOKEN is not configured",
             );
             return NextResponse.json(
                 {
                     error:
-                        "Image generation isn't available right now. Please try again later.",
+                        "Video extension isn't available right now. Please try again later.",
                 },
                 { status: 503 },
             );
         }
 
         const body = (await req.json().catch(() => ({}))) as {
+            video?: string;
             prompt?: string;
-            style?: string;
-            aspect_ratio?: string;
+            duration?: number;
         };
 
+        const video = body.video?.trim();
         const prompt = body.prompt?.trim();
-        const style = body.style ?? "realistic";
-        const aspect_ratio = body.aspect_ratio ?? "1:1";
+        const duration =
+            typeof body.duration === "number" ? body.duration : 5;
 
-        if (!prompt) {
+        if (!video || !/^https?:\/\//i.test(video)) {
             return NextResponse.json(
-                { error: "Please enter a prompt to generate an image." },
+                { error: "A valid source video URL is required." },
                 { status: 400 },
             );
         }
 
-        if (!ALLOWED_RATIOS.has(aspect_ratio)) {
+        if (!prompt) {
             return NextResponse.json(
-                { error: "Please choose a supported aspect ratio." },
+                { error: "Describe what should happen next in the extension." },
+                { status: 400 },
+            );
+        }
+
+        if (!Number.isInteger(duration) || !ALLOWED_EXT_DURATIONS.has(duration)) {
+            return NextResponse.json(
+                {
+                    error: "Extension duration must be 3 or 5 seconds.",
+                },
                 { status: 400 },
             );
         }
@@ -139,76 +160,52 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const styleHint = STYLE_HINTS[style] ?? STYLE_HINTS.realistic;
-        const finalPrompt = `${prompt}. Style: ${styleHint}.`;
-
-        const input = {
-            prompt: finalPrompt,
-            aspect_ratio,
-        };
-
-        let output: FileOutput[] | FileOutput;
+        let output: unknown;
         try {
-            output = (await replicate.run("bytedance/seedream-5-lite", {
-                input,
-            })) as FileOutput[] | FileOutput;
+            output = await replicate.run(GROK_EXTEND_MODEL, {
+                input: {
+                    video,
+                    prompt,
+                    duration,
+                },
+            });
         } catch (err) {
-            console.error("[image generation] replicate error:", err);
+            console.error("[video extend] replicate error:", err);
             const { status, message } = mapReplicateError(err);
             void insertGenerationRecord({
                 userId: user.id,
-                tool: "image",
+                tool: "video",
                 status: "failed",
-                settings: { prompt, style, aspect_ratio },
+                settings: {
+                    kind: "extend",
+                    prompt,
+                    extend_duration: duration,
+                    source_video_url: video,
+                },
                 errorMessage: message,
             });
             return NextResponse.json({ error: message }, { status });
         }
 
-        const items = Array.isArray(output) ? output : [output];
-
-        if (!items.length) {
-            console.error("[image generation] empty output from replicate");
+        const videoUrl = extractMediaUrl(output);
+        if (!videoUrl) {
+            console.error("[video extend] empty output from replicate");
             void insertGenerationRecord({
                 userId: user.id,
-                tool: "image",
+                tool: "video",
                 status: "failed",
-                settings: { prompt, style, aspect_ratio },
+                settings: {
+                    kind: "extend",
+                    prompt,
+                    extend_duration: duration,
+                    source_video_url: video,
+                },
                 errorMessage: GENERIC_ERROR,
             });
-            return NextResponse.json(
-                { error: GENERIC_ERROR },
-                { status: 502 },
-            );
+            return NextResponse.json({ error: GENERIC_ERROR }, { status: 502 });
         }
 
-        const images = items
-            .map((item) => {
-                try {
-                    const url = item?.url?.();
-                    return typeof url === "string" ? url : url?.toString() ?? null;
-                } catch {
-                    return null;
-                }
-            })
-            .filter((url): url is string => Boolean(url));
-
-        if (!images.length) {
-            console.error("[image generation] no image urls in output");
-            void insertGenerationRecord({
-                userId: user.id,
-                tool: "image",
-                status: "failed",
-                settings: { prompt, style, aspect_ratio },
-                errorMessage: GENERIC_ERROR,
-            });
-            return NextResponse.json(
-                { error: GENERIC_ERROR },
-                { status: 502 },
-            );
-        }
-
-        const consumed = await consumeGeneration(user.id, "image");
+        const consumed = await consumeGeneration(user.id, "video");
         if (!consumed.ok) {
             return NextResponse.json(
                 {
@@ -222,22 +219,26 @@ export async function POST(req: NextRequest) {
 
         const recordId = await insertGenerationRecord({
             userId: user.id,
-            tool: "image",
+            tool: "video",
             status: "ok",
-            settings: { prompt, style, aspect_ratio },
-            result: { images },
+            settings: {
+                kind: "extend",
+                prompt,
+                extend_duration: duration,
+                source_video_url: video,
+            },
+            result: { video: videoUrl },
         });
 
         return NextResponse.json({
-            images,
+            video: videoUrl,
             prompt,
-            style,
-            aspect_ratio,
+            duration,
             generations: consumed.status,
             record_id: recordId > 0 ? String(recordId) : undefined,
         });
     } catch (error) {
-        console.error("[image generation] unexpected error:", error);
+        console.error("[video extend] unexpected error:", error);
         return NextResponse.json({ error: GENERIC_ERROR }, { status: 500 });
     }
 }

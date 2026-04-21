@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import {
   Wand2,
   Download,
@@ -47,12 +47,45 @@ interface GenerationHistory {
   ratio: string;
   images: string[];
   timestamp: Date;
+  recordStatus?: "ok" | "failed";
+  errorMessage?: string;
+}
+
+type ApiGenerationRecord = {
+  id: string;
+  status: string;
+  settings: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+  error_message: string | null;
+  created_at: string;
+};
+
+function mapImageRecord(row: ApiGenerationRecord): GenerationHistory {
+  const s = row.settings;
+  const images =
+    row.status === "ok" &&
+    row.result &&
+    Array.isArray(row.result.images) &&
+    row.result.images.every((x) => typeof x === "string")
+      ? (row.result.images as string[])
+      : [];
+  return {
+    id: row.id,
+    prompt: typeof s.prompt === "string" ? s.prompt : "",
+    style: typeof s.style === "string" ? s.style : "realistic",
+    ratio: typeof s.aspect_ratio === "string" ? s.aspect_ratio : "1:1",
+    images,
+    timestamp: new Date(row.created_at),
+    recordStatus: row.status === "failed" ? "failed" : "ok",
+    errorMessage: row.error_message ?? undefined,
+  };
 }
 
 export function ImageGenerator() {
   const {
     status: generations,
     loading: generationsLoading,
+    error: generationsError,
     authenticated,
     setStatus: setGenerationsStatus,
     refresh: refreshGenerations,
@@ -66,10 +99,44 @@ export function ImageGenerator() {
   const [history, setHistory] = useState<GenerationHistory[]>([]);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const remaining = generations?.remaining ?? 0;
   const noGenerationsLeft =
     authenticated && !generationsLoading && remaining <= 0;
+
+  useEffect(() => {
+    if (!authenticated) {
+      setHistory([]);
+      return;
+    }
+    let cancelled = false;
+    setHistoryLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch("/api/me/generation-records?tool=image&limit=100", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { items?: ApiGenerationRecord[] };
+        const mapped = (data.items ?? []).map(mapImageRecord);
+        if (cancelled) return;
+        setHistory(mapped);
+        const firstOk = mapped.find(
+          (h) => h.recordStatus === "ok" && h.images.length > 0,
+        );
+        if (firstOk) {
+          setGeneratedImages(firstOk.images);
+        }
+      } finally {
+        if (!cancelled) setHistoryLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticated]);
 
   const handleGenerate = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -96,6 +163,7 @@ export function ImageGenerator() {
         images?: string[];
         error?: string;
         generations?: GenerationStatus;
+        record_id?: string;
       };
 
       if (!res.ok) {
@@ -120,12 +188,13 @@ export function ImageGenerator() {
       setGeneratedImages(images);
       setHistory((prev) => [
         {
-          id: Date.now().toString(),
+          id: data.record_id ?? Date.now().toString(),
           prompt: prompt.trim(),
           style: selectedStyle,
           ratio: selectedRatio,
           images,
           timestamp: new Date(),
+          recordStatus: "ok",
         },
         ...prev,
       ]);
@@ -138,8 +207,19 @@ export function ImageGenerator() {
     }
   };
 
-  const removeFromHistory = (id: string) => {
-    setHistory((prev) => prev.filter((h) => h.id !== id));
+  const removeFromHistory = async (id: string) => {
+    try {
+      const res = await fetch(`/api/me/generation-records/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        throw new Error("Delete failed");
+      }
+      setHistory((prev) => prev.filter((h) => h.id !== id));
+    } catch {
+      setErrorMessage("Could not remove this item from history.");
+    }
   };
 
   const triggerClasses =
@@ -161,6 +241,7 @@ export function ImageGenerator() {
           status={generations}
           loading={generationsLoading}
           authenticated={authenticated}
+          error={generationsError}
         />
       </div>
 
@@ -318,38 +399,57 @@ export function ImageGenerator() {
             <h3 className="text-lg font-medium text-foreground mb-4">
               Previous Generations
             </h3>
-            {history.length > 0 ? (
+            {historyLoading ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                Loading history…
+              </p>
+            ) : history.length > 0 ? (
               <div className="space-y-3">
                 {history.map((item) => (
                   <div
                     key={item.id}
                     className="flex items-center gap-4 p-3 rounded-xl border border-blue-500/20 bg-background/30 hover:border-blue-500/40 smooth group"
                   >
-                    <img
-                      src={item.images[0]}
-                      alt={item.prompt}
-                      className="w-16 h-16 rounded-lg object-cover shrink-0 cursor-pointer hover:opacity-80 smooth"
-                      onClick={() => setLightboxImage(item.images[0])}
-                    />
+                    {item.images[0] ? (
+                      <img
+                        src={item.images[0]}
+                        alt={item.prompt}
+                        className="w-16 h-16 rounded-lg object-cover shrink-0 cursor-pointer hover:opacity-80 smooth"
+                        onClick={() => setLightboxImage(item.images[0])}
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded-lg bg-muted shrink-0 flex items-center justify-center text-xs text-muted-foreground text-center px-1">
+                        {item.recordStatus === "failed" ? "Failed" : "—"}
+                      </div>
+                    )}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-foreground truncate">
                         {item.prompt}
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {stylePresets.find((s) => s.id === item.style)?.label}{" "}
-                        | {item.ratio} | {item.timestamp.toLocaleTimeString()}
+                        {item.recordStatus === "failed" && item.errorMessage ? (
+                          <span className="text-red-400/90">{item.errorMessage}</span>
+                        ) : (
+                          <>
+                            {stylePresets.find((s) => s.id === item.style)?.label}{" "}
+                            | {item.ratio}
+                          </>
+                        )}{" "}
+                        | {item.timestamp.toLocaleTimeString()}
                       </p>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <a
-                        href={item.images[0]}
-                        download
-                        target="_blank"
-                        rel="noreferrer"
-                        className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth"
-                      >
-                        <Download className="w-4 h-4" />
-                      </a>
+                      {item.images[0] ? (
+                        <a
+                          href={item.images[0]}
+                          download
+                          target="_blank"
+                          rel="noreferrer"
+                          className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth"
+                        >
+                          <Download className="w-4 h-4" />
+                        </a>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => removeFromHistory(item.id)}
