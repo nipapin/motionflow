@@ -23,8 +23,24 @@ function getSigningKey(): Uint8Array {
   return new TextEncoder().encode(raw);
 }
 
+/**
+ * Returns the cookie domain shared with the Laravel app (e.g. `.motionflow.com`).
+ * Reads `COOKIE_DOMAIN` first, then falls back to Laravel's `SESSION_DOMAIN`
+ * so that Next.js cookies live in the same scope as Laravel cookies.
+ */
+export function sharedCookieDomain(): string | undefined {
+  const raw = process.env.COOKIE_DOMAIN || process.env.SESSION_DOMAIN || "";
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  // Localhost / IPs cannot use a Domain attribute; treat them as host-only.
+  if (trimmed === "localhost" || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(trimmed)) {
+    return undefined;
+  }
+  return trimmed;
+}
+
 export function baseCookieOptions() {
-  const domain = process.env.COOKIE_DOMAIN || undefined;
+  const domain = sharedCookieDomain();
   return {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
