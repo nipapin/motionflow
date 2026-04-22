@@ -23,24 +23,54 @@ function getSigningKey(): Uint8Array {
   return new TextEncoder().encode(raw);
 }
 
-/**
- * Returns the cookie domain shared with the Laravel app (e.g. `.motionflow.com`).
- * Reads `COOKIE_DOMAIN` first, then falls back to Laravel's `SESSION_DOMAIN`
- * so that Next.js cookies live in the same scope as Laravel cookies.
- */
-export function sharedCookieDomain(): string | undefined {
-  const raw = process.env.COOKIE_DOMAIN || process.env.SESSION_DOMAIN || "";
-  const trimmed = raw.trim();
-  if (!trimmed) return undefined;
-  // Localhost / IPs cannot use a Domain attribute; treat them as host-only.
-  if (trimmed === "localhost" || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(trimmed)) {
-    return undefined;
-  }
-  return trimmed;
+type RequestLike = {
+  headers: { get(name: string): string | null };
+  nextUrl?: { hostname?: string };
+};
+
+function extractHostname(req?: RequestLike): string | undefined {
+  if (!req) return undefined;
+  const fromNextUrl = req.nextUrl?.hostname;
+  if (fromNextUrl) return fromNextUrl;
+  const hostHeader = req.headers.get("host") ?? req.headers.get("x-forwarded-host");
+  if (!hostHeader) return undefined;
+  return hostHeader.split(":")[0]?.trim() || undefined;
 }
 
-export function baseCookieOptions() {
-  const domain = sharedCookieDomain();
+function hostMatchesDomain(hostname: string, domain: string): boolean {
+  const bare = domain.startsWith(".") ? domain.slice(1) : domain;
+  if (!bare) return false;
+  return hostname === bare || hostname.endsWith(`.${bare}`);
+}
+
+/**
+ * Returns the cookie `Domain` shared with the Laravel app (e.g. `.motionflow.com`).
+ *
+ * Reads `COOKIE_DOMAIN` first, then falls back to Laravel's `SESSION_DOMAIN` so
+ * Next.js cookies live in the same scope as Laravel cookies in production.
+ *
+ * Browsers reject `Set-Cookie` with a `Domain=` attribute that is not a suffix
+ * of the request host (e.g. setting `Domain=.motionflow.com` from `localhost`).
+ * When `req` is provided, we drop the domain unless the current host actually
+ * belongs to it — otherwise the cookie would be silently dropped.
+ */
+export function sharedCookieDomain(req?: RequestLike): string | undefined {
+  const raw = process.env.COOKIE_DOMAIN || process.env.SESSION_DOMAIN || "";
+  const domain = raw.trim();
+  if (!domain) return undefined;
+  // Domain attribute is invalid for localhost / bare IPs.
+  if (domain === "localhost" || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(domain)) {
+    return undefined;
+  }
+  const hostname = extractHostname(req);
+  if (hostname && !hostMatchesDomain(hostname, domain)) {
+    return undefined;
+  }
+  return domain;
+}
+
+export function baseCookieOptions(req?: RequestLike) {
+  const domain = sharedCookieDomain(req);
   return {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",

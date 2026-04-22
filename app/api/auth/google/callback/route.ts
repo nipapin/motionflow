@@ -61,7 +61,7 @@ function redirectWithError(req: NextRequest, code: string): NextResponse {
   url.searchParams.set("auth_error", code);
   const res = NextResponse.redirect(url);
   res.cookies.set(GOOGLE_OAUTH_STATE_COOKIE, "", {
-    ...baseCookieOptions(),
+    ...baseCookieOptions(req),
     maxAge: 0,
   });
   return res;
@@ -171,8 +171,8 @@ export async function GET(req: NextRequest) {
 
     const home = new URL("/", oauthPublicOrigin(req));
     const res = NextResponse.redirect(home);
-    const cookieOpts = { ...baseCookieOptions(), maxAge: sessionCookieMaxAgeSec() };
-    res.cookies.set(GOOGLE_OAUTH_STATE_COOKIE, "", { ...baseCookieOptions(), maxAge: 0 });
+    const cookieOpts = { ...baseCookieOptions(req), maxAge: sessionCookieMaxAgeSec() };
+    res.cookies.set(GOOGLE_OAUTH_STATE_COOKIE, "", { ...baseCookieOptions(req), maxAge: 0 });
     res.cookies.set(SESSION_COOKIE_NAME, token, cookieOpts);
 
     const laravelSessionId = await createLaravelSession(user.id);

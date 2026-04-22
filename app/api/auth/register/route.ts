@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
       success: true as const,
       user: { id, email, name },
     });
-    const cookieOpts = { ...baseCookieOptions(), maxAge: sessionCookieMaxAgeSec() };
+    const cookieOpts = { ...baseCookieOptions(req), maxAge: sessionCookieMaxAgeSec() };
     res.cookies.set(SESSION_COOKIE_NAME, token, cookieOpts);
 
     const laravelSessionId = await createLaravelSession(id);

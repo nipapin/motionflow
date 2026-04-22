@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
 
   const res = NextResponse.redirect(authUrl.toString());
   res.cookies.set(GOOGLE_OAUTH_STATE_COOKIE, state, {
-    ...baseCookieOptions(),
+    ...baseCookieOptions(req),
     maxAge: GOOGLE_OAUTH_STATE_MAX_AGE,
   });
   return res;

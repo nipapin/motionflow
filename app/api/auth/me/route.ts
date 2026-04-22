@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
     }
     // Invalid JWT — clear it
     const res = NextResponse.json({ user: null }, { status: 200 });
-    res.cookies.set(SESSION_COOKIE_NAME, "", { ...baseCookieOptions(), maxAge: 0 });
+    res.cookies.set(SESSION_COOKIE_NAME, "", { ...baseCookieOptions(req), maxAge: 0 });
     return res;
   }
 

@@ -264,7 +264,7 @@ export async function PATCH(req: NextRequest) {
       },
     });
     res.cookies.set(SESSION_COOKIE_NAME, newToken, {
-      ...baseCookieOptions(),
+      ...baseCookieOptions(req),
       maxAge: sessionCookieMaxAgeSec(),
     });
     return res;
