@@ -3,6 +3,11 @@ import crypto from "node:crypto";
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
 import { normalizePaddleProductNameToken } from "@/lib/paddle-product-label";
+import {
+  cancelSubscriptionImmediately,
+  createBilledRecurringTransaction,
+  PaddleApiError,
+} from "@/lib/paddle-api";
 
 const SUBSCRIPTIONS_TABLE = "subscription_systems";
 const PAYMENT_SYSTEM = "paddle";
@@ -53,10 +58,15 @@ interface PaddleItem {
 interface PaddleSubscription {
   id: string;
   status: PaddleSubStatus;
+  customer_id?: string | null;
+  address_id?: string | null;
+  business_id?: string | null;
+  currency_code?: string | null;
+  discount?: { id?: string | null; effective_from?: string | null } | null;
   custom_data?: { userId?: string | number; plan?: string; billingPeriod?: string } | null;
   current_billing_period?: { starts_at?: string | null; ends_at?: string | null } | null;
   next_billed_at?: string | null;
-  scheduled_change?: { action: string; effective_at: string } | null;
+  scheduled_change?: { action: string; effective_at: string; resume_at?: string | null } | null;
   items?: PaddleItem[];
   transaction_id?: string | null;
 }
@@ -90,6 +100,19 @@ interface PaddleTxnPayment {
 interface PaddleTransaction {
   id: string;
   status?: string;
+  /**
+   * How the transaction came into existence. Relevant values:
+   *   - "web"                    — checkout overlay
+   *   - "subscription_recurring" — auto renewal
+   *   - "subscription_charge"    — one-time charge added to a subscription via
+   *                                POST /subscriptions/{id}/charge (← our
+   *                                Motionflow upgrade fee path)
+   *   - "subscription_update"    — proration adjustment from a PATCH
+   *   - "subscription_cancellation" — final invoice on cancel
+   *   - "api"                    — POST /transactions
+   * We use this to skip plan/period overwrites for non-recurring side charges.
+   */
+  origin?: string | null;
   subscription_id?: string | null;
   customer_id?: string | null;
   invoice_id?: string | null;
@@ -361,6 +384,38 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
   const userId = pickUserId(txn);
   if (!userId) return { ok: false, reason: "missing_userId_in_custom_data" };
 
+  // Skip side-charges that are NOT new recurring purchases. These are
+  // one-time charges layered onto an existing subscription (e.g. our
+  // Motionflow upgrade prorated fee created via POST /subscriptions/{id}/charge,
+  // or Paddle's own subscription_update / subscription_cancellation invoices).
+  // If we ran the regular upsert for them we would clobber the existing
+  // recurring row's `plan`, `paddle_price_id`, billing period, etc. with the
+  // one-time price's metadata — which is how an active subscription gets
+  // re-stamped as `lifetime` (one-time prices have `billing_cycle: null`).
+  //
+  // Detection rules (any one is enough):
+  //  1. `origin` is one of the side-charge origins above.
+  //  2. Transaction has a `subscription_id` AND every item's price has
+  //     `billing_cycle == null` (true for non-catalog one-time charges).
+  const sideChargeOrigins = new Set([
+    "subscription_charge",
+    "subscription_update",
+    "subscription_cancellation",
+  ]);
+  const allItemsAreOneTime =
+    Array.isArray(txn.items) &&
+    txn.items.length > 0 &&
+    txn.items.every((i) => i.price?.billing_cycle == null);
+  const isSideCharge =
+    !!txn.subscription_id &&
+    ((txn.origin && sideChargeOrigins.has(txn.origin)) || allItemsAreOneTime);
+  if (isSideCharge) {
+    console.info(
+      `[paddle] upsertFromTransaction: skipping side-charge ${txn.id} on subscription ${txn.subscription_id} (origin=${txn.origin ?? "?"})`,
+    );
+    return { ok: true, reason: "side_charge_skipped" };
+  }
+
   // For recurring purchases the subscription_id is the stable key; for one-time
   // purchases there isn't one, so fall back to the transaction id (matches
   // legacy Laravel behaviour where lifetime rows have `subscription_id = txn_…`).
@@ -472,11 +527,119 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/*  "One active subscription per buyer" invariant                              */
+/* -------------------------------------------------------------------------- */
+
+/** Hard-coded third-party author bundles (Premiere Gal, Spunkram). Mirrors `lib/subscriptions.ts`. */
+const THIRD_PARTY_AUTHOR_IDS = new Set<number>([4141, 1691]);
+
+interface SiblingRow extends RowDataPacket {
+  id: number;
+  buyer_id: number;
+  subscription_id: string;
+  plan: string | null;
+  status: number;
+  ends_at: string | null;
+  author_id: number | null;
+  paddle_product_id: string | null;
+}
+
+/**
+ * After a brand-new Paddle checkout completes for an existing buyer, cancel
+ * any other active Motionflow catalog subscriptions they have so we keep the
+ * "one active subscription per buyer_id" invariant. Best-effort: Paddle API
+ * failures are logged but do not block the webhook.
+ *
+ * Lifetime/one-time rows (no recurring `sub_…` id) are skipped, as are
+ * third-party bundles that live in the same table.
+ */
+export async function cancelOtherActiveSubscriptionsForBuyer(
+  buyerId: number,
+  exceptSubscriptionId: string,
+): Promise<{ cancelled: number; failed: number }> {
+  const pool = getPool();
+  const [rows] = await pool.execute<SiblingRow[]>(
+    `SELECT id, buyer_id, subscription_id, plan, status, ends_at, author_id, paddle_product_id
+       FROM \`${SUBSCRIPTIONS_TABLE}\`
+      WHERE buyer_id = ?
+        AND subscription_id <> ?
+        AND status = 1
+        AND (ends_at IS NULL OR ends_at > NOW())`,
+    [buyerId, exceptSubscriptionId],
+  );
+
+  const targets = rows.filter((r) => {
+    // Skip lifetime / one-time rows (legacy lifetime rows have plan='lifetime'
+    // and a subscription_id that is the transaction id — not a Paddle sub).
+    if (r.plan === "lifetime") return false;
+    if (!r.subscription_id?.startsWith("sub_")) return false;
+    // Skip third-party author bundles (they're a separate product line).
+    if (r.author_id != null && THIRD_PARTY_AUTHOR_IDS.has(r.author_id)) return false;
+    return true;
+  });
+
+  let cancelled = 0;
+  let failed = 0;
+
+  for (const r of targets) {
+    try {
+      await cancelSubscriptionImmediately(r.subscription_id, {
+        idempotencyKey: `mf_cancel_sibling_${r.subscription_id}_${exceptSubscriptionId}`,
+      });
+    } catch (err) {
+      // 404 = already gone; treat as success. Anything else: best-effort, log and move on.
+      if (err instanceof PaddleApiError && err.status === 404) {
+        // pass-through
+      } else {
+        failed += 1;
+        console.error(
+          `[paddle] Failed to cancel sibling subscription ${r.subscription_id} for buyer ${buyerId}:`,
+          err,
+        );
+        continue;
+      }
+    }
+
+    // Mark cancelled in our DB right now — don't wait for the cancel webhook.
+    try {
+      await pool.execute<ResultSetHeader>(
+        `UPDATE \`${SUBSCRIPTIONS_TABLE}\`
+            SET \`status\`    = -1,
+                \`ends_at\`   = NOW(),
+                \`updated_at\`= NOW()
+          WHERE \`id\` = ?`,
+        [r.id],
+      );
+      cancelled += 1;
+    } catch (dbErr) {
+      failed += 1;
+      console.error(
+        `[paddle] Failed to mark sibling subscription ${r.subscription_id} cancelled in DB:`,
+        dbErr,
+      );
+    }
+  }
+
+  if (cancelled > 0 || failed > 0) {
+    console.info(
+      `[paddle] Buyer ${buyerId}: cancelled ${cancelled} sibling subscription(s), ${failed} failure(s).`,
+    );
+  }
+
+  return { cancelled, failed };
+}
+
 /**
  * Light update applied on `subscription.activated|updated|resumed`. Refreshes
  * status/plan/ends_at/trial_ends_at on an existing row but does NOT create one
  * (creation happens in `transaction.completed`, which carries all the monetary
  * data we need to satisfy NOT NULL columns like `payment_id` / `arguments`).
+ *
+ * Also mirrors `scheduled_change` (downgrade scheduled at period end). The
+ * `paddle_price_id` / `paddle_product_id` for the *target* of a scheduled
+ * change are filled in by `POST /api/subscription/schedule-downgrade` before
+ * this webhook arrives; we use `COALESCE` here so we don't wipe them.
  */
 export async function refreshSubscription(sub: PaddleSubscription): Promise<{
   ok: boolean;
@@ -492,6 +655,17 @@ export async function refreshSubscription(sub: PaddleSubscription): Promise<{
   const paddleProductName = pickPaddleProductName(sub.items);
   const billingPeriod = pickCurrentBillingPeriodFromSubscription(sub);
 
+  // Scheduled change (downgrade) — Paddle's webhook payload only carries action +
+  // effective_at; the target price ids are populated separately by our
+  // schedule-downgrade endpoint.
+  const scheduledChangeAction = sub.scheduled_change?.action ?? null;
+  const scheduledChangeEffectiveAt = sub.scheduled_change?.effective_at
+    ? toMysqlDateTime(sub.scheduled_change.effective_at)
+    : null;
+  // When scheduled_change is null we explicitly clear the columns — Paddle has
+  // either applied the swap or the user dropped it.
+  const clearScheduledChange = sub.scheduled_change == null;
+
   const pool = getPool();
   const [result] = await pool.execute<ResultSetHeader>(
     `UPDATE \`${SUBSCRIPTIONS_TABLE}\`
@@ -504,6 +678,12 @@ export async function refreshSubscription(sub: PaddleSubscription): Promise<{
             \`paddle_product_name\` = COALESCE(?, \`paddle_product_name\`),
             \`paddle_billing_period_starts_at\` = COALESCE(?, \`paddle_billing_period_starts_at\`),
             \`paddle_billing_period_ends_at\` = COALESCE(?, \`paddle_billing_period_ends_at\`),
+            \`scheduled_change_action\`        = CASE WHEN ? THEN NULL ELSE COALESCE(?, \`scheduled_change_action\`) END,
+            \`scheduled_change_effective_at\`  = CASE WHEN ? THEN NULL ELSE COALESCE(?, \`scheduled_change_effective_at\`) END,
+            \`scheduled_change_paddle_product_id\`   = CASE WHEN ? THEN NULL ELSE \`scheduled_change_paddle_product_id\` END,
+            \`scheduled_change_paddle_price_id\`     = CASE WHEN ? THEN NULL ELSE \`scheduled_change_paddle_price_id\` END,
+            \`scheduled_change_paddle_product_name\` = CASE WHEN ? THEN NULL ELSE \`scheduled_change_paddle_product_name\` END,
+            \`scheduled_change_plan\`                = CASE WHEN ? THEN NULL ELSE \`scheduled_change_plan\` END,
             \`updated_at\`    = NOW()
       WHERE \`subscription_id\` = ?`,
     [
@@ -516,6 +696,14 @@ export async function refreshSubscription(sub: PaddleSubscription): Promise<{
       paddleProductName,
       billingPeriod.startsAt,
       billingPeriod.endsAt,
+      clearScheduledChange ? 1 : 0,
+      scheduledChangeAction,
+      clearScheduledChange ? 1 : 0,
+      scheduledChangeEffectiveAt,
+      clearScheduledChange ? 1 : 0,
+      clearScheduledChange ? 1 : 0,
+      clearScheduledChange ? 1 : 0,
+      clearScheduledChange ? 1 : 0,
       sub.id,
     ],
   );
@@ -558,6 +746,128 @@ export async function markSubscriptionCanceled(
 }
 
 /* -------------------------------------------------------------------------- */
+/*  Auto re-subscribe after a scheduled downgrade                              */
+/* -------------------------------------------------------------------------- */
+
+interface ScheduledTargetRow extends RowDataPacket {
+  buyer_id: number;
+  scheduled_change_paddle_price_id: string | null;
+  scheduled_change_plan: string | null;
+}
+
+/**
+ * Map every `NEXT_PUBLIC_PADDLE_PRICE_…` we know to the tier label used in
+ * `customData.plan` when opening checkout from `pricing-page-client.tsx`.
+ * Mirrors `CATALOG_PRICE_LOOKUP` in `lib/subscriptions.ts` but lives here
+ * because we only need it for outbound transaction creation.
+ */
+const AUTO_RESUBSCRIBE_PRICE_TIERS: Record<string, "creator" | "creator_ai"> = (() => {
+  const map: Record<string, "creator" | "creator_ai"> = {};
+  const cM = process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_MONTHLY;
+  const cY = process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_YEARLY;
+  const aM = process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_AI_MONTHLY;
+  const aY = process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_AI_YEARLY;
+  if (cM) map[cM] = "creator";
+  if (cY) map[cY] = "creator";
+  if (aM) map[aM] = "creator_ai";
+  if (aY) map[aY] = "creator_ai";
+  return map;
+})();
+
+/**
+ * If the just-canceled subscription had a scheduled downgrade target stored
+ * in our DB (set by `POST /api/subscription/schedule-downgrade`), bill the
+ * customer's saved card for the new plan. Paddle creates a fresh subscription
+ * tied to the same customer, fires `transaction.completed` → our existing
+ * `upsertFromTransaction` writes the new row, and `cancelOtherActiveSubscriptionsForBuyer`
+ * keeps the "one active subscription per buyer" invariant.
+ *
+ * Best-effort: failures are logged but do NOT fail the webhook. If the auto
+ * charge fails (e.g. card declined) we leave the user without a subscription
+ * and surface the situation in the pricing page UI as "no active plan" so
+ * they can re-checkout manually.
+ */
+async function autoResubscribeAfterDowngrade(sub: PaddleSubscription): Promise<void> {
+  if (!sub.id || !sub.customer_id) return;
+
+  const pool = getPool();
+  const [rows] = await pool.execute<ScheduledTargetRow[]>(
+    `SELECT buyer_id,
+            scheduled_change_paddle_price_id,
+            scheduled_change_plan
+       FROM \`${SUBSCRIPTIONS_TABLE}\`
+      WHERE subscription_id = ?
+      LIMIT 1`,
+    [sub.id],
+  );
+  const row = rows[0];
+  const targetPriceId = row?.scheduled_change_paddle_price_id?.trim() ?? null;
+  if (!row || !targetPriceId) return;
+
+  const buyerId = Number(row.buyer_id);
+  if (!Number.isFinite(buyerId) || buyerId <= 0) return;
+
+  try {
+    const txn = await createBilledRecurringTransaction(
+      {
+        customerId: sub.customer_id,
+        priceId: targetPriceId,
+        addressId: sub.address_id ?? null,
+        businessId: sub.business_id ?? null,
+        currencyCode: sub.currency_code ?? null,
+        discountId: sub.discount?.id ?? null,
+        customData: {
+          userId: String(buyerId),
+          plan: AUTO_RESUBSCRIBE_PRICE_TIERS[targetPriceId] ?? "creator",
+          billingPeriod: row.scheduled_change_plan === "annual" ? "yearly" : "monthly",
+          source: "auto-downgrade",
+          previousSubscriptionId: sub.id,
+        },
+      },
+      {
+        idempotencyKey: `mf_dg_resubscribe_${sub.id}_${targetPriceId}`,
+      },
+    );
+    console.info(
+      `[paddle] Auto re-subscribed buyer ${buyerId} to ${targetPriceId} after cancellation of ${sub.id} → txn ${txn.id} (${txn.status})`,
+    );
+  } catch (err) {
+    if (err instanceof PaddleApiError) {
+      console.error(
+        `[paddle] Auto re-subscribe failed for buyer ${buyerId} (sub ${sub.id} → ${targetPriceId}):`,
+        err.status,
+        err.body,
+      );
+    } else {
+      console.error(
+        `[paddle] Auto re-subscribe unexpected error for buyer ${buyerId} (sub ${sub.id} → ${targetPriceId}):`,
+        err,
+      );
+    }
+  } finally {
+    // Wipe the scheduled target so we don't accidentally try to re-charge if
+    // the same subscription emits `subscription.canceled` again (Paddle
+    // occasionally redelivers webhooks). Failure here is non-fatal.
+    try {
+      await pool.execute<ResultSetHeader>(
+        `UPDATE \`${SUBSCRIPTIONS_TABLE}\`
+            SET \`scheduled_change_action\`              = NULL,
+                \`scheduled_change_effective_at\`        = NULL,
+                \`scheduled_change_paddle_product_id\`   = NULL,
+                \`scheduled_change_paddle_price_id\`     = NULL,
+                \`scheduled_change_paddle_product_name\` = NULL,
+                \`scheduled_change_plan\`                = NULL,
+                \`updated_at\`                           = NOW()
+          WHERE \`subscription_id\` = ?`,
+        [sub.id],
+      );
+    } catch (clearErr) {
+      console.warn(`[paddle] Failed to clear scheduled target on ${sub.id}:`, clearErr);
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------- */
 /*  Event router                                                               */
 /* -------------------------------------------------------------------------- */
 
@@ -586,6 +896,21 @@ export async function handlePaddleEvent(
       return { handled: false, reason: `transaction_status_${txn.status}` };
     }
     const result = await upsertFromTransaction(txn);
+    if (result.ok) {
+      // Enforce "one active subscription per buyer_id": after a brand-new
+      // checkout completes, cancel any other active Motionflow rows the buyer
+      // has. Best-effort — failures are logged and don't fail the webhook.
+      const buyerId = pickUserId(txn);
+      const newSubscriptionId = txn.subscription_id ?? txn.id;
+      if (buyerId && newSubscriptionId.startsWith("sub_")) {
+        cancelOtherActiveSubscriptionsForBuyer(buyerId, newSubscriptionId).catch((err) => {
+          console.error(
+            `[paddle] cancelOtherActiveSubscriptionsForBuyer threw for buyer ${buyerId}:`,
+            err,
+          );
+        });
+      }
+    }
     return { handled: result.ok, reason: result.reason };
   }
 
@@ -601,6 +926,15 @@ export async function handlePaddleEvent(
     const sub = event.data as PaddleSubscription;
     if (!sub?.id) return { handled: false, reason: "missing_subscription_id" };
     const result = await markSubscriptionCanceled(sub);
+    // Fire-and-forget: if this cancellation was the tail end of a scheduled
+    // downgrade, bill the customer for the chosen target plan via the
+    // transactions API. Wrapped in catch so it never fails the webhook
+    // response.
+    if (event.event_type === "subscription.canceled") {
+      autoResubscribeAfterDowngrade(sub).catch((err) => {
+        console.error(`[paddle] autoResubscribeAfterDowngrade threw for ${sub.id}:`, err);
+      });
+    }
     return { handled: result.ok, reason: result.reason };
   }
 

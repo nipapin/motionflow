@@ -45,6 +45,12 @@ type SubRow = RowDataPacket & {
   paddle_product_name: string | null;
   paddle_billing_period_starts_at: string | null;
   paddle_billing_period_ends_at: string | null;
+  scheduled_change_action: string | null;
+  scheduled_change_effective_at: string | null;
+  scheduled_change_paddle_product_id: string | null;
+  scheduled_change_paddle_price_id: string | null;
+  scheduled_change_paddle_product_name: string | null;
+  scheduled_change_plan: string | null;
 };
 
 const TITLES: Record<number | string, string> = {
@@ -105,6 +111,20 @@ function resolveSubscriptionPresentation(r: SubRow): {
   productPage: string;
   invertIcon: boolean;
 } {
+  // Highest-confidence: when the row's `paddle_price_id` matches a catalog
+  // price, the tier is canonical and we ignore whatever `paddle_product_name`
+  // happens to hold (one-time charges, prorated upgrade fees, mis-named
+  // products in Paddle dashboard etc. should never leak into the UI title).
+  const catalogTier = catalogTierFromRow(r);
+  if (catalogTier) {
+    return {
+      subsFor: applyMotionflowProductTitleTemplate(MOTIONFLOW_TIER_TOKENS[catalogTier]),
+      icon: ICONS[""],
+      productPage: PRODUCT_PAGES[""],
+      invertIcon: true,
+    };
+  }
+
   const paddlePid = r.paddle_product_id?.trim() ?? "";
   if (paddlePid && PADDLE_PRODUCT_TITLES[paddlePid]) {
     const icon = PADDLE_PRODUCT_ICONS[paddlePid] ?? PADDLE_PRODUCT_ICONS[""];
@@ -135,6 +155,28 @@ function resolveSubscriptionPresentation(r: SubRow): {
     productPage: PRODUCT_PAGES[authorKey] ?? PRODUCT_PAGES[""],
     invertIcon: !hasKnownAuthor,
   };
+}
+
+/** Canonical token piece used inside `Motionflow %ProductName%`. */
+const MOTIONFLOW_TIER_TOKENS: Record<PricingTier, string> = {
+  creator: "Creator",
+  creator_ai: "Creator AI",
+};
+
+/**
+ * Returns "creator" | "creator_ai" if the row's `paddle_price_id` is one of
+ * the four catalog prices configured via env. Returns `null` otherwise.
+ *
+ * Keeping this lookup-only (no name parsing) means that even a row with a
+ * weird `paddle_product_name` (e.g. left over from a one-time upgrade charge
+ * before the side-charge skip was added in `paddle-server.ts`) will still
+ * render with the correct canonical title.
+ */
+function catalogTierFromRow(r: SubRow): PricingTier | null {
+  const priceId = r.paddle_price_id?.trim();
+  if (!priceId) return null;
+  const hit = CATALOG_PRICE_LOOKUP.get(priceId);
+  return hit?.tier ?? null;
 }
 
 function formatDateDMY(raw: string | null): string | null {
@@ -204,6 +246,144 @@ export async function getSubscriptionsForUser(
   });
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Active subscription summary (drives the pricing page UI)                  */
+/* -------------------------------------------------------------------------- */
+
+export type PricingTier = "creator" | "creator_ai";
+export type PricingBillingPeriod = "monthly" | "yearly";
+
+export interface ScheduledPlanChangeSummary {
+  /** "update" → swap to a different plan; "cancel"/"pause" → simple end. */
+  action: string;
+  effectiveAt: string;
+  /** Resolved tier/period if Paddle scheduled an item swap that we recognise. */
+  tier: PricingTier | null;
+  billingPeriod: PricingBillingPeriod | null;
+  /** Raw Paddle ids in case the new plan is not in our catalog map yet. */
+  paddleProductId: string | null;
+  paddlePriceId: string | null;
+  paddleProductName: string | null;
+}
+
+export interface ActiveSubscriptionSummary {
+  paddleSubscriptionId: string;
+  tier: PricingTier;
+  billingPeriod: PricingBillingPeriod;
+  /** End of the current paid period (next renewal date for active subs). */
+  currentPeriodEnd: string | null;
+  /** Cancelled but still in a paid grace period. */
+  cancelled: boolean;
+  scheduledChange: ScheduledPlanChangeSummary | null;
+}
+
+function dbPlanToBillingPeriod(plan: string | null | undefined): PricingBillingPeriod {
+  // Paddle yearly cycles map to DB enum 'annual'; everything else collapses to monthly for UI purposes.
+  const v = (plan ?? "").toLowerCase();
+  if (v === "annual" || v === "yearly") return "yearly";
+  return "monthly";
+}
+
+/**
+ * Maps every catalog price id we know about (`NEXT_PUBLIC_PADDLE_PRICE_…`)
+ * back to its (tier, billingPeriod). Used for resolving the *target* of a
+ * scheduled downgrade — the row only stores the price id, not the tier.
+ */
+const CATALOG_PRICE_LOOKUP: Map<string, { tier: PricingTier; billingPeriod: PricingBillingPeriod }> = new Map(
+  (
+    [
+      [process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_MONTHLY, "creator", "monthly"] as const,
+      [process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_YEARLY, "creator", "yearly"] as const,
+      [process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_AI_MONTHLY, "creator_ai", "monthly"] as const,
+      [process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_AI_YEARLY, "creator_ai", "yearly"] as const,
+    ] as ReadonlyArray<readonly [string | undefined, PricingTier, PricingBillingPeriod]>
+  )
+    .filter(([id]) => typeof id === "string" && id.length > 0)
+    .map(([id, tier, billingPeriod]) => [id as string, { tier, billingPeriod }]),
+);
+
+function rowToActiveSummary(r: SubRow): ActiveSubscriptionSummary {
+  const tier: PricingTier = rowIsCreatorPlusAi(r) ? "creator_ai" : "creator";
+  const billingPeriod = dbPlanToBillingPeriod(r.plan);
+
+  let scheduledChange: ScheduledPlanChangeSummary | null = null;
+  if (r.scheduled_change_action && r.scheduled_change_effective_at) {
+    const sName = r.scheduled_change_paddle_product_name?.trim() || null;
+    const sPriceId = r.scheduled_change_paddle_price_id?.trim() || null;
+    const sProductId = r.scheduled_change_paddle_product_id?.trim() || null;
+
+    let nextTier: PricingTier | null = null;
+    let nextBillingPeriod: PricingBillingPeriod | null = r.scheduled_change_plan
+      ? dbPlanToBillingPeriod(r.scheduled_change_plan)
+      : null;
+
+    // Highest-confidence resolution first: catalog price id from env.
+    const catalogHit = sPriceId ? CATALOG_PRICE_LOOKUP.get(sPriceId) : null;
+    if (catalogHit) {
+      nextTier = catalogHit.tier;
+      nextBillingPeriod = catalogHit.billingPeriod;
+    } else if (sPriceId && CREATOR_AI_PADDLE_PRICE_IDS.has(sPriceId)) {
+      nextTier = "creator_ai";
+    } else if (sProductId && CREATOR_AI_PADDLE_PRODUCT_IDS.has(sProductId)) {
+      nextTier = "creator_ai";
+    } else if (sName) {
+      const token = normalizePaddleProductNameToken(sName);
+      if (
+        /\bcreator\s*\+\s*ai\b/i.test(token) ||
+        /\bcreator\s+ai\b/i.test(token) ||
+        /\+\s*ai\b/i.test(token) ||
+        (/\bcreator\b/i.test(token) && /\bai\b/i.test(token))
+      ) {
+        nextTier = "creator_ai";
+      } else if (/\bcreator\b/i.test(token)) {
+        nextTier = "creator";
+      }
+    }
+
+    scheduledChange = {
+      action: r.scheduled_change_action,
+      effectiveAt: r.scheduled_change_effective_at,
+      tier: nextTier,
+      billingPeriod: nextBillingPeriod,
+      paddleProductId: sProductId,
+      paddlePriceId: sPriceId,
+      paddleProductName: sName,
+    };
+  }
+
+  return {
+    paddleSubscriptionId: String(r.subscription_id ?? ""),
+    tier,
+    billingPeriod,
+    currentPeriodEnd: r.paddle_billing_period_ends_at ?? r.ends_at ?? null,
+    cancelled: r.status === -1,
+    scheduledChange,
+  };
+}
+
+/**
+ * Single active Motionflow catalog subscription for a buyer, or null.
+ *
+ * The DB invariant we maintain is "at most one active Motionflow row per
+ * buyer_id" (enforced in `paddle-server.ts` by cancelling stale rows when a
+ * new transaction completes). If multiple active rows somehow coexist we
+ * prefer Creator + AI > Creator (newest within tier wins).
+ */
+export async function getActiveSubscriptionForUser(
+  userId: number,
+): Promise<ActiveSubscriptionSummary | null> {
+  const pool = getPool();
+  const [rows] = await pool.execute<SubRow[]>(GENERATION_SUBSCRIPTION_SQL, [userId]);
+
+  const activeCatalog = rows.filter(
+    (r) => rowIsMotionflowCatalogSubscription(r) && rowIsActive(r),
+  );
+  if (activeCatalog.length === 0) return null;
+  const tierRow = pickTierRowForGenerations(activeCatalog);
+  if (!tierRow) return null;
+  return rowToActiveSummary(tierRow);
+}
+
 function rowIsActive(r: SubRow): boolean {
   return computeRowActiveState(r).active;
 }
@@ -265,7 +445,10 @@ function rowIsCreatorPlusAi(r: SubRow): boolean {
 
 const GENERATION_SUBSCRIPTION_SQL = `SELECT id, author_id, status, subscription_id, plan, ends_at, created_at,
             paddle_product_id, paddle_price_id, paddle_product_name,
-            paddle_billing_period_starts_at, paddle_billing_period_ends_at
+            paddle_billing_period_starts_at, paddle_billing_period_ends_at,
+            scheduled_change_action, scheduled_change_effective_at,
+            scheduled_change_paddle_product_id, scheduled_change_paddle_price_id,
+            scheduled_change_paddle_product_name, scheduled_change_plan
      FROM \`${TABLE}\`
      WHERE buyer_id = ?
      ORDER BY id DESC`;

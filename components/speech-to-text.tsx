@@ -1,15 +1,22 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { Mic, MicOff, Upload, Download, RefreshCw, Trash2, Copy, Check, FileAudio } from "lucide-react";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Mic, Upload, Download, RefreshCw, Trash2, Copy, Check, FileAudio } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/components/auth-provider";
 import { CreatorAiGateModal } from "@/components/creator-ai-gate-modal";
 import { SignInModal } from "@/components/sign-in-modal";
-import { cn } from "@/lib/utils";
 import { useCreatorAiGateAfterSignIn } from "@/hooks/use-creator-ai-gate-after-sign-in";
 import {
-  ConsumeGenerationError,
+  type GenerationStatus,
   useGenerations,
 } from "@/hooks/use-generations";
 import { GenerationsBadge } from "@/components/generations-badge";
@@ -18,48 +25,96 @@ import {
   getAiGenerateBlockReason,
 } from "@/lib/ai-generation-gate";
 
-const languageOptions = [
-  { id: "en", label: "English" },
-  { id: "es", label: "Spanish" },
-  { id: "fr", label: "French" },
-  { id: "de", label: "German" },
-  { id: "ru", label: "Russian" },
-  { id: "ja", label: "Japanese" },
-];
+type OutputFormat = "text" | "srt" | "vtt";
 
-const outputFormats = [
-  { id: "text", label: "Plain Text", extension: ".txt" },
-  { id: "srt", label: "SRT Subtitles", extension: ".srt" },
-  { id: "vtt", label: "VTT Subtitles", extension: ".vtt" },
+interface OutputFormatOption {
+  id: OutputFormat;
+  label: string;
+  extension: string;
+  mime: string;
+}
+
+const outputFormats: OutputFormatOption[] = [
+  { id: "text", label: "Plain Text (.txt)", extension: ".txt", mime: "text/plain" },
+  { id: "srt", label: "SRT Subtitles (.srt)", extension: ".srt", mime: "application/x-subrip" },
+  { id: "vtt", label: "VTT Subtitles (.vtt)", extension: ".vtt", mime: "text/vtt" },
 ];
 
 interface TranscriptionHistory {
   id: string;
   filename: string;
-  language: string;
-  duration: string;
+  format: OutputFormat;
   text: string;
+  detectedLanguage: string | null;
   timestamp: Date;
 }
 
-const mockHistory: TranscriptionHistory[] = [
-  {
-    id: "1",
-    filename: "interview_clip.mp3",
-    language: "en",
-    duration: "2:45",
-    text: "Today we're discussing the future of AI in creative industries...",
-    timestamp: new Date(Date.now() - 3600000),
-  },
-  {
-    id: "2",
-    filename: "podcast_intro.wav",
-    language: "en",
-    duration: "0:32",
-    text: "Welcome to the show! I'm your host and today we have an exciting episode...",
-    timestamp: new Date(Date.now() - 7200000),
-  },
-];
+type ApiGenerationRecord = {
+  id: string;
+  status: string;
+  settings: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+  error_message: string | null;
+  created_at: string;
+};
+
+function parseFormat(value: unknown): OutputFormat {
+  if (value === "srt" || value === "vtt" || value === "text") return value;
+  return "text";
+}
+
+function recordsToHistory(rows: ApiGenerationRecord[]): TranscriptionHistory[] {
+  const out: TranscriptionHistory[] = [];
+  for (const row of rows) {
+    if (row.status !== "ok" || !row.result) continue;
+    const r = row.result;
+    const s = row.settings;
+    const text =
+      typeof r.text === "string"
+        ? r.text
+        : typeof r.transcript === "string"
+          ? r.transcript
+          : "";
+    if (!text) continue;
+    const filename =
+      typeof s.filename === "string" && s.filename
+        ? s.filename
+        : "transcription";
+    const format = parseFormat(r.output_format ?? s.output_format);
+    const detectedLanguage =
+      typeof r.detected_language === "string" ? r.detected_language : null;
+    out.push({
+      id: row.id,
+      filename,
+      format,
+      text,
+      detectedLanguage,
+      timestamp: new Date(row.created_at),
+    });
+  }
+  return out;
+}
+
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
+const HISTORY_PREVIEW_LIMIT = 5;
+
+function stripExtension(name: string): string {
+  const idx = name.lastIndexOf(".");
+  if (idx <= 0) return name;
+  return name.slice(0, idx);
+}
+
+function downloadTextFile(content: string, filename: string, mime: string) {
+  const blob = new Blob([content], { type: `${mime};charset=utf-8` });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 export function SpeechToText() {
   const { user } = useAuth();
@@ -68,7 +123,8 @@ export function SpeechToText() {
     loading: generationsLoading,
     error: generationsError,
     authenticated,
-    consume,
+    setStatus: setGenerationsStatus,
+    refresh: refreshGenerations,
   } = useGenerations();
 
   const [signInOpen, setSignInOpen] = useState(false);
@@ -86,18 +142,43 @@ export function SpeechToText() {
     setCreatorAiVariant,
   );
 
-  const [isRecording, setIsRecording] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [selectedLanguage, setSelectedLanguage] = useState("en");
-  const [selectedFormat, setSelectedFormat] = useState("text");
+  const [selectedFormat, setSelectedFormat] = useState<OutputFormat>("text");
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcribedText, setTranscribedText] = useState("");
-  const [history, setHistory] = useState<TranscriptionHistory[]>(mockHistory);
+  const [transcribedFormat, setTranscribedFormat] =
+    useState<OutputFormat>("text");
+  const [transcribedFilename, setTranscribedFilename] = useState<string>("");
+  const [history, setHistory] = useState<TranscriptionHistory[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const refreshHistory = useCallback(async () => {
+    if (!user) {
+      setHistory([]);
+      return;
+    }
+    setHistoryLoading(true);
+    try {
+      const res = await fetch("/api/me/generation-records?tool=stt&limit=20", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as { items?: ApiGenerationRecord[] };
+      setHistory(recordsToHistory(data.items ?? []));
+    } catch {
+      /* ignore */
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    void refreshHistory();
+  }, [refreshHistory]);
 
   const remaining = generations?.remaining ?? 0;
   const atLimitForCreatorAi =
@@ -108,35 +189,18 @@ export function SpeechToText() {
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setUploadedFile(file);
+    if (!file) return;
+    if (file.size > MAX_FILE_BYTES) {
+      setErrorMessage("Audio file must be under 25 MB.");
+      return;
     }
-  };
-
-  const startRecording = () => {
-    setIsRecording(true);
-    setRecordingTime(0);
-    recordingIntervalRef.current = setInterval(() => {
-      setRecordingTime(prev => prev + 1);
-    }, 1000);
-  };
-
-  const stopRecording = () => {
-    setIsRecording(false);
-    if (recordingIntervalRef.current) {
-      clearInterval(recordingIntervalRef.current);
-    }
-  };
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    setErrorMessage(null);
+    setUploadedFile(file);
   };
 
   const handleTranscribe = async () => {
     setErrorMessage(null);
-    if (!uploadedFile && !isRecording && recordingTime === 0) return;
+    if (!uploadedFile) return;
     if (isTranscribing || generationsLoading) return;
 
     const block = getAiGenerateBlockReason(
@@ -166,46 +230,73 @@ export function SpeechToText() {
     setIsTranscribing(true);
 
     try {
-      await consume("stt");
-    } catch (err) {
-      if (
-        err instanceof ConsumeGenerationError &&
-        err.code === CREATOR_AI_REQUIRED_CODE
-      ) {
-        setCreatorAiVariant(
-          err.plan === "creator" ? "upgrade" : "subscribe",
-        );
+      const form = new FormData();
+      form.append("file", uploadedFile);
+      form.append("output_format", selectedFormat);
+
+      const res = await fetch("/api/generations/stt", {
+        method: "POST",
+        credentials: "include",
+        body: form,
+      });
+
+      const data = (await res.json().catch(() => ({}))) as {
+        text?: string;
+        output_format?: OutputFormat;
+        detected_language?: string | null;
+        filename?: string;
+        error?: string;
+        code?: string;
+        plan?: string;
+        generations?: GenerationStatus;
+      };
+
+      if (res.status === 403 && data.code === CREATOR_AI_REQUIRED_CODE) {
+        void refreshGenerations();
+        setCreatorAiVariant(data.plan === "creator" ? "upgrade" : "subscribe");
         setCreatorAiGateOpen(true);
-        setIsTranscribing(false);
         return;
       }
-      setErrorMessage(
-        err instanceof Error ? err.message : "Failed to start transcription",
-      );
-      setIsTranscribing(false);
-      return;
-    }
 
-    setTimeout(() => {
-      const result = uploadedFile 
-        ? "This is the transcribed text from your uploaded audio file. The AI has processed the speech and converted it into text format. You can now edit, copy, or download this transcription."
-        : "This is the transcribed text from your voice recording. The AI has captured your spoken words and converted them into text format accurately.";
-      
-      setTranscribedText(result);
-      
-      setHistory(prev => [{
-        id: Date.now().toString(),
-        filename: uploadedFile?.name || `Recording ${formatTime(recordingTime)}`,
-        language: selectedLanguage,
-        duration: uploadedFile ? "1:30" : formatTime(recordingTime),
-        text: result.substring(0, 80) + "...",
-        timestamp: new Date(),
-      }, ...prev]);
-      
-      setIsTranscribing(false);
+      if (!res.ok) {
+        if (data.generations) {
+          setGenerationsStatus(data.generations);
+        } else {
+          void refreshGenerations();
+        }
+        throw new Error(data.error || `Request failed (${res.status})`);
+      }
+
+      if (!data.text) {
+        throw new Error("No transcription returned");
+      }
+
+      if (data.generations) {
+        setGenerationsStatus(data.generations);
+      } else {
+        void refreshGenerations();
+      }
+
+      const resolvedFormat = data.output_format ?? selectedFormat;
+      const resolvedFilename = data.filename || uploadedFile.name;
+
+      setTranscribedText(data.text);
+      setTranscribedFormat(resolvedFormat);
+      setTranscribedFilename(resolvedFilename);
+
+      void refreshHistory();
+
       setUploadedFile(null);
-      setRecordingTime(0);
-    }, 2500);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to transcribe audio";
+      setErrorMessage(message);
+    } finally {
+      setIsTranscribing(false);
+    }
   };
 
   const copyToClipboard = () => {
@@ -214,18 +305,45 @@ export function SpeechToText() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const removeFromHistory = (id: string) => {
-    setHistory(prev => prev.filter(h => h.id !== id));
+  const removeFromHistory = useCallback(
+    async (id: string) => {
+      setHistory((prev) => prev.filter((h) => h.id !== id));
+      try {
+        await fetch(`/api/me/generation-records/${id}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+      } catch {
+        void refreshHistory();
+      }
+    },
+    [refreshHistory],
+  );
+
+  const downloadTranscription = (
+    text: string,
+    format: OutputFormat,
+    sourceName: string,
+  ) => {
+    const fmt = outputFormats.find((f) => f.id === format) ?? outputFormats[0];
+    const base = stripExtension(sourceName) || "transcription";
+    downloadTextFile(text, `${base}${fmt.extension}`, fmt.mime);
   };
+
+  const triggerClasses =
+    "w-full h-11 bg-background/50 border-blue-500/30 text-foreground rounded-xl px-4 hover:border-blue-500/60 focus-visible:border-blue-500/60 focus-visible:ring-blue-500/30";
+
+  const currentFormat =
+    outputFormats.find((f) => f.id === transcribedFormat) ?? outputFormats[0];
 
   return (
     <div className="max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-semibold text-foreground mb-2 tracking-tight">Speech to Text</h1>
-          <p className="text-muted-foreground">Convert audio recordings and files into accurate text transcriptions</p>
+          <p className="text-muted-foreground">Transcribe audio and video files with OpenAI Whisper large-v3</p>
         </div>
-        
+
         <GenerationsBadge
           status={generations}
           loading={generationsLoading}
@@ -236,43 +354,9 @@ export function SpeechToText() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-6">
-          {/* Recording Section */}
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
-            <label className="text-sm font-medium text-foreground mb-4 block">Record Audio</label>
-            <div className="flex flex-col items-center py-6">
-              <button
-                type="button"
-                onClick={isRecording ? stopRecording : startRecording}
-                className={cn(
-                  "w-24 h-24 rounded-full flex items-center justify-center smooth shadow-lg",
-                  isRecording 
-                    ? "bg-gradient-to-r from-red-600 to-red-500 text-white animate-pulse shadow-red-500/25" 
-                    : "bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:scale-105 shadow-blue-500/25"
-                )}
-              >
-                {isRecording ? <MicOff className="w-10 h-10" /> : <Mic className="w-10 h-10" />}
-              </button>
-              <div className="mt-4 text-center">
-                {isRecording ? (
-                  <>
-                    <p className="text-lg font-semibold text-red-400">{formatTime(recordingTime)}</p>
-                    <p className="text-sm text-muted-foreground">Recording... Click to stop</p>
-                  </>
-                ) : recordingTime > 0 ? (
-                  <>
-                    <p className="text-lg font-semibold text-foreground">{formatTime(recordingTime)}</p>
-                    <p className="text-sm text-muted-foreground">Recording ready</p>
-                  </>
-                ) : (
-                  <p className="text-sm text-muted-foreground">Click to start recording</p>
-                )}
-              </div>
-            </div>
-          </div>
-
           {/* Upload Section */}
           <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
-            <label className="text-sm font-medium text-foreground mb-3 block">Or Upload File</label>
+            <label className="text-sm font-medium text-foreground mb-3 block">Upload File</label>
             <input
               ref={fileInputRef}
               type="file"
@@ -294,60 +378,41 @@ export function SpeechToText() {
               ) : (
                 <div className="text-center">
                   <p className="text-sm text-muted-foreground">Drop audio/video file here</p>
-                  <p className="text-xs text-muted-foreground mt-1">MP3, WAV, M4A, MP4, MOV</p>
+                  <p className="text-xs text-muted-foreground mt-1">MP3, WAV, M4A, FLAC, OGG, MP4, MOV — up to 25 MB</p>
                 </div>
               )}
             </button>
           </div>
 
-          {/* Language Selection */}
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
-            <label className="text-sm font-medium text-foreground mb-3 block">Language</label>
-            <div className="grid grid-cols-3 gap-2">
-              {languageOptions.map((lang) => (
-                <button
-                  key={lang.id}
-                  type="button"
-                  onClick={() => setSelectedLanguage(lang.id)}
-                  className={cn(
-                    "px-3 py-2.5 rounded-xl text-sm font-medium smooth border",
-                    selectedLanguage === lang.id
-                      ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white border-transparent shadow-lg shadow-blue-500/25"
-                      : "bg-background/50 text-muted-foreground hover:text-foreground border-blue-500/20 hover:border-blue-500/40"
-                  )}
-                >
-                  {lang.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* Output Format */}
           <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
-            <label className="text-sm font-medium text-foreground mb-3 block">Output Format</label>
-            <div className="flex gap-2">
-              {outputFormats.map((format) => (
-                <button
-                  key={format.id}
-                  type="button"
-                  onClick={() => setSelectedFormat(format.id)}
-                  className={cn(
-                    "flex-1 py-2.5 rounded-xl text-sm font-medium smooth border",
-                    selectedFormat === format.id
-                      ? "bg-blue-500/10 border-blue-500/50 text-foreground"
-                      : "bg-background/50 border-blue-500/20 text-muted-foreground hover:border-blue-500/40"
-                  )}
-                >
-                  {format.label}
-                </button>
-              ))}
-            </div>
+            <label
+              htmlFor="stt-format"
+              className="text-sm font-medium text-foreground mb-3 block"
+            >
+              Output Format
+            </label>
+            <Select
+              value={selectedFormat}
+              onValueChange={(v) => setSelectedFormat(v as OutputFormat)}
+            >
+              <SelectTrigger id="stt-format" className={triggerClasses}>
+                <SelectValue placeholder="Select format" />
+              </SelectTrigger>
+              <SelectContent>
+                {outputFormats.map((format) => (
+                  <SelectItem key={format.id} value={format.id}>
+                    {format.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <Button
             onClick={() => void handleTranscribe()}
             disabled={
-              (!uploadedFile && recordingTime === 0) ||
+              !uploadedFile ||
               isTranscribing ||
               generationsLoading
             }
@@ -383,25 +448,35 @@ export function SpeechToText() {
               <h3 className="text-lg font-medium text-foreground">Transcription</h3>
               {transcribedText && (
                 <div className="flex items-center gap-2">
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
+                  <Button
+                    size="sm"
+                    variant="outline"
                     onClick={copyToClipboard}
                     className="border-blue-500/30 hover:border-blue-500/60 rounded-lg"
                   >
                     {copied ? <Check className="w-4 h-4 mr-1" /> : <Copy className="w-4 h-4 mr-1" />}
                     {copied ? "Copied" : "Copy"}
                   </Button>
-                  <Button size="sm" className="bg-white text-black hover:bg-white/90 rounded-lg">
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      downloadTranscription(
+                        transcribedText,
+                        transcribedFormat,
+                        transcribedFilename,
+                      )
+                    }
+                    className="bg-white text-black hover:bg-white/90 rounded-lg"
+                  >
                     <Download className="w-4 h-4 mr-1" />
-                    Download {outputFormats.find(f => f.id === selectedFormat)?.extension}
+                    Download {currentFormat.extension}
                   </Button>
                 </div>
               )}
             </div>
             {transcribedText ? (
               <div className="rounded-xl border border-blue-500/20 bg-background/30 p-5">
-                <p className="text-foreground leading-relaxed whitespace-pre-wrap">{transcribedText}</p>
+                <p className="text-foreground leading-relaxed whitespace-pre-wrap font-mono text-sm">{transcribedText}</p>
               </div>
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-center py-16">
@@ -409,48 +484,83 @@ export function SpeechToText() {
                   <Mic className="w-10 h-10 text-blue-400" />
                 </div>
                 <h3 className="text-lg font-medium text-foreground mb-2">No transcription yet</h3>
-                <p className="text-muted-foreground max-w-sm">Record audio or upload a file to get started</p>
+                <p className="text-muted-foreground max-w-sm">Upload a file to get started</p>
               </div>
             )}
           </div>
 
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
-            <h3 className="text-lg font-medium text-foreground mb-4">Previous Transcriptions</h3>
-            {history.length > 0 ? (
-              <div className="space-y-3">
-                {history.map((item) => (
-                  <div key={item.id} className="flex items-center gap-4 p-3 rounded-xl border border-blue-500/20 bg-background/30 hover:border-blue-500/40 smooth group">
-                    <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
-                      <FileAudio className="w-5 h-5 text-blue-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-foreground font-medium truncate">{item.filename}</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {languageOptions.find(l => l.id === item.language)?.label} | {item.duration}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        type="button"
-                        className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth"
-                      >
-                        <Download className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeFromHistory(item.id)}
-                        className="p-2 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 smooth"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+          {user ? (
+            <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-foreground">
+                  Previous Transcriptions
+                </h3>
+                <Link
+                  href="/profile/generations?tab=stt"
+                  className="text-sm text-blue-400 hover:underline"
+                >
+                  View all
+                </Link>
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">No previous transcriptions</p>
-            )}
-          </div>
+              {historyLoading && history.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  Loading…
+                </p>
+              ) : history.length > 0 ? (
+                <div className="space-y-3">
+                  {history.slice(0, HISTORY_PREVIEW_LIMIT).map((item) => {
+                    const fmt =
+                      outputFormats.find((f) => f.id === item.format) ??
+                      outputFormats[0];
+                    return (
+                      <div key={item.id} className="flex items-center gap-4 p-3 rounded-xl border border-blue-500/20 bg-background/30 hover:border-blue-500/40 smooth group">
+                        <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
+                          <FileAudio className="w-5 h-5 text-blue-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-foreground font-medium truncate">{item.filename}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {fmt.label}
+                            {item.detectedLanguage
+                              ? ` | ${item.detectedLanguage}`
+                              : ""}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              downloadTranscription(
+                                item.text,
+                                item.format,
+                                item.filename,
+                              )
+                            }
+                            className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth"
+                            title="Download"
+                          >
+                            <Download className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void removeFromHistory(item.id)}
+                            className="p-2 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 smooth"
+                            title="Remove"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  No previous transcriptions
+                </p>
+              )}
+            </div>
+          ) : null}
         </div>
       </div>
 

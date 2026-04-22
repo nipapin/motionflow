@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import Replicate from "replicate";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { requireCreatorAiForGeneration } from "@/lib/creator-ai-generation-access";
+import { uploadBufferToR2 } from "@/lib/r2-storage";
 
 export const runtime = "nodejs";
 
@@ -12,10 +12,6 @@ const ALLOWED_TYPES = new Set([
     "image/webp",
     "image/gif",
 ]);
-
-const replicate = new Replicate({
-    auth: process.env.REPLICATE_API_TOKEN,
-});
 
 export async function POST(req: NextRequest) {
     try {
@@ -30,16 +26,6 @@ export async function POST(req: NextRequest) {
         const creatorAi = await requireCreatorAiForGeneration(user.id);
         if (!creatorAi.ok) {
             return creatorAi.response;
-        }
-
-        if (!process.env.REPLICATE_API_TOKEN) {
-            return NextResponse.json(
-                {
-                    error:
-                        "Upload isn't available right now. Please try again later.",
-                },
-                { status: 503 },
-            );
         }
 
         const form = await req.formData();
@@ -67,14 +53,17 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const created = await replicate.files.create(file);
+        const buf = Buffer.from(await file.arrayBuffer());
 
-        const url = created.urls?.get;
-        if (!url || typeof url !== "string") {
-            console.error(
-                "[first-frame-upload] missing urls.get in response",
-                created,
-            );
+        let url: string;
+        try {
+            const result = await uploadBufferToR2(buf, {
+                contentType: type,
+                keyPrefix: `first-frame/${user.id}`,
+            });
+            url = result.url;
+        } catch (err) {
+            console.error("[first-frame-upload] R2 upload failed:", err);
             return NextResponse.json(
                 { error: "Could not store the image. Please try again." },
                 { status: 502 },

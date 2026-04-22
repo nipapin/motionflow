@@ -7,7 +7,7 @@ import {
 } from "@/lib/generations";
 import { requireCreatorAiForGeneration } from "@/lib/creator-ai-generation-access";
 import { insertGenerationRecord } from "@/lib/generation-records";
-import { mirrorReplicateDeliveryImageUrls } from "@/lib/replicate-mirror-output";
+import { mirrorReplicateUrlsToR2 } from "@/lib/replicate-mirror-output";
 
 export const runtime = "nodejs";
 
@@ -219,12 +219,12 @@ export async function POST(req: NextRequest) {
 
         let persistedImages: string[];
         try {
-            persistedImages = await mirrorReplicateDeliveryImageUrls(
-                replicate,
-                images,
-            );
+            persistedImages = await mirrorReplicateUrlsToR2(images, {
+                keyPrefix: `image/${user.id}`,
+                defaultContentType: "image/png",
+            });
         } catch (mirrorErr) {
-            console.error("[image generation] mirror to files failed:", mirrorErr);
+            console.error("[image generation] mirror to R2 failed:", mirrorErr);
             const msg =
                 mirrorErr instanceof Error
                     ? mirrorErr.message

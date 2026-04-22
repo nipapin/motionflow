@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { ArrowLeft, Mail, MessageSquare, Send } from "lucide-react";
+import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -18,7 +17,6 @@ const subjects = [
 ];
 
 export default function ContactPage() {
-  const router = useRouter();
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -33,22 +31,7 @@ export default function ContactPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background relative overflow-hidden">
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-blue-500/10 rounded-full blur-[120px]" />
-        <div className="absolute top-1/3 right-0 w-[500px] h-[500px] bg-purple-500/10 rounded-full blur-[120px]" />
-        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-cyan-500/8 rounded-full blur-[100px]" />
-      </div>
-
-      <div className="relative max-w-3xl mx-auto px-6 py-12">
-        <button
-          onClick={() => router.back()}
-          className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-12"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back
-        </button>
-
+    <div className="relative max-w-3xl mx-auto px-6 py-12">
         <div className="mb-12">
           <h1 className="text-4xl md:text-5xl font-semibold text-foreground mb-4 tracking-tight">
             Contact Us
@@ -56,42 +39,6 @@ export default function ContactPage() {
           <p className="text-muted-foreground text-lg max-w-2xl text-pretty leading-relaxed">
             Have a question or need help? We&apos;d love to hear from you.
           </p>
-        </div>
-
-        <div className="grid md:grid-cols-3 gap-6 mb-12">
-          <div className="rounded-2xl border border-blue-500/20 bg-card/80 backdrop-blur-sm p-6 text-center">
-            <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center mx-auto mb-3">
-              <Mail className="w-5 h-5 text-blue-400" />
-            </div>
-            <h3 className="text-sm font-medium text-foreground mb-1">Email</h3>
-            <p className="text-muted-foreground text-sm">
-              support@motionflow.studio
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-blue-500/20 bg-card/80 backdrop-blur-sm p-6 text-center">
-            <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center mx-auto mb-3">
-              <MessageSquare className="w-5 h-5 text-blue-400" />
-            </div>
-            <h3 className="text-sm font-medium text-foreground mb-1">
-              Live Chat
-            </h3>
-            <p className="text-muted-foreground text-sm">
-              Available 24/7 for subscribers
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-blue-500/20 bg-card/80 backdrop-blur-sm p-6 text-center">
-            <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center mx-auto mb-3">
-              <Send className="w-5 h-5 text-blue-400" />
-            </div>
-            <h3 className="text-sm font-medium text-foreground mb-1">
-              Response Time
-            </h3>
-            <p className="text-muted-foreground text-sm">
-              Within 24 hours
-            </p>
-          </div>
         </div>
 
         {submitted ? (
@@ -212,7 +159,16 @@ export default function ContactPage() {
             </Button>
           </form>
         )}
-      </div>
+
+        <p className="mt-6 text-center text-sm text-muted-foreground">
+          Or email us directly at{" "}
+          <a
+            href="mailto:support@motionflow.pro"
+            className="text-blue-400 hover:text-blue-300 transition-colors"
+          >
+            support@motionflow.pro
+          </a>
+        </p>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, type FormEvent } from "react";
+import { useState, useEffect, useCallback, type FormEvent } from "react";
 import {
   Video,
   Download,
@@ -12,6 +12,8 @@ import {
   Palette,
   ImageIcon,
   Frame,
+  Trash2,
+  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -38,6 +40,7 @@ import {
   CREATOR_AI_REQUIRED_CODE,
   getAiGenerateBlockReason,
 } from "@/lib/ai-generation-gate";
+import { replicateFileUrlToDisplaySrc } from "@/lib/replicate-file-display-url";
 
 const TARGET_RESOLUTION = "720" as const;
 
@@ -52,10 +55,13 @@ const aspectRatios = [
   { id: "1:1", label: "1:1 — Square" },
 ];
 
-function ratioIdToCssAspect(ratioId: string): string {
-  if (ratioId === "9:16") return "9 / 16";
-  if (ratioId === "1:1") return "1 / 1";
-  return "16 / 9";
+interface RecentVideo {
+  id: string;
+  url: string;
+  aspectRatio: string;
+  prompt: string;
+  style: string;
+  durationSec: string;
 }
 
 const stylePresets = [
@@ -85,21 +91,6 @@ const ffImageRatios = [
 const ffDialogTabTriggerClass =
   "text-xs sm:text-sm text-muted-foreground data-[state=active]:border-transparent data-[state=active]:bg-linear-to-r data-[state=active]:from-blue-600 data-[state=active]:to-blue-500 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:shadow-blue-500/30 data-[state=active]:dark:from-blue-600 data-[state=active]:dark:to-blue-500";
 
-interface VideoHistory {
-  id: string;
-  prompt: string;
-  style: string;
-  durationSec: string;
-  resolution: string;
-  aspectRatio: string;
-  videoUrl: string;
-  timestamp: Date;
-  kind?: "generate" | "extend";
-  recordStatus?: "ok" | "failed";
-  errorMessage?: string;
-  firstFrameUrl?: string;
-}
-
 type ApiGenerationRecord = {
   id: string;
   status: string;
@@ -109,35 +100,39 @@ type ApiGenerationRecord = {
   created_at: string;
 };
 
-function mapVideoRecord(row: ApiGenerationRecord): VideoHistory {
-  const s = row.settings;
-  const kind = s.kind === "extend" ? "extend" : "generate";
-  const videoUrl =
-    row.status === "ok" &&
-    row.result &&
-    typeof row.result.video === "string"
-      ? row.result.video
-      : "";
-  return {
-    id: row.id,
-    prompt: typeof s.prompt === "string" ? s.prompt : "",
-    style: typeof s.style === "string" ? s.style : "realistic",
-    durationSec:
-      kind === "extend"
-        ? String(s.extend_duration ?? "")
-        : String(s.duration ?? ""),
-    resolution:
-      typeof s.target_resolution === "string" ? s.target_resolution : "720",
-    aspectRatio:
-      typeof s.aspect_ratio === "string" ? s.aspect_ratio : "16:9",
-    videoUrl,
-    timestamp: new Date(row.created_at),
-    kind,
-    recordStatus: row.status === "failed" ? "failed" : "ok",
-    errorMessage: row.error_message ?? undefined,
-    firstFrameUrl:
-      typeof s.first_frame_url === "string" ? s.first_frame_url : undefined,
-  };
+const KNOWN_VIDEO_STYLES = new Set(stylePresets.map((s) => s.id));
+const KNOWN_VIDEO_RATIOS = new Set(aspectRatios.map((r) => r.id));
+const KNOWN_VIDEO_DURATIONS = new Set(durationOptions.map((d) => d.id));
+
+function recordsToRecentVideos(rows: ApiGenerationRecord[]): RecentVideo[] {
+  const out: RecentVideo[] = [];
+  for (const row of rows) {
+    if (row.status !== "ok" || !row.result) continue;
+    const url = row.result.video;
+    if (typeof url !== "string" || !url) continue;
+    const s = row.settings;
+    const aspectRatio =
+      typeof s.aspect_ratio === "string" && KNOWN_VIDEO_RATIOS.has(s.aspect_ratio)
+        ? s.aspect_ratio
+        : "16:9";
+    const style =
+      typeof s.style === "string" && KNOWN_VIDEO_STYLES.has(s.style)
+        ? s.style
+        : "realistic";
+    const rawDuration = String(s.duration ?? "5");
+    const durationSec = KNOWN_VIDEO_DURATIONS.has(rawDuration)
+      ? rawDuration
+      : "5";
+    out.push({
+      id: row.id,
+      url,
+      aspectRatio,
+      prompt: typeof s.prompt === "string" ? s.prompt : "",
+      style,
+      durationSec,
+    });
+  }
+  return out;
 }
 
 export function VideoGenerator() {
@@ -169,12 +164,60 @@ export function VideoGenerator() {
   const [prompt, setPrompt] = useState("");
   const [selectedDuration, setSelectedDuration] = useState("5");
   const [selectedAspectRatio, setSelectedAspectRatio] = useState("16:9");
-  const [previewAspectRatio, setPreviewAspectRatio] = useState("16:9");
   const [selectedStyle, setSelectedStyle] = useState("realistic");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedVideo, setGeneratedVideo] = useState<string | null>(null);
   const [lightboxVideo, setLightboxVideo] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [recentVideos, setRecentVideos] = useState<RecentVideo[]>([]);
+
+  const refreshRecentVideos = useCallback(async () => {
+    if (!user) {
+      setRecentVideos([]);
+      return;
+    }
+    try {
+      const res = await fetch(
+        "/api/me/generation-records?tool=video&limit=5",
+        { credentials: "include", cache: "no-store" },
+      );
+      if (!res.ok) return;
+      const data = (await res.json()) as { items?: ApiGenerationRecord[] };
+      setRecentVideos(recordsToRecentVideos(data.items ?? []).slice(0, 2));
+    } catch {
+      /* ignore */
+    }
+  }, [user]);
+
+  useEffect(() => {
+    void refreshRecentVideos();
+  }, [refreshRecentVideos]);
+
+  const deleteRecentVideo = useCallback(
+    async (id: string) => {
+      setRecentVideos((prev) => prev.filter((it) => it.id !== id));
+      try {
+        await fetch(`/api/me/generation-records/${id}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+      } catch {
+        void refreshRecentVideos();
+      }
+    },
+    [refreshRecentVideos],
+  );
+
+  const repeatRecentVideo = useCallback((item: RecentVideo) => {
+    setPrompt(item.prompt);
+    setSelectedStyle(item.style);
+    setSelectedAspectRatio(item.aspectRatio);
+    setSelectedDuration(item.durationSec);
+    setErrorMessage(null);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, []);
 
   const [firstFrameUrl, setFirstFrameUrl] = useState<string | null>(null);
   const [firstFrameDialogOpen, setFirstFrameDialogOpen] = useState(false);
@@ -194,37 +237,6 @@ export function VideoGenerator() {
     generations?.plan === "creator_ai" &&
     !generationsLoading &&
     remaining <= 0;
-
-  useEffect(() => {
-    if (!user) {
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch("/api/me/generation-records?tool=video&limit=100", {
-          credentials: "include",
-          cache: "no-store",
-        });
-        if (!res.ok || cancelled) return;
-        const data = (await res.json()) as { items?: ApiGenerationRecord[] };
-        const mapped = (data.items ?? []).map(mapVideoRecord);
-        if (cancelled) return;
-        const firstOk = mapped.find(
-          (h) => h.recordStatus === "ok" && h.videoUrl,
-        );
-        if (firstOk) {
-          setGeneratedVideo(firstOk.videoUrl);
-          setPreviewAspectRatio(firstOk.aspectRatio);
-        }
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.id]);
 
   useEffect(() => {
     if (!firstFrameDialogOpen || !user) return;
@@ -347,7 +359,7 @@ export function VideoGenerator() {
       }
 
       setGeneratedVideo(url);
-      setPreviewAspectRatio(selectedAspectRatio);
+      void refreshRecentVideos();
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to generate video";
@@ -716,7 +728,7 @@ export function VideoGenerator() {
                   <>
                     <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-blue-500/30 bg-black shrink-0">
                       <img
-                        src={firstFrameUrl}
+                        src={replicateFileUrlToDisplaySrc(firstFrameUrl)}
                         alt=""
                         className="w-full h-full object-cover"
                       />
@@ -842,17 +854,12 @@ export function VideoGenerator() {
             </h3>
             {generatedVideo ? (
               <div className="space-y-4">
-                <div
-                  className="relative rounded-xl overflow-hidden border border-blue-500/20 bg-black"
-                  style={{
-                    aspectRatio: ratioIdToCssAspect(previewAspectRatio),
-                  }}
-                >
+                <div className="flex justify-center">
                   <video
                     src={generatedVideo}
                     controls
                     playsInline
-                    className="w-full h-full object-contain max-h-[min(70vh,560px)]"
+                    className="block max-w-full h-auto max-h-[420px] w-auto rounded-xl border border-blue-500/20"
                   />
                 </div>
 
@@ -887,15 +894,90 @@ export function VideoGenerator() {
               </div>
             )}
           </div>
-          {user ? (
-            <p className="text-center text-sm text-muted-foreground">
-              <Link
-                href="/profile/generations"
-                className="text-blue-400 hover:underline"
-              >
-                View all generations
-              </Link>
-            </p>
+
+          {user && recentVideos.length > 0 ? (
+            <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-medium text-foreground">
+                  Recent generations
+                </h3>
+                <Link
+                  href="/profile/generations?tab=video"
+                  className="text-sm text-blue-400 hover:underline"
+                >
+                  View all
+                </Link>
+              </div>
+              <ul className="space-y-2">
+                {recentVideos.map((item) => {
+                  const styleLabel =
+                    stylePresets.find((s) => s.id === item.style)?.label ??
+                    item.style;
+                  return (
+                    <li
+                      key={item.id}
+                      className="flex items-center gap-3 p-2 rounded-xl border border-blue-500/20 bg-background/30 hover:border-blue-500/40 smooth"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setLightboxVideo(item.url)}
+                        className="w-20 h-14 shrink-0 rounded-lg overflow-hidden border border-blue-500/20 bg-black hover:opacity-80 smooth focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
+                      >
+                        <video
+                          src={item.url}
+                          muted
+                          playsInline
+                          preload="metadata"
+                          className="w-full h-full object-cover"
+                        />
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <p
+                          className="text-sm text-foreground truncate"
+                          title={item.prompt}
+                        >
+                          {item.prompt || "Untitled"}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {styleLabel} · {item.aspectRatio} · {item.durationSec}s
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => repeatRecentVideo(item)}
+                          title="Repeat with same settings"
+                          aria-label="Repeat generation"
+                          className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                        </button>
+                        <a
+                          href={item.url}
+                          download
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Download"
+                          aria-label="Download video"
+                          className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth"
+                        >
+                          <Download className="w-4 h-4" />
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => void deleteRecentVideo(item.id)}
+                          title="Delete"
+                          aria-label="Delete generation"
+                          className="p-2 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 smooth"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           ) : null}
         </div>
       </div>

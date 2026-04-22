@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { Music, Menu, X, Wand2, Video, MessageSquare, AudioLines, PanelLeftClose, PanelLeftOpen, Mic } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useGenerations } from "@/hooks/use-generations";
 
 const categories = [
   { name: "After Effects", text: "Ae", href: "/after-effects" },
@@ -35,6 +36,8 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showUpgradeBlock, setShowUpgradeBlock] = useState(!collapsed);
   const hasCollapsedOnce = useRef(false);
+  const { status: generationStatus } = useGenerations();
+  const hideUpgradeForPlan = generationStatus?.plan === "creator_ai";
 
   useEffect(() => {
     if (collapsed) {
@@ -121,7 +124,7 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
       "w-full flex items-center rounded-xl text-sm font-medium smooth",
       collapsed ? "justify-center px-0 py-3" : "gap-3 px-4 py-3",
       activeCategory === tool.name
-        ? "bg-gradient-to-r from-purple-600 to-purple-500 text-white shadow-lg shadow-purple-500/25"
+        ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/25"
         : "text-muted-foreground hover:text-foreground hover:bg-foreground/5",
     );
 
@@ -284,7 +287,7 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
         </div>
       </nav>
 
-      {showUpgradeBlock && (
+      {showUpgradeBlock && !hideUpgradeForPlan && (
         <div className="shrink-0 w-full min-w-0 p-4">
           <div className="w-full rounded-2xl border border-blue-500/20 bg-linear-to-br from-blue-500/10 via-purple-500/5 to-cyan-500/10 p-5 animate-in fade-in-0 duration-300">
             <h4 className="mb-1.5 whitespace-nowrap font-semibold tracking-tight text-foreground">Go Unlimited</h4>

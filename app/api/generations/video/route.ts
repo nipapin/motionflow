@@ -7,6 +7,7 @@ import {
 } from "@/lib/generations";
 import { requireCreatorAiForGeneration } from "@/lib/creator-ai-generation-access";
 import { insertGenerationRecord } from "@/lib/generation-records";
+import { mirrorReplicateUrlsToR2 } from "@/lib/replicate-mirror-output";
 
 export const runtime = "nodejs";
 /** Allow long-running Replicate jobs. Adjust if your host caps lower. */
@@ -107,9 +108,43 @@ function extractMediaUrl(output: unknown): string | null {
     return null;
 }
 
-function isHttpsUrl(value: string): boolean {
+/** Our `/api/replicate-files/{id}` proxy is for browsers; Seedance needs the Files API URL. */
+function normalizeFirstFrameUrlForReplicate(raw: string): string {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith("/api/replicate-files/")) {
+        const id = trimmed
+            .slice("/api/replicate-files/".length)
+            .replace(/\/$/, "");
+        if (id) {
+            return `https://api.replicate.com/v1/files/${decodeURIComponent(id)}`;
+        }
+    }
     try {
-        const u = new URL(value);
+        const u = new URL(trimmed);
+        if (u.pathname.startsWith("/api/replicate-files/")) {
+            const id = u.pathname
+                .slice("/api/replicate-files/".length)
+                .replace(/\/$/, "");
+            if (id) {
+                return `https://api.replicate.com/v1/files/${decodeURIComponent(id)}`;
+            }
+        }
+    } catch {
+        /* ignore */
+    }
+    return trimmed;
+}
+
+function isAllowedFirstFrameUrl(value: string): boolean {
+    const t = value.trim();
+    if (t.startsWith("/api/replicate-files/")) {
+        return t.length > "/api/replicate-files/".length;
+    }
+    try {
+        const u = new URL(t);
+        if (u.pathname.startsWith("/api/replicate-files/")) {
+            return u.pathname.length > "/api/replicate-files/".length;
+        }
         return u.protocol === "https:" || u.protocol === "http:";
     } catch {
         return false;
@@ -192,10 +227,10 @@ export async function POST(req: NextRequest) {
         if (
             first_frame_url !== undefined &&
             first_frame_url.length > 0 &&
-            !isHttpsUrl(first_frame_url)
+            !isAllowedFirstFrameUrl(first_frame_url)
         ) {
             return NextResponse.json(
-                { error: "First frame must be a valid http(s) image URL." },
+                { error: "First frame must be a valid image URL or a saved Replicate file path." },
                 { status: 400 },
             );
         }
@@ -228,7 +263,7 @@ export async function POST(req: NextRequest) {
 
         /** Replicate Seedance: optional image URL as motion reference / first frame. */
         if (first_frame_url) {
-            seedInput.image = first_frame_url;
+            seedInput.image = normalizeFirstFrameUrlForReplicate(first_frame_url);
         }
 
         let seedOutput: unknown;
@@ -282,6 +317,39 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: GENERIC_ERROR }, { status: 502 });
         }
 
+        let persistedVideoUrl: string;
+        try {
+            const [mirrored] = await mirrorReplicateUrlsToR2([videoUrl], {
+                keyPrefix: `video/${user.id}`,
+                defaultContentType: "video/mp4",
+            });
+            persistedVideoUrl = mirrored;
+        } catch (mirrorErr) {
+            console.error("[video generation] mirror to R2 failed:", mirrorErr);
+            const msg =
+                mirrorErr instanceof Error
+                    ? mirrorErr.message
+                    : "Could not save the generated video. Please try again.";
+            void insertGenerationRecord({
+                userId: user.id,
+                tool: "video",
+                status: "failed",
+                settings: {
+                    kind: "generate",
+                    prompt,
+                    style,
+                    aspect_ratio,
+                    duration,
+                    target_resolution,
+                    ...(first_frame_url
+                        ? { first_frame_url: first_frame_url }
+                        : {}),
+                },
+                errorMessage: msg,
+            });
+            return NextResponse.json({ error: msg }, { status: 502 });
+        }
+
         const consumed = await consumeGeneration(user.id, "video");
         if (!consumed.ok) {
             return NextResponse.json(
@@ -309,11 +377,11 @@ export async function POST(req: NextRequest) {
                     ? { first_frame_url: first_frame_url }
                     : {}),
             },
-            result: { video: videoUrl },
+            result: { video: persistedVideoUrl },
         });
 
         return NextResponse.json({
-            video: videoUrl,
+            video: persistedVideoUrl,
             prompt,
             style,
             aspect_ratio,

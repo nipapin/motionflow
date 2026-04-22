@@ -8,7 +8,7 @@ const sections = [
   {
     title: "1. Subscription Refunds",
     content:
-      "We offer a full refund within 7 days of your initial subscription purchase if you have not downloaded more than 5 assets. To request a refund, contact us at support@motionflow.studio with your account email and order details. Refunds are processed to the original payment method within 5–10 business days.",
+      "We offer a full refund within 7 days of your initial subscription purchase if you have not downloaded more than 5 assets. To request a refund, contact us at support@motionflow.pro with your account email and order details. Refunds are processed to the original payment method within 5–10 business days.",
   },
   {
     title: "2. Renewal Charges",
@@ -42,7 +42,7 @@ const sections = [
   },
   {
     title: "7. How to Request a Refund",
-    content: `To initiate a refund, send an email to support@motionflow.studio with:
+    content: `To initiate a refund, send an email to support@motionflow.pro with:
 
 • Your account email address.
 • Date of purchase.

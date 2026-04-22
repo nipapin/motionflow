@@ -45,7 +45,7 @@ const sections = [
 • Export your data in a portable format.
 • Withdraw consent at any time.
 
-To exercise these rights, contact us at support@motionflow.studio.`,
+To exercise these rights, contact us at support@motionflow.pro.`,
   },
   {
     title: "6. Data Retention",

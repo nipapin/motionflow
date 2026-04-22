@@ -7,7 +7,7 @@
 export const PRODUCT_NAME_PLACEHOLDER = "%ProductName%";
 
 /** Display string for catalog subscriptions; token is substituted at runtime. */
-export const MOTIONFLOW_SUBSCRIPTION_TITLE_TEMPLATE = `Motion Flow ${PRODUCT_NAME_PLACEHOLDER}`;
+export const MOTIONFLOW_SUBSCRIPTION_TITLE_TEMPLATE = `Motionflow ${PRODUCT_NAME_PLACEHOLDER}`;
 
 /* --- normalization (single pipeline, not exported in pieces) --- */
 

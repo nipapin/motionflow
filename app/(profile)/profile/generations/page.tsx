@@ -1,4 +1,5 @@
 import { Metadata } from "next";
+import { Suspense } from "react";
 import { ProfileGenerations } from "@/components/profile-generations";
 
 export const metadata: Metadata = {
@@ -7,5 +8,9 @@ export const metadata: Metadata = {
 };
 
 export default function ProfileGenerationsPage() {
-  return <ProfileGenerations />;
+  return (
+    <Suspense fallback={null}>
+      <ProfileGenerations />
+    </Suspense>
+  );
 }

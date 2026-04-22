@@ -57,7 +57,7 @@ const sections = [
   {
     title: "10. Contact",
     content:
-      "If you have any questions about these Terms of Use, please contact us at support@motionflow.studio.",
+      "If you have any questions about these Terms of Use, please contact us at support@motionflow.pro.",
   },
 ];
 
