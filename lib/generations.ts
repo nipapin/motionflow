@@ -2,10 +2,10 @@ import "server-only";
 import type { PoolConnection } from "mysql2/promise";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
-import type { MotionflowGenerationPlan } from "@/lib/generation-plan";
 import {
   getMotionflowGenerationContext,
   type MotionflowGenerationContext,
+  type MotionflowGenerationPlan,
 } from "@/lib/subscriptions";
 
 /** Lifetime cap for users without an active Motionflow Creator subscription. */

@@ -7,10 +7,23 @@ import {
   cancelSubscriptionImmediately,
   createBilledRecurringTransaction,
   PaddleApiError,
+  type PaddleApiBillingCycle,
+  type PaddleApiUnitPrice,
 } from "@/lib/paddle-api";
 
 const SUBSCRIPTIONS_TABLE = "subscription_systems";
 const PAYMENT_SYSTEM = "paddle";
+
+/**
+ * Transaction origins that indicate a side-charge on an existing subscription
+ * (not a new recurring purchase). Used in {@link upsertFromTransaction} to
+ * avoid clobbering the recurring row's plan/price metadata.
+ */
+const SIDE_CHARGE_ORIGINS = new Set([
+  "subscription_charge",
+  "subscription_update",
+  "subscription_cancellation",
+]);
 
 /**
  * Paddle subscription statuses we map to our internal `status` integer.
@@ -23,16 +36,6 @@ type PaddleSubStatus =
   | "past_due"
   | "paused"
   | "canceled";
-
-interface PaddleUnitPrice {
-  amount: string;
-  currency_code: string;
-}
-
-interface PaddleBillingCycle {
-  interval: "day" | "week" | "month" | "year" | string;
-  frequency: number;
-}
 
 interface PaddleItem {
   status?: string;
@@ -50,8 +53,8 @@ interface PaddleItem {
     product_id?: string;
     /** Shown at checkout; often the billing interval label if product name is absent. */
     name?: string | null;
-    unit_price?: PaddleUnitPrice | null;
-    billing_cycle?: PaddleBillingCycle | null;
+    unit_price?: PaddleApiUnitPrice | null;
+    billing_cycle?: PaddleApiBillingCycle | null;
   } | null;
 }
 
@@ -190,7 +193,7 @@ export function verifyPaddleSignature(
 type DbPlan = "monthly" | "quarter" | "annual" | "lifetime";
 
 function intervalToDbPlan(
-  cycle: PaddleBillingCycle | null | undefined,
+  cycle: PaddleApiBillingCycle | null | undefined,
   fallback?: string | null,
 ): DbPlan {
   // No billing cycle = one-time purchase = lifetime
@@ -235,12 +238,10 @@ function pickEndsAt(sub: PaddleSubscription): string | null {
   return raw ? toMysqlDateTime(raw) : null;
 }
 
-/** Mirrors Paddle `current_billing_period` for quota reset windows. */
-function pickCurrentBillingPeriodFromSubscription(sub: PaddleSubscription): {
-  startsAt: string | null;
-  endsAt: string | null;
-} {
-  const p = sub.current_billing_period;
+/** Converts a nullable billing-period object to MySQL-formatted start/end pair. */
+function pickBillingPeriod(
+  p: { starts_at?: string | null; ends_at?: string | null } | null | undefined,
+): { startsAt: string | null; endsAt: string | null } {
   if (!p) return { startsAt: null, endsAt: null };
   return {
     startsAt: p.starts_at ? toMysqlDateTime(p.starts_at) : null,
@@ -248,17 +249,14 @@ function pickCurrentBillingPeriodFromSubscription(sub: PaddleSubscription): {
   };
 }
 
+/** Mirrors Paddle `current_billing_period` for quota reset windows. */
+function pickCurrentBillingPeriodFromSubscription(sub: PaddleSubscription) {
+  return pickBillingPeriod(sub.current_billing_period);
+}
+
 /** From `transaction.completed` payload when `billing_period` is present. */
-function pickCurrentBillingPeriodFromTransaction(txn: PaddleTransaction): {
-  startsAt: string | null;
-  endsAt: string | null;
-} {
-  const p = txn.billing_period;
-  if (!p) return { startsAt: null, endsAt: null };
-  return {
-    startsAt: p.starts_at ? toMysqlDateTime(p.starts_at) : null,
-    endsAt: p.ends_at ? toMysqlDateTime(p.ends_at) : null,
-  };
+function pickCurrentBillingPeriodFromTransaction(txn: PaddleTransaction) {
+  return pickBillingPeriod(txn.billing_period);
 }
 
 function pickTrialEndsAt(sub: PaddleSubscription): string | null {
@@ -397,18 +395,13 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
   //  1. `origin` is one of the side-charge origins above.
   //  2. Transaction has a `subscription_id` AND every item's price has
   //     `billing_cycle == null` (true for non-catalog one-time charges).
-  const sideChargeOrigins = new Set([
-    "subscription_charge",
-    "subscription_update",
-    "subscription_cancellation",
-  ]);
   const allItemsAreOneTime =
     Array.isArray(txn.items) &&
     txn.items.length > 0 &&
     txn.items.every((i) => i.price?.billing_cycle == null);
   const isSideCharge =
     !!txn.subscription_id &&
-    ((txn.origin && sideChargeOrigins.has(txn.origin)) || allItemsAreOneTime);
+    ((txn.origin && SIDE_CHARGE_ORIGINS.has(txn.origin)) || allItemsAreOneTime);
   if (isSideCharge) {
     console.info(
       `[paddle] upsertFromTransaction: skipping side-charge ${txn.id} on subscription ${txn.subscription_id} (origin=${txn.origin ?? "?"})`,
@@ -665,6 +658,8 @@ export async function refreshSubscription(sub: PaddleSubscription): Promise<{
   // When scheduled_change is null we explicitly clear the columns — Paddle has
   // either applied the swap or the user dropped it.
   const clearScheduledChange = sub.scheduled_change == null;
+  // MySQL doesn't accept booleans as bind params — pass as tinyint.
+  const clear = clearScheduledChange ? 1 : 0;
 
   const pool = getPool();
   const [result] = await pool.execute<ResultSetHeader>(
@@ -696,14 +691,12 @@ export async function refreshSubscription(sub: PaddleSubscription): Promise<{
       paddleProductName,
       billingPeriod.startsAt,
       billingPeriod.endsAt,
-      clearScheduledChange ? 1 : 0,
-      scheduledChangeAction,
-      clearScheduledChange ? 1 : 0,
-      scheduledChangeEffectiveAt,
-      clearScheduledChange ? 1 : 0,
-      clearScheduledChange ? 1 : 0,
-      clearScheduledChange ? 1 : 0,
-      clearScheduledChange ? 1 : 0,
+      clear, scheduledChangeAction,   // action:       CASE WHEN clear THEN NULL ELSE COALESCE(?)
+      clear, scheduledChangeEffectiveAt, // effective_at: CASE WHEN clear THEN NULL ELSE COALESCE(?)
+      clear,                          // paddle_product_id: CASE WHEN clear THEN NULL ELSE col
+      clear,                          // paddle_price_id:   CASE WHEN clear THEN NULL ELSE col
+      clear,                          // paddle_product_name: CASE WHEN clear THEN NULL ELSE col
+      clear,                          // plan:              CASE WHEN clear THEN NULL ELSE col
       sub.id,
     ],
   );
@@ -761,18 +754,16 @@ interface ScheduledTargetRow extends RowDataPacket {
  * Mirrors `CATALOG_PRICE_LOOKUP` in `lib/subscriptions.ts` but lives here
  * because we only need it for outbound transaction creation.
  */
-const AUTO_RESUBSCRIBE_PRICE_TIERS: Record<string, "creator" | "creator_ai"> = (() => {
-  const map: Record<string, "creator" | "creator_ai"> = {};
-  const cM = process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_MONTHLY;
-  const cY = process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_YEARLY;
-  const aM = process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_AI_MONTHLY;
-  const aY = process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_AI_YEARLY;
-  if (cM) map[cM] = "creator";
-  if (cY) map[cY] = "creator";
-  if (aM) map[aM] = "creator_ai";
-  if (aY) map[aY] = "creator_ai";
-  return map;
-})();
+const AUTO_RESUBSCRIBE_PRICE_TIERS = Object.fromEntries(
+  (
+    [
+      [process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_MONTHLY, "creator"],
+      [process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_YEARLY, "creator"],
+      [process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_AI_MONTHLY, "creator_ai"],
+      [process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_AI_YEARLY, "creator_ai"],
+    ] as [string | undefined, "creator" | "creator_ai"][]
+  ).filter(([k]) => Boolean(k))
+) as Record<string, "creator" | "creator_ai">;
 
 /**
  * If the just-canceled subscription had a scheduled downgrade target stored
@@ -832,18 +823,12 @@ async function autoResubscribeAfterDowngrade(sub: PaddleSubscription): Promise<v
       `[paddle] Auto re-subscribed buyer ${buyerId} to ${targetPriceId} after cancellation of ${sub.id} → txn ${txn.id} (${txn.status})`,
     );
   } catch (err) {
-    if (err instanceof PaddleApiError) {
-      console.error(
-        `[paddle] Auto re-subscribe failed for buyer ${buyerId} (sub ${sub.id} → ${targetPriceId}):`,
-        err.status,
-        err.body,
-      );
-    } else {
-      console.error(
-        `[paddle] Auto re-subscribe unexpected error for buyer ${buyerId} (sub ${sub.id} → ${targetPriceId}):`,
-        err,
-      );
-    }
+    const extra = err instanceof PaddleApiError ? [err.status, err.body] : [];
+    console.error(
+      `[paddle] Auto re-subscribe failed for buyer ${buyerId} (sub ${sub.id} → ${targetPriceId}):`,
+      err,
+      ...extra,
+    );
   } finally {
     // Wipe the scheduled target so we don't accidentally try to re-charge if
     // the same subscription emits `subscription.canceled` again (Paddle
@@ -871,6 +856,25 @@ async function autoResubscribeAfterDowngrade(sub: PaddleSubscription): Promise<v
 /*  Event router                                                               */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Narrow `event.data` to a typed payload. In both cases `event_type` is the
+ * real discriminant — the guard just replaces an unsafe `as` cast with an
+ * explicit null-check on the mandatory `id` field.
+ */
+function asSubscription(data: unknown): PaddleSubscription | null {
+  if (data && typeof data === "object" && "id" in data && typeof (data as Record<string, unknown>).id === "string") {
+    return data as PaddleSubscription;
+  }
+  return null;
+}
+
+function asTransaction(data: unknown): PaddleTransaction | null {
+  if (data && typeof data === "object" && "id" in data && typeof (data as Record<string, unknown>).id === "string") {
+    return data as PaddleTransaction;
+  }
+  return null;
+}
+
 const REFRESH_EVENTS = new Set([
   "subscription.activated",
   "subscription.updated",
@@ -890,8 +894,8 @@ export async function handlePaddleEvent(
 
   // Source of truth: full row upsert with all the monetary + payment data.
   if (event.event_type === "transaction.completed") {
-    const txn = event.data as PaddleTransaction;
-    if (!txn?.id) return { handled: false, reason: "missing_transaction_id" };
+    const txn = asTransaction(event.data);
+    if (!txn) return { handled: false, reason: "missing_transaction_id" };
     if (txn.status && txn.status !== "completed") {
       return { handled: false, reason: `transaction_status_${txn.status}` };
     }
@@ -916,15 +920,15 @@ export async function handlePaddleEvent(
 
   // Light refresh of status/plan/ends_at on an existing row.
   if (REFRESH_EVENTS.has(event.event_type)) {
-    const sub = event.data as PaddleSubscription;
-    if (!sub?.id) return { handled: false, reason: "missing_subscription_id" };
+    const sub = asSubscription(event.data);
+    if (!sub) return { handled: false, reason: "missing_subscription_id" };
     const result = await refreshSubscription(sub);
     return { handled: result.ok, reason: result.reason };
   }
 
   if (event.event_type === "subscription.canceled" || event.event_type === "subscription.paused") {
-    const sub = event.data as PaddleSubscription;
-    if (!sub?.id) return { handled: false, reason: "missing_subscription_id" };
+    const sub = asSubscription(event.data);
+    if (!sub) return { handled: false, reason: "missing_subscription_id" };
     const result = await markSubscriptionCanceled(sub);
     // Fire-and-forget: if this cancellation was the tail end of a scheduled
     // downgrade, bill the customer for the chosen target plan via the

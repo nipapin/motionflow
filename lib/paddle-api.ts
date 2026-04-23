@@ -20,6 +20,7 @@ import "server-only";
 
 const SANDBOX_BASE = "https://sandbox-api.paddle.com";
 const PRODUCTION_BASE = "https://api.paddle.com";
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function getBaseUrl(): string {
   const env = (process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT ?? "sandbox").toLowerCase();
@@ -44,6 +45,14 @@ export class PaddleApiError extends Error {
     this.name = "PaddleApiError";
     this.status = status;
     this.body = body;
+    // Ensures `instanceof PaddleApiError` works correctly after TypeScript → ES5 transpilation.
+    Object.setPrototypeOf(this, PaddleApiError.prototype);
+  }
+}
+
+function extractPaddleErrorDetail(json: unknown): string | undefined {
+  if (json && typeof json === "object" && "error" in json) {
+    return (json as { error?: { detail?: string } }).error?.detail;
   }
 }
 
@@ -76,10 +85,8 @@ async function paddleFetch<T>(
     }
   }
   if (!res.ok) {
-    const message =
-      (json && typeof json === "object" && "error" in json && (json as { error?: { detail?: string } }).error?.detail) ||
-      `Paddle API ${path} failed with ${res.status}`;
-    throw new PaddleApiError(String(message), res.status, json);
+    const message = extractPaddleErrorDetail(json) ?? `Paddle API ${path} failed with ${res.status}`;
+    throw new PaddleApiError(message, res.status, json);
   }
   return (json as { data: T })?.data as T;
 }
@@ -87,6 +94,16 @@ async function paddleFetch<T>(
 /* -------------------------------------------------------------------------- */
 /*  Types (only the fields we actually consume)                                */
 /* -------------------------------------------------------------------------- */
+
+export interface PaddleApiBillingCycle {
+  interval: "day" | "week" | "month" | "year" | string;
+  frequency: number;
+}
+
+export interface PaddleApiUnitPrice {
+  amount?: string | null;
+  currency_code?: string | null;
+}
 
 export interface PaddleApiSubscription {
   id: string;
@@ -113,8 +130,8 @@ export interface PaddleApiSubscription {
       id?: string;
       product_id?: string;
       name?: string | null;
-      billing_cycle?: { interval: string; frequency: number } | null;
-      unit_price?: { amount?: string | null; currency_code?: string | null } | null;
+      billing_cycle?: PaddleApiBillingCycle | null;
+      unit_price?: PaddleApiUnitPrice | null;
     } | null;
   }>;
 }
@@ -127,8 +144,8 @@ export interface PaddleApiPrice {
   id: string;
   product_id: string;
   name?: string | null;
-  unit_price?: { amount?: string | null; currency_code?: string | null } | null;
-  billing_cycle?: { interval: string; frequency: number } | null;
+  unit_price?: PaddleApiUnitPrice | null;
+  billing_cycle?: PaddleApiBillingCycle | null;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -138,7 +155,6 @@ export interface PaddleApiPrice {
 export async function getSubscription(id: string): Promise<PaddleApiSubscription> {
   return paddleFetch<PaddleApiSubscription>(
     `/subscriptions/${encodeURIComponent(id)}?include=next_transaction`,
-    { method: "GET" },
   );
 }
 
@@ -277,18 +293,17 @@ export async function createBilledRecurringTransaction(
   },
   options: { idempotencyKey?: string } = {},
 ): Promise<PaddleApiTransaction> {
-  const body: Record<string, unknown> = {
+  const body = {
     customer_id: params.customerId,
     items: [{ price_id: params.priceId, quantity: params.quantity ?? 1 }],
-    collection_mode: "automatic",
+    collection_mode: "automatic" as const,
+    ...(params.addressId && { address_id: params.addressId }),
+    ...(params.businessId && { business_id: params.businessId }),
+    ...(params.currencyCode && { currency_code: params.currencyCode }),
+    ...(params.discountId && { discount: { id: params.discountId, effective_from: "immediately" } }),
+    ...(params.customData &&
+      Object.keys(params.customData).length > 0 && { custom_data: params.customData }),
   };
-  if (params.addressId) body.address_id = params.addressId;
-  if (params.businessId) body.business_id = params.businessId;
-  if (params.currencyCode) body.currency_code = params.currencyCode;
-  if (params.discountId) body.discount = { id: params.discountId, effective_from: "immediately" };
-  if (params.customData && Object.keys(params.customData).length > 0) {
-    body.custom_data = params.customData;
-  }
 
   return paddleFetch<PaddleApiTransaction>(`/transactions`, {
     method: "POST",
@@ -302,10 +317,7 @@ export async function createBilledRecurringTransaction(
 /* -------------------------------------------------------------------------- */
 
 export async function getPrice(priceId: string): Promise<PaddleApiPrice> {
-  return paddleFetch<PaddleApiPrice>(
-    `/prices/${encodeURIComponent(priceId)}`,
-    { method: "GET" },
-  );
+  return paddleFetch<PaddleApiPrice>(`/prices/${encodeURIComponent(priceId)}`);
 }
 
 /**
@@ -421,10 +433,9 @@ export function computeMotionflowUpgradeFeeMinor(params: {
   const start = new Date(params.periodStart).getTime();
   const end = new Date(params.periodEnd).getTime();
   const today = (params.now ?? new Date()).getTime();
-  const dayMs = 24 * 60 * 60 * 1000;
 
-  const periodDays = Math.max(1, Math.ceil((end - start) / dayMs));
-  const usedDaysRaw = Math.floor((today - start) / dayMs) + 1;
+  const periodDays = Math.max(1, Math.ceil((end - start) / DAY_MS));
+  const usedDaysRaw = Math.floor((today - start) / DAY_MS) + 1;
   const usedDays = Math.min(periodDays, Math.max(1, usedDaysRaw));
   const unusedDays = Math.max(0, periodDays - usedDays);
 

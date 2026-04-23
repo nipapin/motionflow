@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { CREATOR_AI_REQUIRED_CODE } from "@/lib/ai-generation-gate";
-import type { MotionflowGenerationPlan } from "@/lib/generation-plan";
+import type { MotionflowGenerationPlan } from "@/lib/subscriptions";
 
 export class ConsumeGenerationError extends Error {
   constructor(

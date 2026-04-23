@@ -1,13 +1,13 @@
 import "server-only";
 import type { RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
-import type { MotionflowGenerationPlan } from "@/lib/generation-plan";
 import {
   applyMotionflowProductTitleTemplate,
   normalizePaddleProductNameToken,
 } from "@/lib/paddle-product-label";
 
-export type { MotionflowGenerationPlan } from "@/lib/generation-plan";
+/** Motionflow catalog tier used for AI generation quotas (`/api/me/generations`). */
+export type MotionflowGenerationPlan = "none" | "creator" | "creator_ai";
 
 export interface SubscriptionListItem {
   subsFor: string;
@@ -190,6 +190,12 @@ function formatDateDMY(raw: string | null): string | null {
 
 const TABLE = "subscription_systems";
 
+const LIST_SUBSCRIPTION_SQL = `SELECT author_id, status, subscription_id, plan, ends_at, created_at,
+            paddle_product_id, paddle_price_id, paddle_product_name
+     FROM \`${TABLE}\`
+     WHERE buyer_id = ?
+     ORDER BY id DESC`;
+
 /** When set, access ends after this instant (Paddle / DB `ends_at`). */
 function endsAtStillValid(endsAt: string | null): boolean {
   if (!endsAt) return true;
@@ -202,7 +208,7 @@ function computeRowActiveState(r: SubRow): { active: boolean; cancelled: boolean
 
   if (r.ends_at && r.status === -1) {
     cancelled = true;
-    if (new Date(r.ends_at) > new Date()) {
+    if (endsAtStillValid(r.ends_at)) {
       active = true;
     }
   } else if (r.status === 1) {
@@ -216,14 +222,7 @@ export async function getSubscriptionsForUser(
   userId: number,
 ): Promise<SubscriptionListItem[]> {
   const pool = getPool();
-  const [rows] = await pool.execute<SubRow[]>(
-    `SELECT author_id, status, subscription_id, plan, ends_at, created_at,
-            paddle_product_id, paddle_price_id, paddle_product_name
-     FROM \`${TABLE}\`
-     WHERE buyer_id = ?
-     ORDER BY id DESC`,
-    [userId],
-  );
+  const [rows] = await pool.execute<SubRow[]>(LIST_SUBSCRIPTION_SQL, [userId]);
 
   return rows.map((r) => {
     const pres = resolveSubscriptionPresentation(r);
@@ -327,17 +326,7 @@ function rowToActiveSummary(r: SubRow): ActiveSubscriptionSummary {
     } else if (sProductId && CREATOR_AI_PADDLE_PRODUCT_IDS.has(sProductId)) {
       nextTier = "creator_ai";
     } else if (sName) {
-      const token = normalizePaddleProductNameToken(sName);
-      if (
-        /\bcreator\s*\+\s*ai\b/i.test(token) ||
-        /\bcreator\s+ai\b/i.test(token) ||
-        /\+\s*ai\b/i.test(token) ||
-        (/\bcreator\b/i.test(token) && /\bai\b/i.test(token))
-      ) {
-        nextTier = "creator_ai";
-      } else if (/\bcreator\b/i.test(token)) {
-        nextTier = "creator";
-      }
+      nextTier = resolveCreatorTierFromNameToken(normalizePaddleProductNameToken(sName));
     }
 
     scheduledChange = {
@@ -396,15 +385,25 @@ export async function hasActiveMotionflowSubscription(
   userId: number,
 ): Promise<boolean> {
   const pool = getPool();
-  const [rows] = await pool.execute<SubRow[]>(
-    `SELECT author_id, status, subscription_id, plan, ends_at, created_at,
-            paddle_product_id, paddle_price_id, paddle_product_name
-     FROM \`${TABLE}\`
-     WHERE buyer_id = ?
-     ORDER BY id DESC`,
-    [userId],
-  );
+  const [rows] = await pool.execute<SubRow[]>(LIST_SUBSCRIPTION_SQL, [userId]);
   return rows.some((r) => rowIsMotionflowCatalogSubscription(r) && rowIsActive(r));
+}
+
+/**
+ * Infers a `PricingTier` from a normalised product-name token when no catalog
+ * price/product id is available. Returns `null` if the token is unrecognised.
+ */
+function resolveCreatorTierFromNameToken(token: string): PricingTier | null {
+  if (
+    /\bcreator\s*\+\s*ai\b/i.test(token) ||
+    /\bcreator\s+ai\b/i.test(token) ||
+    /\+\s*ai\b/i.test(token) ||
+    (/\bcreator\b/i.test(token) && /\bai\b/i.test(token))
+  ) {
+    return "creator_ai";
+  }
+  if (/\bcreator\b/i.test(token)) return "creator";
+  return null;
 }
 
 /** Paddle `pro_…` ids for the Creator + AI product (optional; also inferred from product name). */
@@ -431,16 +430,7 @@ function rowIsCreatorPlusAi(r: SubRow): boolean {
   const raw = r.paddle_product_name?.trim();
   if (!raw) return false;
   const token = normalizePaddleProductNameToken(raw);
-  if (
-    /\bcreator\s*\+\s*ai\b/i.test(token) ||
-    /\bcreator\s+ai\b/i.test(token) ||
-    /\+\s*ai\b/i.test(token)
-  ) {
-    return true;
-  }
-  // e.g. "Creator AI", "AI Creator Pack" — require both tokens for Motionflow catalog rows
-  if (/\bcreator\b/i.test(token) && /\bai\b/i.test(token)) return true;
-  return false;
+  return resolveCreatorTierFromNameToken(token) === "creator_ai";
 }
 
 const GENERATION_SUBSCRIPTION_SQL = `SELECT id, author_id, status, subscription_id, plan, ends_at, created_at,
@@ -493,19 +483,10 @@ export async function getMotionflowGenerationContext(
   );
   const tierRow = pickTierRowForGenerations(activeCatalog);
 
-  if (tierRow && rowIsCreatorPlusAi(tierRow)) {
-    return {
-      plan: "creator_ai",
-      paddleBillingPeriodStartsAt:
-        tierRow.paddle_billing_period_starts_at ?? null,
-      paddleBillingPeriodEndsAt: tierRow.paddle_billing_period_ends_at ?? null,
-    };
-  }
   if (tierRow) {
     return {
-      plan: "creator",
-      paddleBillingPeriodStartsAt:
-        tierRow.paddle_billing_period_starts_at ?? null,
+      plan: rowIsCreatorPlusAi(tierRow) ? "creator_ai" : "creator",
+      paddleBillingPeriodStartsAt: tierRow.paddle_billing_period_starts_at ?? null,
       paddleBillingPeriodEndsAt: tierRow.paddle_billing_period_ends_at ?? null,
     };
   }

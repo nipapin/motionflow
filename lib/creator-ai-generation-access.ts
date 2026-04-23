@@ -1,8 +1,10 @@
 import "server-only";
 
 import { NextResponse } from "next/server";
-import type { MotionflowGenerationPlan } from "@/lib/generation-plan";
-import { getMotionflowGenerationPlan } from "@/lib/subscriptions";
+import {
+  getMotionflowGenerationPlan,
+  type MotionflowGenerationPlan,
+} from "@/lib/subscriptions";
 
 /**
  * AI image/video tools (and related uploads) are reserved for the Motion Flow
