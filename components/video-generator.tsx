@@ -8,7 +8,6 @@ import {
   Clock,
   Ratio,
   Palette,
-  ImageIcon,
   Frame,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,13 +18,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/components/auth-provider";
 import { CreatorAiGateModal } from "@/components/creator-ai-gate-modal";
 import { SignInModal } from "@/components/sign-in-modal";
@@ -39,6 +31,7 @@ import {
 import { replicateFileUrlToDisplaySrc } from "@/lib/replicate-file-display-url";
 import { VideoLightbox } from "@/components/video-generator/video-lightbox";
 import { RecentVideosList } from "@/components/video-generator/recent-videos-list";
+import { FirstFrameDialog } from "@/components/video-generator/first-frame-dialog";
 
 const TARGET_RESOLUTION = "720" as const;
 
@@ -68,26 +61,6 @@ export const stylePresets = [
   { id: "realistic", label: "Realistic" },
   { id: "artistic", label: "Artistic" },
 ];
-
-/** Matches `/api/generations/image` styles for the “Generate” tab in First frame. */
-const ffImageStyles = [
-  { id: "realistic", label: "Realistic" },
-  { id: "anime", label: "Anime" },
-  { id: "3d", label: "3D Render" },
-  { id: "digital-art", label: "Digital Art" },
-  { id: "oil-painting", label: "Oil Painting" },
-  { id: "watercolor", label: "Watercolor" },
-];
-
-const ffImageRatios = [
-  { id: "1:1", label: "1:1" },
-  { id: "16:9", label: "16:9" },
-  { id: "9:16", label: "9:16" },
-];
-
-/** First-frame dialog tabs: active = site blue gradient. */
-const ffDialogTabTriggerClass =
-  "text-xs sm:text-sm text-muted-foreground data-[state=active]:border-transparent data-[state=active]:bg-linear-to-r data-[state=active]:from-blue-600 data-[state=active]:to-blue-500 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:shadow-blue-500/30 data-[state=active]:dark:from-blue-600 data-[state=active]:dark:to-blue-500";
 
 const triggerClasses =
   "w-full h-11 bg-background/50 border-blue-500/30 text-foreground rounded-xl px-4 hover:border-blue-500/60 focus-visible:border-blue-500/60 focus-visible:ring-blue-500/30";
@@ -278,15 +251,6 @@ export function VideoGenerator() {
 
   const [firstFrameUrl, setFirstFrameUrl] = useState<string | null>(null);
   const [firstFrameDialogOpen, setFirstFrameDialogOpen] = useState(false);
-  const [ffUploading, setFfUploading] = useState(false);
-  const [ffGenLoading, setFfGenLoading] = useState(false);
-  const [libraryItems, setLibraryItems] = useState<{ id: string; url: string }[]>(
-    [],
-  );
-  const [libraryLoading, setLibraryLoading] = useState(false);
-  const [ffPrompt, setFfPrompt] = useState("");
-  const [ffStyle, setFfStyle] = useState("realistic");
-  const [ffRatio, setFfRatio] = useState("1:1");
 
   const remaining = generations?.remaining ?? 0;
   const atLimitForCreatorAi =
@@ -294,42 +258,6 @@ export function VideoGenerator() {
     generations?.plan === "creator_ai" &&
     !generationsLoading &&
     remaining <= 0;
-
-  useEffect(() => {
-    if (!firstFrameDialogOpen || !user) return;
-    let cancelled = false;
-    setLibraryLoading(true);
-    void (async () => {
-      try {
-        const res = await fetch(
-          "/api/me/generation-records?tool=image&limit=100",
-          {
-            credentials: "include",
-            cache: "no-store",
-          },
-        );
-        if (!res.ok || cancelled) return;
-        const data = (await res.json()) as { items?: ApiGenerationRecord[] };
-        const flat: { id: string; url: string }[] = [];
-        for (const row of data.items ?? []) {
-          if (row.status !== "ok" || !row.result) continue;
-          const imgs = row.result.images;
-          if (!Array.isArray(imgs)) continue;
-          imgs.forEach((u, i) => {
-            if (typeof u === "string") {
-              flat.push({ id: `${row.id}-${i}`, url: u });
-            }
-          });
-        }
-        if (!cancelled) setLibraryItems(flat);
-      } finally {
-        if (!cancelled) setLibraryLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [firstFrameDialogOpen, user?.id]);
 
   const handleGenerate = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -394,102 +322,6 @@ export function VideoGenerator() {
     }
   };
 
-  const handleFfFileChange = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    setErrorMessage(null);
-    if (!checkGenerationGate()) return;
-
-    setFfUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/generations/video/first-frame-upload", {
-        method: "POST",
-        body: fd,
-        credentials: "include",
-      });
-      const data = (await res.json().catch(() => ({}))) as {
-        url?: string;
-        error?: string;
-        code?: string;
-        plan?: string;
-      };
-      if (res.status === 403 && data.code === CREATOR_AI_REQUIRED_CODE) {
-        handle403CreatorAiGate(data.plan);
-        return;
-      }
-      if (!res.ok) {
-        throw new Error(data.error || `Upload failed (${res.status})`);
-      }
-      if (!data.url) {
-        throw new Error("No URL returned");
-      }
-      setFirstFrameUrl(data.url);
-      setFirstFrameDialogOpen(false);
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to upload image";
-      setErrorMessage(message);
-    } finally {
-      setFfUploading(false);
-    }
-  };
-
-  const handleFfGenerate = async () => {
-    if (!ffPrompt.trim() || ffGenLoading || generationsLoading) {
-      return;
-    }
-
-    if (!checkGenerationGate()) return;
-
-    setFfGenLoading(true);
-    setErrorMessage(null);
-    try {
-      const res = await fetch("/api/generations/image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: ffPrompt.trim(),
-          style: ffStyle,
-          aspect_ratio: ffRatio,
-        }),
-        credentials: "include",
-      });
-      const data = (await res.json().catch(() => ({}))) as {
-        images?: string[];
-        error?: string;
-        code?: string;
-        plan?: string;
-        generations?: GenerationStatus;
-      };
-      if (res.status === 403 && data.code === CREATOR_AI_REQUIRED_CODE) {
-        handle403CreatorAiGate(data.plan);
-        return;
-      }
-      if (!res.ok) {
-        syncGenerations(data.generations);
-        throw new Error(data.error || `Request failed (${res.status})`);
-      }
-      const url = data.images?.[0];
-      if (!url) {
-        throw new Error("No image returned");
-      }
-      syncGenerations(data.generations);
-      setFirstFrameUrl(url);
-      setFirstFrameDialogOpen(false);
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to generate image";
-      setErrorMessage(message);
-    } finally {
-      setFfGenLoading(false);
-    }
-  };
-
   return (
     <div className="max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-8">
@@ -539,159 +371,15 @@ export function VideoGenerator() {
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Dialog
-                  open={firstFrameDialogOpen}
-                  onOpenChange={setFirstFrameDialogOpen}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="border border-blue-500/40 bg-blue-500/10 text-foreground hover:bg-blue-500/20"
+                  onClick={() => setFirstFrameDialogOpen(true)}
                 >
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="border border-blue-500/40 bg-blue-500/10 text-foreground hover:bg-blue-500/20"
-                    onClick={() => setFirstFrameDialogOpen(true)}
-                  >
-                    <Frame className="w-4 h-4 mr-2 shrink-0" />
-                    First frame
-                  </Button>
-                  <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
-                    <DialogHeader>
-                      <DialogTitle>Choose first frame</DialogTitle>
-                    </DialogHeader>
-                    <Tabs defaultValue="generate" className="w-full mt-2">
-                      <TabsList className="grid w-full grid-cols-3 h-auto gap-1.5 rounded-xl border border-blue-500/25 bg-muted/40 p-1.5">
-                        <TabsTrigger value="generate" className={ffDialogTabTriggerClass}>
-                          Generate
-                        </TabsTrigger>
-                        <TabsTrigger value="library" className={ffDialogTabTriggerClass}>
-                          Library
-                        </TabsTrigger>
-                        <TabsTrigger value="upload" className={ffDialogTabTriggerClass}>
-                          From device
-                        </TabsTrigger>
-                      </TabsList>
-                      <TabsContent value="generate" className="pt-4 space-y-4">
-                        <p className="text-sm text-muted-foreground">
-                          Creates a still using one image generation, then uses it
-                          as the first frame.
-                        </p>
-                        <textarea
-                          value={ffPrompt}
-                          onChange={(e) => setFfPrompt(e.target.value)}
-                          placeholder="Describe the starting image..."
-                          rows={3}
-                          className="w-full bg-background/50 border border-blue-500/30 rounded-xl p-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:border-blue-500/60"
-                        />
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className="text-xs font-medium text-muted-foreground mb-2 block">
-                              Style
-                            </label>
-                            <Select value={ffStyle} onValueChange={setFfStyle}>
-                              <SelectTrigger className={triggerClasses}>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {ffImageStyles.map((s) => (
-                                  <SelectItem key={s.id} value={s.id}>
-                                    {s.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <label className="text-xs font-medium text-muted-foreground mb-2 block">
-                              Aspect
-                            </label>
-                            <Select value={ffRatio} onValueChange={setFfRatio}>
-                              <SelectTrigger className={triggerClasses}>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {ffImageRatios.map((r) => (
-                                  <SelectItem key={r.id} value={r.id}>
-                                    {r.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          disabled={
-                            !ffPrompt.trim() || ffGenLoading || generationsLoading
-                          }
-                          className="w-full bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl"
-                          onClick={() => void handleFfGenerate()}
-                        >
-                          {ffGenLoading ? (
-                            <>
-                              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                              Generating image…
-                            </>
-                          ) : (
-                            <>
-                              <ImageIcon className="w-4 h-4 mr-2" />
-                              Generate image & use
-                            </>
-                          )}
-                        </Button>
-                      </TabsContent>
-                      <TabsContent value="library" className="pt-4 space-y-3">
-                        <p className="text-sm text-muted-foreground">
-                          Images from your past image generations.
-                        </p>
-                        {libraryLoading ? (
-                          <p className="text-sm text-muted-foreground py-8 text-center">
-                            Loading…
-                          </p>
-                        ) : libraryItems.length === 0 ? (
-                          <p className="text-sm text-muted-foreground py-8 text-center">
-                            No images yet. Generate some on the Image page first.
-                          </p>
-                        ) : (
-                          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-72 overflow-y-auto pr-1">
-                            {libraryItems.map((item) => (
-                              <button
-                                key={item.id}
-                                type="button"
-                                className="relative aspect-square rounded-lg overflow-hidden border border-blue-500/25 bg-black hover:border-blue-500/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
-                                onClick={() => {
-                                  setFirstFrameUrl(item.url);
-                                  setFirstFrameDialogOpen(false);
-                                }}
-                              >
-                                <img
-                                  src={item.url}
-                                  alt=""
-                                  className="w-full h-full object-cover"
-                                />
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </TabsContent>
-                      <TabsContent value="upload" className="pt-4 space-y-3">
-                        <p className="text-sm text-muted-foreground">
-                          Upload a JPEG, PNG, WebP, or GIF (max 15 MB).
-                        </p>
-                        <label className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-blue-500/40 bg-background/40 px-4 py-10 cursor-pointer hover:border-blue-500/60 smooth">
-                          <ImageIcon className="w-10 h-10 text-blue-400/80" />
-                          <span className="text-sm text-foreground">
-                            {ffUploading ? "Uploading…" : "Click to select a file"}
-                          </span>
-                          <input
-                            type="file"
-                            accept="image/jpeg,image/png,image/webp,image/gif"
-                            className="sr-only"
-                            disabled={ffUploading}
-                            onChange={handleFfFileChange}
-                          />
-                        </label>
-                      </TabsContent>
-                    </Tabs>
-                  </DialogContent>
-                </Dialog>
+                  <Frame className="w-4 h-4 mr-2 shrink-0" />
+                  First frame
+                </Button>
                 {firstFrameUrl ? (
                   <>
                     <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-blue-500/30 bg-black shrink-0">
@@ -814,6 +502,21 @@ export function VideoGenerator() {
             <p className="text-sm text-red-400 text-center">{errorMessage}</p>
           )}
         </form>
+
+        <FirstFrameDialog
+          open={firstFrameDialogOpen}
+          onOpenChange={setFirstFrameDialogOpen}
+          onFrameSelected={(url) => {
+            setFirstFrameUrl(url);
+            setFirstFrameDialogOpen(false);
+          }}
+          userId={user?.id}
+          checkGate={checkGenerationGate}
+          onCreatorAiGate={handle403CreatorAiGate}
+          syncGenerations={syncGenerations}
+          onError={setErrorMessage}
+          generationsLoading={generationsLoading}
+        />
 
         <div className="lg:col-span-2 space-y-6">
           <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5 min-h-[350px]">
