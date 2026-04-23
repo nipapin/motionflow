@@ -91,6 +91,9 @@ const ffImageRatios = [
 const ffDialogTabTriggerClass =
   "text-xs sm:text-sm text-muted-foreground data-[state=active]:border-transparent data-[state=active]:bg-linear-to-r data-[state=active]:from-blue-600 data-[state=active]:to-blue-500 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:shadow-blue-500/30 data-[state=active]:dark:from-blue-600 data-[state=active]:dark:to-blue-500";
 
+const triggerClasses =
+  "w-full h-11 bg-background/50 border-blue-500/30 text-foreground rounded-xl px-4 hover:border-blue-500/60 focus-visible:border-blue-500/60 focus-visible:ring-blue-500/30";
+
 type ApiGenerationRecord = {
   id: string;
   status: string;
@@ -518,9 +521,6 @@ export function VideoGenerator() {
       setFfGenLoading(false);
     }
   };
-
-  const triggerClasses =
-    "w-full h-11 bg-background/50 border-blue-500/30 text-foreground rounded-xl px-4 hover:border-blue-500/60 focus-visible:border-blue-500/60 focus-visible:ring-blue-500/30";
 
   return (
     <div className="max-w-7xl mx-auto">
