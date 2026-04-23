@@ -258,6 +258,15 @@ export function VideoGenerator() {
     setErrorMessage,
   ]);
 
+  const handle403CreatorAiGate = useCallback(
+    (responsePlan?: string): void => {
+      void refreshGenerations();
+      setCreatorAiVariant(responsePlan === "creator" ? "upgrade" : "subscribe");
+      setCreatorAiGateOpen(true);
+    },
+    [refreshGenerations, setCreatorAiVariant, setCreatorAiGateOpen],
+  );
+
   const [firstFrameUrl, setFirstFrameUrl] = useState<string | null>(null);
   const [firstFrameDialogOpen, setFirstFrameDialogOpen] = useState(false);
   const [ffUploading, setFfUploading] = useState(false);
@@ -349,9 +358,7 @@ export function VideoGenerator() {
       };
 
       if (res.status === 403 && data.code === CREATOR_AI_REQUIRED_CODE) {
-        void refreshGenerations();
-        setCreatorAiVariant(data.plan === "creator" ? "upgrade" : "subscribe");
-        setCreatorAiGateOpen(true);
+        handle403CreatorAiGate(data.plan);
         return;
       }
 
@@ -411,9 +418,7 @@ export function VideoGenerator() {
         plan?: string;
       };
       if (res.status === 403 && data.code === CREATOR_AI_REQUIRED_CODE) {
-        void refreshGenerations();
-        setCreatorAiVariant(data.plan === "creator" ? "upgrade" : "subscribe");
-        setCreatorAiGateOpen(true);
+        handle403CreatorAiGate(data.plan);
         return;
       }
       if (!res.ok) {
@@ -461,9 +466,7 @@ export function VideoGenerator() {
         generations?: GenerationStatus;
       };
       if (res.status === 403 && data.code === CREATOR_AI_REQUIRED_CODE) {
-        void refreshGenerations();
-        setCreatorAiVariant(data.plan === "creator" ? "upgrade" : "subscribe");
-        setCreatorAiGateOpen(true);
+        handle403CreatorAiGate(data.plan);
         return;
       }
       if (!res.ok) {
