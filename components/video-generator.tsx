@@ -7,7 +7,6 @@ import {
   Download,
   RefreshCw,
   Clock,
-  X,
   Ratio,
   Palette,
   ImageIcon,
@@ -41,6 +40,7 @@ import {
   getAiGenerateBlockReason,
 } from "@/lib/ai-generation-gate";
 import { replicateFileUrlToDisplaySrc } from "@/lib/replicate-file-display-url";
+import { VideoLightbox } from "@/components/video-generator/video-lightbox";
 
 const TARGET_RESOLUTION = "720" as const;
 
@@ -964,48 +964,10 @@ export function VideoGenerator() {
       />
 
       {lightboxVideo && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4"
-          onClick={() => setLightboxVideo(null)}
-        >
-          <button
-            type="button"
-            onClick={() => setLightboxVideo(null)}
-            className="absolute top-6 right-6 p-2 text-white/70 hover:text-white smooth z-10"
-          >
-            <X className="w-8 h-8" />
-          </button>
-          <div
-            className="relative w-full max-w-5xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="relative rounded-2xl overflow-hidden border border-blue-500/30 bg-black">
-              <video
-                src={lightboxVideo}
-                controls
-                playsInline
-                autoPlay
-                className="w-full max-h-[80vh] object-contain"
-              />
-            </div>
-            <div className="flex justify-center mt-4">
-              <Button
-                className="bg-white text-black hover:bg-white/90 rounded-xl shadow-lg"
-                asChild
-              >
-                <a
-                  href={lightboxVideo}
-                  download
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Download Video
-                </a>
-              </Button>
-            </div>
-          </div>
-        </div>
+        <VideoLightbox
+          videoUrl={lightboxVideo}
+          onClose={() => setLightboxVideo(null)}
+        />
       )}
     </div>
   );
