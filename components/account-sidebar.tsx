@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { User, ShoppingBag, CreditCard, Download, Bookmark } from "lucide-react";
+import { User, ShoppingBag, CreditCard, Download, Bookmark, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const nav = [
   { href: "/profile", label: "Profile", icon: User },
+  { href: "/profile/generations", label: "My generations", icon: Sparkles },
   { href: "/profile/purchases", label: "My purchases", icon: ShoppingBag },
   { href: "/profile/subscriptions", label: "My subscriptions", icon: CreditCard },
   { href: "/profile/downloads", label: "My downloads", icon: Download },
