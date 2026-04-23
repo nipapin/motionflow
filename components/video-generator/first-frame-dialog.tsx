@@ -19,6 +19,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CREATOR_AI_REQUIRED_CODE } from "@/lib/ai-generation-gate";
 import type { GenerationStatus } from "@/hooks/use-generations";
+import { triggerClasses } from "@/components/video-generator/styles";
 
 const ffImageStyles = [
   { id: "realistic", label: "Realistic" },
@@ -34,9 +35,6 @@ const ffImageRatios = [
   { id: "16:9", label: "16:9" },
   { id: "9:16", label: "9:16" },
 ];
-
-const triggerClasses =
-  "w-full h-11 bg-background/50 border-blue-500/30 text-foreground rounded-xl px-4 hover:border-blue-500/60 focus-visible:border-blue-500/60 focus-visible:ring-blue-500/30";
 
 const ffDialogTabTriggerClass =
   "text-xs sm:text-sm text-muted-foreground data-[state=active]:border-transparent data-[state=active]:bg-linear-to-r data-[state=active]:from-blue-600 data-[state=active]:to-blue-500 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:shadow-blue-500/30 data-[state=active]:dark:from-blue-600 data-[state=active]:dark:to-blue-500";
@@ -61,7 +59,7 @@ interface FirstFrameDialogProps {
   /** Call to sync generation status after a successful/failed API response. */
   syncGenerations: (genStatus?: GenerationStatus) => void;
   /** Call to surface an error message to the parent. */
-  onError: (message: string) => void;
+  onError: (message: string | null) => void;
   generationsLoading: boolean;
 }
 
@@ -119,6 +117,7 @@ export function FirstFrameDialog({
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
+    onError(null);
     if (!checkGate()) return;
 
     setFfUploading(true);
@@ -156,6 +155,7 @@ export function FirstFrameDialog({
     if (!checkGate()) return;
 
     setFfGenLoading(true);
+    onError(null);
     try {
       const res = await fetch("/api/generations/image", {
         method: "POST",
