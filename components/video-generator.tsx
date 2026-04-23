@@ -222,6 +222,41 @@ export function VideoGenerator() {
     }
   }, []);
 
+  /**
+   * Runs the generation gate check and triggers the appropriate UI response.
+   * Returns true if the caller is clear to proceed, false if blocked.
+   */
+  const checkGenerationGate = useCallback((): boolean => {
+    const block = getAiGenerateBlockReason(user, generations, generationsLoading);
+    if (block === "sign_in") {
+      markGuestWantedGenerate();
+      setSignInOpen(true);
+      return false;
+    }
+    if (block === "needs_creator_ai") {
+      setCreatorAiVariant(
+        generations?.plan === "creator" ? "upgrade" : "subscribe",
+      );
+      setCreatorAiGateOpen(true);
+      return false;
+    }
+    if (block === "limit") {
+      setErrorMessage(
+        "You've reached your generation limit for this period. See pricing for options.",
+      );
+      return false;
+    }
+    return true;
+  }, [
+    user,
+    generations,
+    generationsLoading,
+    markGuestWantedGenerate,
+    setCreatorAiVariant,
+    setCreatorAiGateOpen,
+    setErrorMessage,
+  ]);
+
   const [firstFrameUrl, setFirstFrameUrl] = useState<string | null>(null);
   const [firstFrameDialogOpen, setFirstFrameDialogOpen] = useState(false);
   const [ffUploading, setFfUploading] = useState(false);
@@ -285,29 +320,7 @@ export function VideoGenerator() {
       return;
     }
 
-    const block = getAiGenerateBlockReason(
-      user,
-      generations,
-      generationsLoading,
-    );
-    if (block === "sign_in") {
-      markGuestWantedGenerate();
-      setSignInOpen(true);
-      return;
-    }
-    if (block === "needs_creator_ai") {
-      setCreatorAiVariant(
-        generations?.plan === "creator" ? "upgrade" : "subscribe",
-      );
-      setCreatorAiGateOpen(true);
-      return;
-    }
-    if (block === "limit") {
-      setErrorMessage(
-        "You've reached your generation limit for this period. See pricing for options.",
-      );
-      return;
-    }
+    if (!checkGenerationGate()) return;
 
     setIsGenerating(true);
 
@@ -379,27 +392,7 @@ export function VideoGenerator() {
     e.target.value = "";
     if (!file) return;
     setErrorMessage(null);
-    const block = getAiGenerateBlockReason(
-      user,
-      generations,
-      generationsLoading,
-    );
-    if (block === "sign_in") {
-      markGuestWantedGenerate();
-      setSignInOpen(true);
-      return;
-    }
-    if (block === "needs_creator_ai") {
-      setCreatorAiVariant(
-        generations?.plan === "creator" ? "upgrade" : "subscribe",
-      );
-      setCreatorAiGateOpen(true);
-      return;
-    }
-    if (block === "limit") {
-      setErrorMessage("You've reached your generation limit for this period.");
-      return;
-    }
+    if (!checkGenerationGate()) return;
 
     setFfUploading(true);
     try {
@@ -444,29 +437,7 @@ export function VideoGenerator() {
       return;
     }
 
-    const block = getAiGenerateBlockReason(
-      user,
-      generations,
-      generationsLoading,
-    );
-    if (block === "sign_in") {
-      markGuestWantedGenerate();
-      setSignInOpen(true);
-      return;
-    }
-    if (block === "needs_creator_ai") {
-      setCreatorAiVariant(
-        generations?.plan === "creator" ? "upgrade" : "subscribe",
-      );
-      setCreatorAiGateOpen(true);
-      return;
-    }
-    if (block === "limit") {
-      setErrorMessage(
-        "You've reached your generation limit for this period.",
-      );
-      return;
-    }
+    if (!checkGenerationGate()) return;
 
     setFfGenLoading(true);
     setErrorMessage(null);
