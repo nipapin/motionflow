@@ -267,6 +267,17 @@ export function VideoGenerator() {
     [refreshGenerations, setCreatorAiVariant, setCreatorAiGateOpen],
   );
 
+  const syncGenerations = useCallback(
+    (genStatus?: GenerationStatus): void => {
+      if (genStatus) {
+        setGenerationsStatus(genStatus);
+      } else {
+        refreshGenerations();
+      }
+    },
+    [setGenerationsStatus, refreshGenerations],
+  );
+
   const [firstFrameUrl, setFirstFrameUrl] = useState<string | null>(null);
   const [firstFrameDialogOpen, setFirstFrameDialogOpen] = useState(false);
   const [ffUploading, setFfUploading] = useState(false);
@@ -363,11 +374,7 @@ export function VideoGenerator() {
       }
 
       if (!res.ok) {
-        if (data.generations) {
-          setGenerationsStatus(data.generations);
-        } else {
-          refreshGenerations();
-        }
+        syncGenerations(data.generations);
         throw new Error(data.error || `Request failed (${res.status})`);
       }
 
@@ -376,11 +383,7 @@ export function VideoGenerator() {
         throw new Error("No video returned");
       }
 
-      if (data.generations) {
-        setGenerationsStatus(data.generations);
-      } else {
-        refreshGenerations();
-      }
+      syncGenerations(data.generations);
 
       setGeneratedVideo(url);
       void refreshRecentVideos();
@@ -470,22 +473,14 @@ export function VideoGenerator() {
         return;
       }
       if (!res.ok) {
-        if (data.generations) {
-          setGenerationsStatus(data.generations);
-        } else {
-          refreshGenerations();
-        }
+        syncGenerations(data.generations);
         throw new Error(data.error || `Request failed (${res.status})`);
       }
       const url = data.images?.[0];
       if (!url) {
         throw new Error("No image returned");
       }
-      if (data.generations) {
-        setGenerationsStatus(data.generations);
-      } else {
-        refreshGenerations();
-      }
+      syncGenerations(data.generations);
       setFirstFrameUrl(url);
       setFirstFrameDialogOpen(false);
     } catch (err) {
