@@ -10,7 +10,6 @@ import { useAuth } from "@/components/auth-provider";
 import { useFavorites } from "@/components/favorites-provider";
 import { SignInModal } from "@/components/sign-in-modal";
 import { SubscriptionModal } from "@/components/subscription-modal";
-import { DownloadStartedModal } from "@/components/download-started-modal";
 import type { Product } from "@/lib/product-types";
 import {
   productCardVideoSrc,
@@ -21,7 +20,7 @@ import {
 } from "@/lib/product-ui";
 import { AudioTrack, pauseGlobalAudioPlayback } from "./audio-track";
 import { SimilarProducts } from "./similar-products";
-import { openMarketplaceDownload } from "@/lib/open-marketplace-download";
+import { startMarketplaceDownload } from "@/lib/open-marketplace-download";
 
 interface ProductDetailModalProps {
   product: Product;
@@ -42,8 +41,6 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [signInOpen, setSignInOpen] = useState(false);
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
-  const [downloadStartedOpen, setDownloadStartedOpen] = useState(false);
-  const [downloadItemId, setDownloadItemId] = useState<number | null>(null);
   const [canDownload, setCanDownload] = useState<boolean | null>(null);
 
   const kind = productKind(product);
@@ -193,9 +190,7 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
       return;
     }
     if (canDownload) {
-      openMarketplaceDownload(product.id);
-      setDownloadItemId(product.id);
-      setDownloadStartedOpen(true);
+      void startMarketplaceDownload(product.id);
       return;
     }
     setSubscriptionOpen(true);
@@ -380,14 +375,6 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
 
       <SignInModal open={signInOpen} onOpenChange={setSignInOpen} onAuthSuccess={() => setSignInOpen(false)} />
       <SubscriptionModal open={subscriptionOpen} onOpenChange={setSubscriptionOpen} />
-      <DownloadStartedModal
-        open={downloadStartedOpen}
-        itemId={downloadItemId}
-        onOpenChange={(o) => {
-          setDownloadStartedOpen(o);
-          if (!o) setDownloadItemId(null);
-        }}
-      />
     </>
   );
 }

@@ -1,7 +1,10 @@
+"use client";
+
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Product } from "@/lib/product-types";
 import { productSoftwareLabel, productThumbnailUrl } from "@/lib/product-ui";
+import { startMarketplaceDownload } from "@/lib/open-marketplace-download";
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
@@ -15,7 +18,7 @@ interface OwnedItemCardProps {
   titleFallback: string;
   metaLine?: string;
   dateLabel: string;
-  downloadHref: string;
+  itemId: number;
 }
 
 export function OwnedItemCard({
@@ -23,7 +26,7 @@ export function OwnedItemCard({
   titleFallback,
   metaLine,
   dateLabel,
-  downloadHref,
+  itemId,
 }: OwnedItemCardProps) {
   const name = product?.name ?? titleFallback;
   const thumb = product ? productThumbnailUrl(product) : "";
@@ -48,20 +51,12 @@ export function OwnedItemCard({
       </div>
       <div className="flex shrink-0 flex-col gap-2 sm:items-end">
         <Button
-          asChild
+          type="button"
+          onClick={() => void startMarketplaceDownload(itemId)}
           className="w-full bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 sm:w-auto"
         >
-          <a
-            href={downloadHref}
-            {...(downloadHref.startsWith("http://") ||
-            downloadHref.startsWith("https://") ||
-            downloadHref.startsWith("/api/")
-              ? { target: "_blank", rel: "noopener noreferrer" }
-              : {})}
-          >
-            <Download className="mr-2 h-4 w-4" />
-            Download
-          </a>
+          <Download className="mr-2 h-4 w-4" />
+          Download
         </Button>
       </div>
     </article>

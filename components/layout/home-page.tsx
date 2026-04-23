@@ -7,14 +7,13 @@ import { FilterBar } from "@/components/filter-bar";
 import { ProductGrid } from "@/components/product-grid";
 import { SignInModal } from "@/components/sign-in-modal";
 import { SubscriptionModal } from "@/components/subscription-modal";
-import { DownloadStartedModal } from "@/components/download-started-modal";
 import { ImageGenerator } from "@/components/image-generator";
 import { VideoGenerator } from "@/components/video-generator";
 import type { Product } from "@/lib/product-types";
 import { productMatchesSearch, productMatchesSidebarCategory } from "@/lib/product-ui";
 import { useAuth } from "@/components/auth-provider";
 import type { HomeSection } from "@/lib/market-items";
-import { openMarketplaceDownload } from "@/lib/open-marketplace-download";
+import { startMarketplaceDownload } from "@/lib/open-marketplace-download";
 
 const isHomeView = (category: string) => category === "All";
 
@@ -30,9 +29,6 @@ export default function Home({ sections }: HomePageProps) {
   const [sortBy, setSortBy] = useState("popular");
   const [signInOpen, setSignInOpen] = useState(false);
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
-  const [downloadStartedOpen, setDownloadStartedOpen] = useState(false);
-  const [downloadItemId, setDownloadItemId] = useState<number | null>(null);
-
   const isLoggedIn = !!user;
 
   const handleDownload = async (product: Product) => {
@@ -40,30 +36,20 @@ export default function Home({ sections }: HomePageProps) {
       setSignInOpen(true);
       return;
     }
-    const tab = window.open("about:blank", "_blank");
     try {
       const res = await fetch(`/api/me/can-download?itemId=${product.id}`);
       if (!res.ok) {
-        tab?.close();
         setSubscriptionOpen(true);
         return;
       }
       const data = (await res.json()) as { canDownload?: boolean };
       if (data.canDownload) {
-        const url = `/api/download/${product.id}`;
-        if (tab) {
-          tab.location.href = url;
-        } else {
-          openMarketplaceDownload(product.id);
-        }
-        setDownloadItemId(product.id);
-        setDownloadStartedOpen(true);
+        void startMarketplaceDownload(product.id);
         return;
       }
     } catch (e) {
       console.error("[home handleDownload]", e);
     }
-    tab?.close();
     setSubscriptionOpen(true);
   };
 
@@ -108,14 +94,6 @@ export default function Home({ sections }: HomePageProps) {
 
       <SignInModal open={signInOpen} onOpenChange={setSignInOpen} onAuthSuccess={() => setSignInOpen(false)} />
       <SubscriptionModal open={subscriptionOpen} onOpenChange={setSubscriptionOpen} />
-      <DownloadStartedModal
-        open={downloadStartedOpen}
-        itemId={downloadItemId}
-        onOpenChange={(o) => {
-          setDownloadStartedOpen(o);
-          if (!o) setDownloadItemId(null);
-        }}
-      />
     </>
   );
 }

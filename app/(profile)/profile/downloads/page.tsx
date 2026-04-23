@@ -60,7 +60,6 @@ export default async function ProfileDownloadsPage() {
       product: row.product,
       titleFallback,
       createdAt: row.createdAt,
-      downloadUrl: `/api/download/${row.itemId}`,
     };
   });
 

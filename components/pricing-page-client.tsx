@@ -571,11 +571,11 @@ export function PricingPageClient({
         })}
       </div>
 
-      <div className="mt-16 max-w-3xl mx-auto">
+      <div className="mt-16 max-w-4xl mx-auto w-full">
         <h2 className="text-2xl font-semibold text-foreground text-center mb-2 tracking-tight">
           Pricing FAQ
         </h2>
-        <p className="text-center text-muted-foreground text-sm mb-8 max-w-lg mx-auto leading-relaxed">
+        <p className="text-center text-muted-foreground text-sm mb-8 leading-relaxed">
           Answers about plans, billing, and what happens after you subscribe.
         </p>
         <Accordion

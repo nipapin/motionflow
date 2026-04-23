@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { AudioTrack } from "@/components/audio-track";
 import { OwnedItemCard, formatDate } from "@/components/owned-item-card";
+import { startMarketplaceDownload } from "@/lib/open-marketplace-download";
 
 export interface DownloadListItem {
   id: number;
@@ -21,7 +22,6 @@ export interface DownloadListItem {
   product: Product | null;
   titleFallback: string;
   createdAt: string | null;
-  downloadUrl: string;
 }
 
 function displayName(row: DownloadListItem): string {
@@ -55,7 +55,7 @@ export function DownloadsList({ items }: DownloadsListProps) {
   const [period, setPeriod] = useState<Period>("all");
 
   const onDownloadItem = useCallback((row: DownloadListItem) => {
-    window.open(`/api/download/${row.itemId}`, "_blank", "noopener,noreferrer");
+    void startMarketplaceDownload(row.itemId);
   }, []);
 
   const filtered = useMemo(() => {
@@ -149,7 +149,7 @@ export function DownloadsList({ items }: DownloadsListProps) {
                   product={row.product}
                   titleFallback={row.titleFallback}
                   dateLabel={`Downloaded ${formatDate(row.createdAt)}`}
-                  downloadHref={row.downloadUrl}
+                  itemId={row.itemId}
                 />
               </li>
             );

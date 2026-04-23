@@ -7,6 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import type { Product } from "@/lib/product-types";
 import { soldLicenseTitle } from "@/lib/purchase-display";
 import { productThumbnailUrl } from "@/lib/product-ui";
+import { startMarketplaceDownload } from "@/lib/open-marketplace-download";
 
 export interface PurchaseItemCardProps {
   product: Product | null;
@@ -16,7 +17,6 @@ export interface PurchaseItemCardProps {
   license: number;
   purchaseCode: string | null;
   itemPageUrl: string;
-  downloadUrl: string;
   invoiceUrl: string;
 }
 
@@ -36,7 +36,6 @@ export function PurchaseItemCard({
   license,
   purchaseCode,
   itemPageUrl,
-  downloadUrl,
   invoiceUrl,
 }: PurchaseItemCardProps) {
   const name = product?.name ?? titleFallback;
@@ -168,19 +167,14 @@ export function PurchaseItemCard({
 
         <div className="flex shrink-0 flex-row items-center justify-end border-t border-blue-500/10 pt-4 lg:flex-col lg:items-end lg:border-t-0 lg:pt-0">
           <Button
-            asChild
+            type="button"
             variant="outline"
             size="lg"
+            onClick={() => void startMarketplaceDownload(itemId)}
             className="h-11 rounded-xl border-2 border-foreground/80 bg-background px-6 font-medium text-foreground shadow-none smooth hover:bg-muted"
           >
-            <a
-              href={downloadUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Download className="size-5" />
-              Download
-            </a>
+            <Download className="size-5" />
+            Download
           </Button>
         </div>
       </div>
