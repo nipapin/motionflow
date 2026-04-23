@@ -53,7 +53,9 @@ export function OwnedItemCard({
         >
           <a
             href={downloadHref}
-            {...(downloadHref.startsWith("http://") || downloadHref.startsWith("https://")
+            {...(downloadHref.startsWith("http://") ||
+            downloadHref.startsWith("https://") ||
+            downloadHref.startsWith("/api/")
               ? { target: "_blank", rel: "noopener noreferrer" }
               : {})}
           >

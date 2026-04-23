@@ -4,7 +4,6 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { DownloadsList } from "@/components/downloads-list";
 import { getDownloadsForUser } from "@/lib/downloads";
-import { motionflowItemDownloadUrl } from "@/lib/motionflow-urls";
 
 export const metadata: Metadata = {
   title: "My downloads",
@@ -61,7 +60,7 @@ export default async function ProfileDownloadsPage() {
       product: row.product,
       titleFallback,
       createdAt: row.createdAt,
-      downloadUrl: motionflowItemDownloadUrl(row.product, row.itemId, titleFallback),
+      downloadUrl: `/api/download/${row.itemId}`,
     };
   });
 

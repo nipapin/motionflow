@@ -69,3 +69,22 @@ export async function userOwnsItem(userId: number, itemId: number): Promise<bool
   );
   return rows.length > 0;
 }
+
+/** Purchase code for one-time buys — required by the main site download endpoint. */
+export async function getPurchaseCodeForOwnedItem(
+  userId: number,
+  itemId: number,
+): Promise<string | null> {
+  const pool = getPool();
+  const [rows] = await pool.execute<RowDataPacket[]>(
+    `SELECT purchase_code FROM \`${TABLE}\`
+     WHERE buyer_id = ? AND item_id = ? AND status = 1
+     ORDER BY id DESC
+     LIMIT 1`,
+    [userId, itemId],
+  );
+  const r = rows[0] as { purchase_code?: string | null } | undefined;
+  const raw = r?.purchase_code;
+  if (raw == null || String(raw).trim() === "") return null;
+  return String(raw);
+}

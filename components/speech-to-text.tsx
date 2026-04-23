@@ -187,8 +187,7 @@ export function SpeechToText() {
     !generationsLoading &&
     remaining <= 0;
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const applyPickedFile = useCallback((file: File | undefined) => {
     if (!file) return;
     if (file.size > MAX_FILE_BYTES) {
       setErrorMessage("Audio file must be under 25 MB.");
@@ -196,6 +195,21 @@ export function SpeechToText() {
     }
     setErrorMessage(null);
     setUploadedFile(file);
+  }, []);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    applyPickedFile(e.target.files?.[0]);
+  };
+
+  const handleDropZoneDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDropZoneDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    applyPickedFile(e.dataTransfer.files?.[0]);
   };
 
   const handleTranscribe = async () => {
@@ -367,6 +381,8 @@ export function SpeechToText() {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
+              onDragOver={handleDropZoneDragOver}
+              onDrop={handleDropZoneDrop}
               className="w-full py-8 border-2 border-dashed border-blue-500/30 rounded-xl hover:border-blue-500/60 smooth flex flex-col items-center justify-center gap-3 bg-background/30"
             >
               <Upload className="w-8 h-8 text-muted-foreground" />

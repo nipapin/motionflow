@@ -173,7 +173,11 @@ export function PurchaseItemCard({
             size="lg"
             className="h-11 rounded-xl border-2 border-foreground/80 bg-background px-6 font-medium text-foreground shadow-none smooth hover:bg-muted"
           >
-            <a href={downloadUrl} target="_blank" rel="noopener noreferrer">
+            <a
+              href={downloadUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               <Download className="size-5" />
               Download
             </a>

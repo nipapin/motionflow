@@ -14,6 +14,7 @@ import type { Product } from "@/lib/product-types";
 import { productMatchesSearch, productMatchesSidebarCategory } from "@/lib/product-ui";
 import { useAuth } from "@/components/auth-provider";
 import type { HomeSection } from "@/lib/market-items";
+import { openMarketplaceDownload } from "@/lib/open-marketplace-download";
 
 const isHomeView = (category: string) => category === "All";
 
@@ -39,19 +40,30 @@ export default function Home({ sections }: HomePageProps) {
       setSignInOpen(true);
       return;
     }
+    const tab = window.open("about:blank", "_blank");
     try {
       const res = await fetch(`/api/me/can-download?itemId=${product.id}`);
+      if (!res.ok) {
+        tab?.close();
+        setSubscriptionOpen(true);
+        return;
+      }
       const data = (await res.json()) as { canDownload?: boolean };
       if (data.canDownload) {
+        const url = `/api/download/${product.id}`;
+        if (tab) {
+          tab.location.href = url;
+        } else {
+          openMarketplaceDownload(product.id);
+        }
         setDownloadItemId(product.id);
         setDownloadStartedOpen(true);
         return;
       }
-    } catch {
-      setDownloadItemId(product.id);
-      setDownloadStartedOpen(true);
-      return;
+    } catch (e) {
+      console.error("[home handleDownload]", e);
     }
+    tab?.close();
     setSubscriptionOpen(true);
   };
 

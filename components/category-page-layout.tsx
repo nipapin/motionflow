@@ -10,6 +10,7 @@ import { SubscriptionModal } from "@/components/subscription-modal";
 import { DownloadStartedModal } from "@/components/download-started-modal";
 import type { Product } from "@/lib/product-types";
 import { productMatchesSearch, productPopularityScore } from "@/lib/product-ui";
+import { openMarketplaceDownload } from "@/lib/open-marketplace-download";
 
 function titleCaseSlug(slug: string): string {
   return slug
@@ -84,19 +85,30 @@ export function CategoryPageLayout({
       setSignInOpen(true);
       return;
     }
+    const tab = window.open("about:blank", "_blank");
     try {
       const res = await fetch(`/api/me/can-download?itemId=${product.id}`);
+      if (!res.ok) {
+        tab?.close();
+        setSubscriptionOpen(true);
+        return;
+      }
       const data = (await res.json()) as { canDownload?: boolean };
       if (data.canDownload) {
+        const url = `/api/download/${product.id}`;
+        if (tab) {
+          tab.location.href = url;
+        } else {
+          openMarketplaceDownload(product.id);
+        }
         setDownloadItemId(product.id);
         setDownloadStartedOpen(true);
         return;
       }
-    } catch {
-      setDownloadItemId(product.id);
-      setDownloadStartedOpen(true);
-      return;
+    } catch (e) {
+      console.error("[category handleDownload]", e);
     }
+    tab?.close();
     setSubscriptionOpen(true);
   };
 

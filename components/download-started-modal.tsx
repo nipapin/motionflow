@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { X, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,28 +11,6 @@ interface DownloadStartedModalProps {
 }
 
 export function DownloadStartedModal({ open, itemId, onOpenChange }: DownloadStartedModalProps) {
-  const firedForSessionRef = useRef(false);
-
-  /** Start file download once when the modal opens (does not navigate away). */
-  useEffect(() => {
-    if (!open) {
-      firedForSessionRef.current = false;
-      return;
-    }
-    if (itemId == null || firedForSessionRef.current) return;
-    firedForSessionRef.current = true;
-
-    const iframe = document.createElement("iframe");
-    iframe.style.display = "none";
-    iframe.setAttribute("aria-hidden", "true");
-    iframe.src = `/api/download/${itemId}`;
-    document.body.appendChild(iframe);
-
-    return () => {
-      iframe.remove();
-    };
-  }, [open, itemId]);
-
   const close = () => {
     onOpenChange(false);
   };

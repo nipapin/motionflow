@@ -98,6 +98,24 @@ interface TtsHistoryItem {
 
 const VOICE_LABELS = new Map(voicePresets.map((v) => [v.id, v.label]));
 
+async function downloadRemoteAudioFile(url: string, filename: string) {
+  try {
+    const res = await fetch(url, { mode: "cors" });
+    if (!res.ok) throw new Error(String(res.status));
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 2000);
+  } catch {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+}
+
 function recordsToHistory(rows: ApiGenerationRecord[]): TtsHistoryItem[] {
   const out: TtsHistoryItem[] = [];
   for (const row of rows) {
@@ -408,6 +426,11 @@ export function TextToSpeech() {
   const triggerClasses =
     "w-full h-11 bg-background/50 border-blue-500/30 text-foreground rounded-xl px-4 hover:border-blue-500/60 focus-visible:border-blue-500/60 focus-visible:ring-blue-500/30";
 
+  const onDownloadGeneratedMp3 = useCallback(() => {
+    if (!generatedAudio) return;
+    void downloadRemoteAudioFile(generatedAudio, "speech.mp3");
+  }, [generatedAudio]);
+
   return (
     <div className="max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-8">
@@ -652,19 +675,13 @@ export function TextToSpeech() {
                     <span>{generatedSpeed.toFixed(2)}x</span>
                   </div>
                   <Button
+                    type="button"
                     size="sm"
                     className="bg-white text-black hover:bg-white/90 rounded-lg"
-                    asChild
+                    onClick={onDownloadGeneratedMp3}
                   >
-                    <a
-                      href={generatedAudio}
-                      download="speech.mp3"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <Download className="w-4 h-4 mr-1" />
-                      Download MP3
-                    </a>
+                    <Download className="w-4 h-4 mr-1" />
+                    Download MP3
                   </Button>
                 </div>
               </div>
@@ -715,17 +732,20 @@ export function TextToSpeech() {
                           <RotateCcw className="w-4 h-4" />
                         </button>
                         {item.audioUrl ? (
-                          <a
-                            href={item.audioUrl}
-                            download
-                            target="_blank"
-                            rel="noreferrer"
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void downloadRemoteAudioFile(
+                                item.audioUrl,
+                                `speech-${item.id}.mp3`,
+                              )
+                            }
                             title="Download"
                             aria-label="Download audio"
                             className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth"
                           >
                             <Download className="w-4 h-4" />
-                          </a>
+                          </button>
                         ) : null}
                         <button
                           type="button"

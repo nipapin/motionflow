@@ -7,6 +7,12 @@ import { Check, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -563,6 +569,79 @@ export function PricingPageClient({
             </div>
           );
         })}
+      </div>
+
+      <div className="mt-16 max-w-3xl mx-auto">
+        <h2 className="text-2xl font-semibold text-foreground text-center mb-2 tracking-tight">
+          Pricing FAQ
+        </h2>
+        <p className="text-center text-muted-foreground text-sm mb-8 max-w-lg mx-auto leading-relaxed">
+          Answers about plans, billing, and what happens after you subscribe.
+        </p>
+        <Accordion
+          type="single"
+          collapsible
+          className="rounded-2xl border border-blue-500/20 bg-card/50 px-1 sm:px-4"
+        >
+          <AccordionItem value="q1" className="border-blue-500/10 px-3">
+            <AccordionTrigger className="text-foreground text-base hover:no-underline">
+              What is the difference between Creator and Creator + AI?
+            </AccordionTrigger>
+            <AccordionContent className="text-muted-foreground leading-relaxed">
+              <strong className="text-foreground/90">Creator</strong> includes the full template and asset library
+              with unlimited marketplace downloads.{" "}
+              <strong className="text-foreground/90">Creator + AI</strong> adds image and video generation, text to
+              speech, and speech to text on top of the same library and commercial license.
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="q2" className="border-blue-500/10 px-3">
+            <AccordionTrigger className="text-foreground text-base hover:no-underline">
+              Can I change or cancel my plan?
+            </AccordionTrigger>
+            <AccordionContent className="text-muted-foreground leading-relaxed">
+              You can upgrade or schedule a plan change from this page when you are logged in. Cancel anytime from your
+              account; you keep access until the end of the current billing period. See our refund policy for details on
+              eligibility.
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="q3" className="border-blue-500/10 px-3">
+            <AccordionTrigger className="text-foreground text-base hover:no-underline">
+              Is yearly billing really cheaper?
+            </AccordionTrigger>
+            <AccordionContent className="text-muted-foreground leading-relaxed">
+              Yes — the yearly option is billed once per year at a discounted rate compared to twelve monthly payments.
+              The page shows the effective monthly cost for easy comparison.
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="q4" className="border-blue-500/10 px-3">
+            <AccordionTrigger className="text-foreground text-base hover:no-underline">
+              How do downloads and licensing work?
+            </AccordionTrigger>
+            <AccordionContent className="text-muted-foreground leading-relaxed">
+              While you have an active subscription you can download items from the catalog and use them under our
+              license in personal and commercial work. You can re-download from your profile, and a separate purchase
+              code applies to one-time store purchases. See the License page for full terms.
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="q5" className="border-blue-500/10 px-3">
+            <AccordionTrigger className="text-foreground text-base hover:no-underline">
+              How are AI generation limits applied?
+            </AccordionTrigger>
+            <AccordionContent className="text-muted-foreground leading-relaxed">
+              Creator + AI includes a monthly allowance for AI tools. Usage resets each billing period; the exact
+              balance appears in the app. If you need a higher cap for a team, contact us for custom options.
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="q6" className="border-blue-500/10 px-3 border-b-0">
+            <AccordionTrigger className="text-foreground text-base hover:no-underline">
+              Can I get an invoice or custom / team pricing?
+            </AccordionTrigger>
+            <AccordionContent className="text-muted-foreground leading-relaxed">
+              Paddle provides receipts for your payments. For teams, agencies, or custom licensing, use the contact
+              form or email support — we can suggest a plan that matches your workflow.
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </div>
 
       {/* Custom plan / enterprise CTA */}

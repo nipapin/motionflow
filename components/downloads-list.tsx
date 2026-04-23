@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Product } from "@/lib/product-types";
+import { productKind } from "@/lib/product-ui";
 import {
   Select,
   SelectContent,
@@ -11,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { AudioTrack } from "@/components/audio-track";
 import { OwnedItemCard, formatDate } from "@/components/owned-item-card";
 
 export interface DownloadListItem {
@@ -51,6 +53,10 @@ interface DownloadsListProps {
 export function DownloadsList({ items }: DownloadsListProps) {
   const [nameQuery, setNameQuery] = useState("");
   const [period, setPeriod] = useState<Period>("all");
+
+  const onDownloadItem = useCallback((row: DownloadListItem) => {
+    window.open(`/api/download/${row.itemId}`, "_blank", "noopener,noreferrer");
+  }, []);
 
   const filtered = useMemo(() => {
     const q = nameQuery.trim().toLowerCase();
@@ -118,16 +124,36 @@ export function DownloadsList({ items }: DownloadsListProps) {
         </div>
       ) : (
         <ul className="space-y-4">
-          {filtered.map((row) => (
-            <li key={row.id}>
-              <OwnedItemCard
-                product={row.product}
-                titleFallback={row.titleFallback}
-                dateLabel={`Downloaded ${formatDate(row.createdAt)}`}
-                downloadHref={row.downloadUrl}
-              />
-            </li>
-          ))}
+          {filtered.map((row) => {
+            const k = row.product ? productKind(row.product) : "template";
+            const isAudio = k === "stock-audio" || k === "sound-fx";
+            if (row.product && isAudio) {
+              return (
+                <li key={row.id}>
+                  <div className="overflow-hidden rounded-2xl border border-blue-500/30 bg-card/40 glow">
+                    <AudioTrack
+                      product={row.product}
+                      onDownload={() => onDownloadItem(row)}
+                      containerClassName="group flex items-center gap-4 px-4 py-3 sm:px-5 sm:py-4 hover:bg-foreground/[0.02] smooth"
+                    />
+                    <p className="border-t border-blue-500/10 px-4 py-2.5 text-xs text-muted-foreground sm:px-5">
+                      Downloaded {formatDate(row.createdAt)}
+                    </p>
+                  </div>
+                </li>
+              );
+            }
+            return (
+              <li key={row.id}>
+                <OwnedItemCard
+                  product={row.product}
+                  titleFallback={row.titleFallback}
+                  dateLabel={`Downloaded ${formatDate(row.createdAt)}`}
+                  downloadHref={row.downloadUrl}
+                />
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

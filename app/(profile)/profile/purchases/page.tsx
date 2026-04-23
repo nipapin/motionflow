@@ -3,11 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { PurchaseItemCard } from "@/components/purchase-item-card";
-import {
-  motionflowInvoiceUrl,
-  motionflowItemDownloadUrl,
-  motionflowItemPageUrl,
-} from "@/lib/motionflow-urls";
+import { motionflowInvoiceUrl, motionflowItemPageUrl } from "@/lib/motionflow-urls";
 import { getPurchasesForUser } from "@/lib/purchases";
 
 export const metadata: Metadata = {
@@ -61,7 +57,7 @@ export default async function ProfilePurchasesPage() {
                 license={row.license}
                 purchaseCode={row.purchaseCode}
                 itemPageUrl={motionflowItemPageUrl(row.product, row.itemId, titleFallback)}
-                downloadUrl={motionflowItemDownloadUrl(row.product, row.itemId, titleFallback)}
+                downloadUrl={`/api/download/${row.itemId}`}
                 invoiceUrl={motionflowInvoiceUrl(row.product, row.itemId, titleFallback, row.id)}
               />
             </li>

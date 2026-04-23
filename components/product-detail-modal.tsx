@@ -21,6 +21,7 @@ import {
 } from "@/lib/product-ui";
 import { AudioTrack, pauseGlobalAudioPlayback } from "./audio-track";
 import { SimilarProducts } from "./similar-products";
+import { openMarketplaceDownload } from "@/lib/open-marketplace-download";
 
 interface ProductDetailModalProps {
   product: Product;
@@ -192,6 +193,7 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
       return;
     }
     if (canDownload) {
+      openMarketplaceDownload(product.id);
       setDownloadItemId(product.id);
       setDownloadStartedOpen(true);
       return;

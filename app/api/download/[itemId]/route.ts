@@ -4,7 +4,7 @@ import type { ResultSetHeader } from "mysql2/promise";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getPool } from "@/lib/db";
 import { getMarketItemsByIds } from "@/lib/market-items";
-import { userOwnsItem } from "@/lib/purchases";
+import { getPurchaseCodeForOwnedItem, userOwnsItem } from "@/lib/purchases";
 import { motionflowItemDownloadUrl } from "@/lib/motionflow-urls";
 import { hasActiveMotionflowSubscription } from "@/lib/subscriptions";
 
@@ -40,15 +40,32 @@ export async function GET(
     return NextResponse.json({ error: "item not found" }, { status: 404 });
   }
 
-  const purchaseCode = crypto.randomBytes(16).toString("hex");
+  const codeParam =
+    process.env.MOTIONFLOW_ITEM_DOWNLOAD_CODE_PARAM?.trim() || "purchase_code";
 
-  const pool = getPool();
-  await pool.execute<ResultSetHeader>(
-    `INSERT INTO \`${DL_TABLE}\` (item_id, user_id, author_id, purchase_code, created_at, updated_at)
-     VALUES (?, ?, ?, ?, NOW(), NOW())`,
-    [itemId, user.id, product.author_id, purchaseCode],
-  );
+  let purchaseCode: string;
 
-  const target = motionflowItemDownloadUrl(product, itemId, product.name);
-  return NextResponse.redirect(target, 307);
+  if (subOk) {
+    purchaseCode = crypto.randomBytes(16).toString("hex");
+    const pool = getPool();
+    await pool.execute<ResultSetHeader>(
+      `INSERT INTO \`${DL_TABLE}\` (item_id, user_id, author_id, purchase_code, created_at, updated_at)
+       VALUES (?, ?, ?, ?, NOW(), NOW())`,
+      [itemId, user.id, product.author_id, purchaseCode],
+    );
+  } else {
+    const sold = await getPurchaseCodeForOwnedItem(user.id, itemId);
+    if (!sold) {
+      return NextResponse.json(
+        { error: "No purchase code for this item. Contact support." },
+        { status: 409 },
+      );
+    }
+    purchaseCode = sold;
+  }
+
+  const base = motionflowItemDownloadUrl(product, itemId, product.name);
+  const target = new URL(base);
+  target.searchParams.set(codeParam, purchaseCode);
+  return NextResponse.redirect(target.toString(), 307);
 }
