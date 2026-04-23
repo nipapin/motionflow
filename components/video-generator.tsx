@@ -252,6 +252,7 @@ export function VideoGenerator() {
     generations,
     generationsLoading,
     markGuestWantedGenerate,
+    setSignInOpen,
     setCreatorAiVariant,
     setCreatorAiGateOpen,
     setErrorMessage,
