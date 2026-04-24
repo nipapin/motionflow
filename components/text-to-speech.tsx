@@ -34,11 +34,15 @@ import { cn } from "@/lib/utils";
 import { useCreatorAiGateAfterSignIn } from "@/hooks/use-creator-ai-gate-after-sign-in";
 import {
   useGenerations,
+  normalizeGenerationStatus,
   type GenerationStatus,
 } from "@/hooks/use-generations";
+import { useExtraGenerationsPurchase } from "@/hooks/use-extra-generations-purchase";
 import { GenerationsBadge } from "@/components/generations-badge";
+import { BuyExtraGenerationsDialog } from "@/components/buy-extra-generations-dialog";
 import {
   CREATOR_AI_REQUIRED_CODE,
+  GENERATION_LIMIT_REACHED_CODE,
   getAiGenerateBlockReason,
 } from "@/lib/ai-generation-gate";
 
@@ -167,6 +171,17 @@ export function TextToSpeech() {
     refresh: refreshGenerations,
   } = useGenerations();
 
+  const {
+    buyOpen,
+    setBuyOpen,
+    openBuyDialog,
+    selectedCount,
+    setSelectedCount,
+    continuePurchase,
+    checkoutLoading,
+    purchaseDisabled,
+  } = useExtraGenerationsPurchase({ onSuccess: refreshGenerations });
+
   const [signInOpen, setSignInOpen] = useState(false);
   const [creatorAiGateOpen, setCreatorAiGateOpen] = useState(false);
   const [creatorAiVariant, setCreatorAiVariant] = useState<
@@ -252,13 +267,6 @@ export function TextToSpeech() {
 
   const characterCount = text.length;
   const overLimit = characterCount > MAX_TEXT_LENGTH;
-  const remaining = generations?.remaining ?? 0;
-  const atLimitForCreatorAi =
-    user &&
-    generations?.plan === "creator_ai" &&
-    !generationsLoading &&
-    remaining <= 0;
-
   const updateSetting = useCallback(
     <K extends keyof TtsSettings>(key: K, value: TtsSettings[K]) => {
       setSettings((prev) => ({ ...prev, [key]: value }));
@@ -349,9 +357,7 @@ export function TextToSpeech() {
       return;
     }
     if (block === "limit") {
-      setErrorMessage(
-        "You've reached your generation limit for this period.",
-      );
+      openBuyDialog();
       return;
     }
 
@@ -381,12 +387,18 @@ export function TextToSpeech() {
         code?: string;
         plan?: string;
         generations?: GenerationStatus;
-      };
+      } & Partial<GenerationStatus>;
 
       if (res.status === 403 && data.code === CREATOR_AI_REQUIRED_CODE) {
         void refreshGenerations();
         setCreatorAiVariant(data.plan === "creator" ? "upgrade" : "subscribe");
         setCreatorAiGateOpen(true);
+        return;
+      }
+
+      if (res.status === 402 && data.code === GENERATION_LIMIT_REACHED_CODE) {
+        setGenerationsStatus(normalizeGenerationStatus(data));
+        openBuyDialog();
         return;
       }
 
@@ -642,12 +654,6 @@ export function TextToSpeech() {
             )}
           </Button>
 
-          {atLimitForCreatorAi && (
-            <p className="text-sm text-red-400 text-center">
-              You&apos;ve reached your generation limit for this period.
-            </p>
-          )}
-
           {errorMessage && (
             <p className="text-sm text-red-400 text-center">{errorMessage}</p>
           )}
@@ -815,6 +821,16 @@ export function TextToSpeech() {
         open={creatorAiGateOpen}
         onOpenChange={setCreatorAiGateOpen}
         variant={creatorAiVariant}
+      />
+
+      <BuyExtraGenerationsDialog
+        open={buyOpen}
+        onOpenChange={setBuyOpen}
+        selectedCount={selectedCount}
+        onSelectCount={setSelectedCount}
+        onContinue={continuePurchase}
+        continueLoading={checkoutLoading}
+        continueDisabled={purchaseDisabled}
       />
     </div>
   );

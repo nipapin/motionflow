@@ -106,9 +106,9 @@ export function Header({ searchQuery, onSearchChange, sidebarCollapsed }: Header
               <div className="relative group">
                 <Button 
                   variant="ghost" 
-                  className="text-foreground hover:bg-foreground/5 rounded-full h-10 px-4 text-sm font-medium smooth border border-blue-500/30 hover:border-blue-500/50 gap-2"
+                  className="text-foreground hover:bg-foreground/5 rounded-full h-10 p-2 text-sm font-medium smooth border border-blue-500/30 hover:border-blue-500/50 gap-2"
                 >
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                  <div className="w-7 h-7 rounded-full bg-linear-to-br from-blue-500 to-blue-600 flex items-center justify-center">
                     <span className="text-sm text-white font-semibold">{user?.name?.charAt(0).toUpperCase() ?? "U"}</span>
                   </div>
                   {user?.name ?? "Account"}

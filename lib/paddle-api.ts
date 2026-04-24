@@ -261,6 +261,37 @@ export interface PaddleApiTransaction {
   subscription_id?: string | null;
   invoice_id?: string | null;
   invoice_number?: string | null;
+  custom_data?: {
+    userId?: string | number;
+    plan?: string;
+    billingPeriod?: string;
+    kind?: string;
+    generations?: string | number;
+  } | null;
+  items?: Array<{
+    quantity?: number;
+    price?: {
+      id?: string;
+      product_id?: string;
+      name?: string | null;
+      billing_cycle?: PaddleApiBillingCycle | null;
+    } | null;
+  }>;
+  billing_period?: { starts_at?: string | null; ends_at?: string | null } | null;
+}
+
+/**
+ * Fetch a Paddle transaction by id. Used by the client-initiated "claim"
+ * endpoint that credits extra AI generations after Paddle Checkout completes
+ * (a fallback for environments where webhooks can't reach the server, e.g.
+ * local development without a tunnel).
+ *
+ * Docs: https://developer.paddle.com/api-reference/transactions/get-transaction
+ */
+export async function getTransaction(id: string): Promise<PaddleApiTransaction> {
+  return paddleFetch<PaddleApiTransaction>(
+    `/transactions/${encodeURIComponent(id)}`,
+  );
 }
 
 /**

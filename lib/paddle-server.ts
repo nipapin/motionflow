@@ -2,6 +2,7 @@ import "server-only";
 import crypto from "node:crypto";
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
+import { EXTRA_GEN_PACKS } from "@/lib/extra-generation-packs";
 import { normalizePaddleProductNameToken } from "@/lib/paddle-product-label";
 import {
   cancelSubscriptionImmediately,
@@ -12,6 +13,7 @@ import {
 } from "@/lib/paddle-api";
 
 const SUBSCRIPTIONS_TABLE = "subscription_systems";
+const EXTRA_GEN_CREDIT_EVENTS_TABLE = "paddle_extra_generation_credit_events";
 const PAYMENT_SYSTEM = "paddle";
 
 /**
@@ -66,7 +68,13 @@ interface PaddleSubscription {
   business_id?: string | null;
   currency_code?: string | null;
   discount?: { id?: string | null; effective_from?: string | null } | null;
-  custom_data?: { userId?: string | number; plan?: string; billingPeriod?: string } | null;
+  custom_data?: {
+    userId?: string | number;
+    plan?: string;
+    billingPeriod?: string;
+    kind?: string;
+    generations?: string | number;
+  } | null;
   current_billing_period?: { starts_at?: string | null; ends_at?: string | null } | null;
   next_billed_at?: string | null;
   scheduled_change?: { action: string; effective_at: string; resume_at?: string | null } | null;
@@ -121,7 +129,13 @@ interface PaddleTransaction {
   invoice_id?: string | null;
   invoice_number?: string | null;
   currency_code?: string | null;
-  custom_data?: { userId?: string | number; plan?: string; billingPeriod?: string } | null;
+  custom_data?: {
+    userId?: string | number;
+    plan?: string;
+    billingPeriod?: string;
+    kind?: string;
+    generations?: string | number;
+  } | null;
   items?: PaddleItem[];
   details?: {
     totals?: PaddleTxnTotals | null;
@@ -298,6 +312,112 @@ function pickUserId(
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+function normalizeExtraAiGenerationsKind(raw: string | undefined | null): string {
+  return String(raw ?? "").trim().toLowerCase();
+}
+
+/** Maps a completed transaction’s first line item price to a configured extra pack size. */
+export function extraGenerationsPackCountForPriceId(
+  priceId: string | null,
+): number | null {
+  if (!priceId) return null;
+  const pack = EXTRA_GEN_PACKS.find((p) => p.priceId === priceId);
+  return pack?.count ?? null;
+}
+
+/**
+ * Idempotently provisions the schema needed by `applyExtraGenerationsCredit`.
+ * The migrations under `db/migrations/` are the canonical source, but in case
+ * they have not been applied yet (fresh dev DB, missed deploy step) we self-heal
+ * here so a Paddle webhook or client-side claim never silently drops a credit.
+ */
+let extraGenerationsSchemaEnsured = false;
+async function ensureExtraGenerationsSchema(): Promise<void> {
+  if (extraGenerationsSchemaEnsured) return;
+  const pool = getPool();
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS \`${EXTRA_GEN_CREDIT_EVENTS_TABLE}\` (
+       \`paddle_transaction_id\` VARCHAR(64) NOT NULL,
+       \`user_id\` BIGINT UNSIGNED NOT NULL,
+       \`generations\` INT UNSIGNED NOT NULL,
+       \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       PRIMARY KEY (\`paddle_transaction_id\`),
+       KEY \`idx_user_created\` (\`user_id\`, \`created_at\`)
+     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  );
+  // `ADD COLUMN IF NOT EXISTS` is MySQL 8 only; emulate with information_schema.
+  type ColRow = RowDataPacket & { c: number };
+  const [colRows] = await pool.execute<ColRow[]>(
+    `SELECT COUNT(*) AS c
+       FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = 'users'
+        AND column_name = 'extra_generations_count'`,
+  );
+  if (Number(colRows[0]?.c ?? 0) === 0) {
+    await pool.query(
+      `ALTER TABLE \`users\`
+         ADD COLUMN \`extra_generations_count\` INT NOT NULL DEFAULT 0`,
+    );
+  }
+  extraGenerationsSchemaEnsured = true;
+}
+
+/**
+ * Applies purchased extra AI generations once per Paddle transaction id.
+ * Separate from `subscription_systems` — those rows are real subscriptions, not credit packs.
+ *
+ * Exported because the same code path is reachable from two places:
+ *   1. The Paddle `transaction.completed` webhook (server-to-server).
+ *   2. The `/api/me/extra-generations/claim` endpoint, which the browser hits
+ *      right after `checkout.completed` so balances update without waiting on
+ *      the webhook (and so dev environments without a webhook tunnel still work).
+ * Idempotency comes from the `paddle_transaction_id` PK on the events table —
+ * the second caller short-circuits with `extra_generations_credit_already_applied`.
+ */
+export async function applyExtraGenerationsCredit(
+  paddleTransactionId: string,
+  userId: number,
+  generations: number,
+): Promise<{ ok: boolean; reason?: string }> {
+  await ensureExtraGenerationsSchema();
+  const pool = getPool();
+  const conn: PoolConnection = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [ins] = await conn.execute<ResultSetHeader>(
+      `INSERT IGNORE INTO \`${EXTRA_GEN_CREDIT_EVENTS_TABLE}\`
+         (\`paddle_transaction_id\`, \`user_id\`, \`generations\`)
+       VALUES (?, ?, ?)`,
+      [paddleTransactionId, userId, generations],
+    );
+    if (ins.affectedRows === 0) {
+      await conn.commit();
+      return { ok: true, reason: "extra_generations_credit_already_applied" };
+    }
+    await conn.execute<ResultSetHeader>(
+      `UPDATE \`users\`
+          SET \`extra_generations_count\` = \`extra_generations_count\` + ?
+        WHERE \`id\` = ?`,
+      [generations, userId],
+    );
+    await conn.commit();
+    console.info(
+      `[paddle] extra AI generations +${generations} for user ${userId} (txn ${paddleTransactionId})`,
+    );
+    return { ok: true };
+  } catch (err) {
+    await conn.rollback();
+    console.error(
+      `[paddle] applyExtraGenerationsCredit failed for ${paddleTransactionId}:`,
+      err,
+    );
+    return { ok: false, reason: "extra_generations_credit_failed" };
+  } finally {
+    conn.release();
+  }
+}
+
 function statusToInt(status: PaddleSubStatus): number {
   return status === "canceled" ? -1 : 1;
 }
@@ -381,6 +501,15 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
 }> {
   const userId = pickUserId(txn);
   if (!userId) return { ok: false, reason: "missing_userId_in_custom_data" };
+
+  if (normalizeExtraAiGenerationsKind(txn.custom_data?.kind) === "extra_ai_generations") {
+    const { priceId } = pickPaddleCatalogIds(txn.items);
+    const packCount = extraGenerationsPackCountForPriceId(priceId);
+    if (packCount == null) {
+      return { ok: false, reason: "extra_generations_unknown_price_id" };
+    }
+    return applyExtraGenerationsCredit(txn.id, userId, packCount);
+  }
 
   // Skip side-charges that are NOT new recurring purchases. These are
   // one-time charges layered onto an existing subscription (e.g. our

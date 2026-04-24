@@ -4,7 +4,19 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
-import { Music, Menu, X, Wand2, Pencil, Video, MessageSquare, AudioLines, PanelLeftClose, PanelLeftOpen, Mic } from "lucide-react";
+import {
+  Music,
+  Menu,
+  X,
+  Wand2,
+  Pencil,
+  Video,
+  MessageSquare,
+  AudioLines,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Mic,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useGenerations } from "@/hooks/use-generations";
 

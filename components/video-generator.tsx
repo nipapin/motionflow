@@ -22,10 +22,17 @@ import { useAuth } from "@/components/auth-provider";
 import { CreatorAiGateModal } from "@/components/creator-ai-gate-modal";
 import { SignInModal } from "@/components/sign-in-modal";
 import { useCreatorAiGateAfterSignIn } from "@/hooks/use-creator-ai-gate-after-sign-in";
-import { useGenerations, type GenerationStatus } from "@/hooks/use-generations";
+import {
+  useGenerations,
+  normalizeGenerationStatus,
+  type GenerationStatus,
+} from "@/hooks/use-generations";
+import { useExtraGenerationsPurchase } from "@/hooks/use-extra-generations-purchase";
 import { GenerationsBadge } from "@/components/generations-badge";
+import { BuyExtraGenerationsDialog } from "@/components/buy-extra-generations-dialog";
 import {
   CREATOR_AI_REQUIRED_CODE,
+  GENERATION_LIMIT_REACHED_CODE,
   getAiGenerateBlockReason,
 } from "@/lib/ai-generation-gate";
 import { replicateFileUrlToDisplaySrc } from "@/lib/replicate-file-display-url";
@@ -117,6 +124,17 @@ export function VideoGenerator() {
     setStatus: setGenerationsStatus,
     refresh: refreshGenerations,
   } = useGenerations();
+
+  const {
+    buyOpen,
+    setBuyOpen,
+    openBuyDialog,
+    selectedCount,
+    setSelectedCount,
+    continuePurchase,
+    checkoutLoading,
+    purchaseDisabled,
+  } = useExtraGenerationsPurchase({ onSuccess: refreshGenerations });
 
   const [signInOpen, setSignInOpen] = useState(false);
   const [creatorAiGateOpen, setCreatorAiGateOpen] = useState(false);
@@ -210,9 +228,7 @@ export function VideoGenerator() {
       return false;
     }
     if (block === "limit") {
-      setErrorMessage(
-        "You've reached your generation limit for this period. See pricing for options.",
-      );
+      openBuyDialog();
       return false;
     }
     return true;
@@ -224,7 +240,7 @@ export function VideoGenerator() {
     setSignInOpen,
     setCreatorAiVariant,
     setCreatorAiGateOpen,
-    setErrorMessage,
+    openBuyDialog,
   ]);
 
   const handle403CreatorAiGate = useCallback(
@@ -249,13 +265,6 @@ export function VideoGenerator() {
 
   const [firstFrameUrl, setFirstFrameUrl] = useState<string | null>(null);
   const [firstFrameDialogOpen, setFirstFrameDialogOpen] = useState(false);
-
-  const remaining = generations?.remaining ?? 0;
-  const atLimitForCreatorAi =
-    user &&
-    generations?.plan === "creator_ai" &&
-    !generationsLoading &&
-    remaining <= 0;
 
   const handleGenerate = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -290,10 +299,16 @@ export function VideoGenerator() {
         plan?: string;
         generations?: GenerationStatus;
         record_id?: string;
-      };
+      } & Partial<GenerationStatus>;
 
       if (res.status === 403 && data.code === CREATOR_AI_REQUIRED_CODE) {
         handle403CreatorAiGate(data.plan);
+        return;
+      }
+
+      if (res.status === 402 && data.code === GENERATION_LIMIT_REACHED_CODE) {
+        syncGenerations(normalizeGenerationStatus(data));
+        openBuyDialog();
         return;
       }
 
@@ -489,13 +504,6 @@ export function VideoGenerator() {
             )}
           </Button>
 
-          {atLimitForCreatorAi && (
-            <p className="text-sm text-red-400 text-center">
-              You&apos;ve reached your generation limit for this period. See
-              pricing for options.
-            </p>
-          )}
-
           {errorMessage && (
             <p className="text-sm text-red-400 text-center">{errorMessage}</p>
           )}
@@ -584,6 +592,16 @@ export function VideoGenerator() {
         open={creatorAiGateOpen}
         onOpenChange={setCreatorAiGateOpen}
         variant={creatorAiVariant}
+      />
+
+      <BuyExtraGenerationsDialog
+        open={buyOpen}
+        onOpenChange={setBuyOpen}
+        selectedCount={selectedCount}
+        onSelectCount={setSelectedCount}
+        onContinue={continuePurchase}
+        continueLoading={checkoutLoading}
+        continueDisabled={purchaseDisabled}
       />
 
       {lightboxVideo && (
