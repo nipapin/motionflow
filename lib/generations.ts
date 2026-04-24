@@ -15,7 +15,15 @@ export const CREATOR_BILLING_PERIOD_GENERATIONS_LIMIT = 5;
 /** Generations per Paddle billing period for Motionflow Creator + AI. */
 export const CREATOR_AI_BILLING_PERIOD_GENERATIONS_LIMIT = 100;
 
-export const GENERATION_TOOLS = ["image", "video", "tts", "stt"] as const;
+export const GENERATION_TOOLS = [
+  "image",
+  "image_edit",
+  "image_remove_bg",
+  "image_upscale",
+  "video",
+  "tts",
+  "stt",
+] as const;
 export type GenerationTool = (typeof GENERATION_TOOLS)[number];
 
 export interface GenerationStatus {

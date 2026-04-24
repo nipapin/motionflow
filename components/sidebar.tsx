@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
-import { Music, Menu, X, Wand2, Video, MessageSquare, AudioLines, PanelLeftClose, PanelLeftOpen, Mic } from "lucide-react";
+import { Music, Menu, X, Wand2, Pencil, Video, MessageSquare, AudioLines, PanelLeftClose, PanelLeftOpen, Mic } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useGenerations } from "@/hooks/use-generations";
 
@@ -19,6 +19,7 @@ const categories = [
 
 const aiTools = [
   { name: "Image Gen", icon: Wand2, href: "/image-generation" },
+  { name: "Image Edit", icon: Pencil, href: "/image-edit" },
   { name: "Video Gen", icon: Video, href: "/video-generation" },
   { name: "Text to Speech", icon: MessageSquare, href: "/text-to-speech" },
   { name: "Speech to Text", icon: Mic, href: "/speech-to-text" },

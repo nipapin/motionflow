@@ -45,12 +45,32 @@ export function useGenerations(): GenerationsState {
     setLoading(true);
     setError(null);
     try {
-      const [videoRes, imageRes, ttsRes, sttRes] = await Promise.all([
+      const [
+        videoRes,
+        imageRes,
+        imageEditRes,
+        imageRemoveBgRes,
+        imageUpscaleRes,
+        ttsRes,
+        sttRes,
+      ] = await Promise.all([
         fetch("/api/me/generation-records?tool=video&limit=100", {
           credentials: "include",
           cache: "no-store",
         }),
         fetch("/api/me/generation-records?tool=image&limit=100", {
+          credentials: "include",
+          cache: "no-store",
+        }),
+        fetch("/api/me/generation-records?tool=image_edit&limit=100", {
+          credentials: "include",
+          cache: "no-store",
+        }),
+        fetch("/api/me/generation-records?tool=image_remove_bg&limit=100", {
+          credentials: "include",
+          cache: "no-store",
+        }),
+        fetch("/api/me/generation-records?tool=image_upscale&limit=100", {
           credentials: "include",
           cache: "no-store",
         }),
@@ -63,17 +83,45 @@ export function useGenerations(): GenerationsState {
           cache: "no-store",
         }),
       ]);
-      if (!videoRes.ok || !imageRes.ok || !ttsRes.ok || !sttRes.ok) {
+      if (
+        !videoRes.ok ||
+        !imageRes.ok ||
+        !imageEditRes.ok ||
+        !imageRemoveBgRes.ok ||
+        !imageUpscaleRes.ok ||
+        !ttsRes.ok ||
+        !sttRes.ok
+      ) {
         throw new Error("Failed to load generations");
       }
-      const [videoData, imageData, ttsData, sttData] = (await Promise.all([
+      const [
+        videoData,
+        imageData,
+        imageEditData,
+        imageRemoveBgData,
+        imageUpscaleData,
+        ttsData,
+        sttData,
+      ] = (await Promise.all([
         videoRes.json(),
         imageRes.json(),
+        imageEditRes.json(),
+        imageRemoveBgRes.json(),
+        imageUpscaleRes.json(),
         ttsRes.json(),
         sttRes.json(),
       ])) as Array<{ items?: ApiGenerationRecord[] }>;
       setVideoItems((videoData.items ?? []).map(mapVideoRecord));
-      setImageItems((imageData.items ?? []).map(mapImageRecord));
+      const imageRows = [
+        ...(imageData.items ?? []),
+        ...(imageEditData.items ?? []),
+        ...(imageRemoveBgData.items ?? []),
+        ...(imageUpscaleData.items ?? []),
+      ].sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+      setImageItems(imageRows.map(mapImageRecord));
       setTtsItems((ttsData.items ?? []).map(mapTtsRecord));
       setSttItems((sttData.items ?? []).map(mapSttRecord));
     } catch {
