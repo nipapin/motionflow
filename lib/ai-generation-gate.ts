@@ -4,6 +4,9 @@ import type { GenerationStatus } from "@/hooks/use-generations";
 /** Same value as `CREATOR_AI_REQUIRED_CODE` in `creator-ai-generation-access.ts` (API JSON). */
 export const CREATOR_AI_REQUIRED_CODE = "CREATOR_AI_REQUIRED" as const;
 
+/** HTTP 402 JSON `code` when the user has no generations left (subscription + extras). */
+export const GENERATION_LIMIT_REACHED_CODE = "GENERATION_LIMIT_REACHED" as const;
+
 export type AiGenerateBlockReason = "sign_in" | "needs_creator_ai" | "limit";
 
 /**
@@ -27,7 +30,7 @@ export function getAiGenerateBlockReason(
     if (status.plan !== "creator_ai") {
         return "needs_creator_ai";
     }
-    if (status.remaining <= 0) {
+    if (status.total_generations_left <= 0) {
         return "limit";
     }
     return null;

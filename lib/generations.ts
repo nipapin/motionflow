@@ -29,11 +29,18 @@ export type GenerationTool = (typeof GENERATION_TOOLS)[number];
 export interface GenerationStatus {
   used: number;
   limit: number;
+  /** Subscription generations remaining this billing period (backward compat). */
   remaining: number;
   /** True when the user has Creator or Creator + AI (paid monthly quota). */
   hasSubscription: boolean;
   /** Plan that sets the limit and whether usage is monthly or lifetime. */
   plan: MotionflowGenerationPlan;
+  /** Generations remaining from the monthly subscription quota. */
+  subscription_generations_left: number;
+  /** Purchased extra generations (never expire). */
+  extra_generations_left: number;
+  /** Total generations available = subscription_generations_left + extra_generations_left. */
+  total_generations_left: number;
 }
 
 const TABLE = "user_generations";
@@ -139,6 +146,20 @@ async function countUsed(
   return Number(rows[0]?.c ?? 0);
 }
 
+async function getExtraGenerationsCount(
+  userId: number,
+  conn?: PoolConnection,
+): Promise<number> {
+  type ExtraRow = RowDataPacket & { extra_generations_count: number };
+  const executor = conn ?? getPool();
+  const lock = conn ? " FOR UPDATE" : "";
+  const [rows] = await executor.execute<ExtraRow[]>(
+    `SELECT extra_generations_count FROM users WHERE id = ?${lock}`,
+    [userId],
+  );
+  return Number(rows[0]?.extra_generations_count ?? 0);
+}
+
 export async function getGenerationsStatus(
   userId: number,
 ): Promise<GenerationStatus> {
@@ -148,8 +169,21 @@ export async function getGenerationsStatus(
   const { limit, hasSubscription } = getLimitForPlan(plan);
   const usageWindow = resolveUsageWindow(ctx);
   const used = await countUsed(userId, plan, usageWindow);
-  const remaining = Math.max(0, limit - used);
-  return { used, limit, remaining, hasSubscription, plan };
+  const subscription_generations_left = Math.max(0, limit - used);
+  const extra_generations_left =
+    plan === "creator_ai" ? await getExtraGenerationsCount(userId) : 0;
+  const total_generations_left =
+    subscription_generations_left + extra_generations_left;
+  return {
+    used,
+    limit,
+    remaining: subscription_generations_left,
+    hasSubscription,
+    plan,
+    subscription_generations_left,
+    extra_generations_left,
+    total_generations_left,
+  };
 }
 
 export type ConsumeResult =
@@ -159,6 +193,7 @@ export type ConsumeResult =
 /**
  * Atomically reserves one generation for the user.
  * Re-checks the limit inside a transaction to avoid race conditions.
+ * Creator + AI: deducts subscription quota first, then extra_generations_count.
  */
 export async function consumeGeneration(
   userId: number,
@@ -175,8 +210,13 @@ export async function consumeGeneration(
     const { limit, hasSubscription } = getLimitForPlan(plan);
     const usageWindow = resolveUsageWindow(ctx);
     const used = await countUsed(userId, plan, usageWindow, conn);
+    const extraCount =
+      plan === "creator_ai" ? await getExtraGenerationsCount(userId, conn) : 0;
 
-    if (used >= limit) {
+    const subscriptionLeft = Math.max(0, limit - used);
+    const totalLeft = subscriptionLeft + extraCount;
+
+    if (totalLeft <= 0) {
       await conn.rollback();
       return {
         ok: false,
@@ -187,26 +227,66 @@ export async function consumeGeneration(
           remaining: 0,
           hasSubscription,
           plan,
+          subscription_generations_left: 0,
+          extra_generations_left: 0,
+          total_generations_left: 0,
         },
       };
     }
 
-    await conn.execute<ResultSetHeader>(
-      `INSERT INTO \`${TABLE}\` (user_id, tool) VALUES (?, ?)`,
-      [userId, tool],
-    );
+    let newSubscriptionLeft: number;
+    let newExtraLeft: number;
+
+    if (subscriptionLeft > 0) {
+      await conn.execute<ResultSetHeader>(
+        `INSERT INTO \`${TABLE}\` (user_id, tool) VALUES (?, ?)`,
+        [userId, tool],
+      );
+      newSubscriptionLeft = subscriptionLeft - 1;
+      newExtraLeft = extraCount;
+    } else {
+      const [result] = await conn.execute<ResultSetHeader>(
+        `UPDATE users
+            SET extra_generations_count = extra_generations_count - 1
+          WHERE id = ? AND extra_generations_count > 0`,
+        [userId],
+      );
+      if (result.affectedRows === 0) {
+        await conn.rollback();
+        return {
+          ok: false,
+          reason: "limit_reached",
+          status: {
+            used,
+            limit,
+            remaining: 0,
+            hasSubscription,
+            plan,
+            subscription_generations_left: 0,
+            extra_generations_left: 0,
+            total_generations_left: 0,
+          },
+        };
+      }
+      newSubscriptionLeft = 0;
+      newExtraLeft = extraCount - 1;
+    }
 
     await conn.commit();
 
-    const newUsed = used + 1;
+    const newUsed = subscriptionLeft > 0 ? used + 1 : used;
+    const newTotal = newSubscriptionLeft + newExtraLeft;
     return {
       ok: true,
       status: {
         used: newUsed,
         limit,
-        remaining: Math.max(0, limit - newUsed),
+        remaining: newSubscriptionLeft,
         hasSubscription,
         plan,
+        subscription_generations_left: newSubscriptionLeft,
+        extra_generations_left: newExtraLeft,
+        total_generations_left: newTotal,
       },
     };
   } catch (err) {

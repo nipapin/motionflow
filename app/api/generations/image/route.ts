@@ -5,6 +5,7 @@ import {
     consumeGeneration,
     getGenerationsStatus,
 } from "@/lib/generations";
+import { GENERATION_LIMIT_REACHED_CODE } from "@/lib/ai-generation-gate";
 import { requireCreatorAiForGeneration } from "@/lib/creator-ai-generation-access";
 import { insertGenerationRecord } from "@/lib/generation-records";
 import { mirrorReplicateUrlsToR2 } from "@/lib/replicate-mirror-output";
@@ -137,11 +138,10 @@ export async function POST(req: NextRequest) {
         }
 
         const preStatus = await getGenerationsStatus(user.id);
-        if (preStatus.remaining <= 0) {
+        if (preStatus.total_generations_left <= 0) {
             return NextResponse.json(
                 {
-                    error:
-                        "You've reached your generation limit. Upgrade your plan to keep creating.",
+                    code: GENERATION_LIMIT_REACHED_CODE,
                     ...preStatus,
                 },
                 { status: 402 },
@@ -246,8 +246,7 @@ export async function POST(req: NextRequest) {
         if (!consumed.ok) {
             return NextResponse.json(
                 {
-                    error:
-                        "You've reached your generation limit. Upgrade your plan to keep creating.",
+                    code: GENERATION_LIMIT_REACHED_CODE,
                     ...consumed.status,
                 },
                 { status: 402 },

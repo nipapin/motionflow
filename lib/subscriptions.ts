@@ -5,6 +5,7 @@ import {
   applyMotionflowProductTitleTemplate,
   normalizePaddleProductNameToken,
 } from "@/lib/paddle-product-label";
+import { isExtraGenerationsPackPriceId } from "@/lib/extra-generation-packs";
 
 /** Motionflow catalog tier used for AI generation quotas (`/api/me/generations`). */
 export type MotionflowGenerationPlan = "none" | "creator" | "creator_ai";
@@ -83,6 +84,14 @@ function rowIsMotionflowCatalogSubscription(r: SubRow): boolean {
   if (pid && THIRD_PARTY_PADDLE_PRODUCT_IDS.has(pid)) return false;
   if (r.author_id == null) return true;
   return !THIRD_PARTY_SUBSCRIPTION_AUTHOR_IDS.has(r.author_id);
+}
+
+/** Extra AI generation packs are purchases, not recurring subscriptions (even if stored on the same table). */
+function rowIsBillableMotionflowSubscription(r: SubRow): boolean {
+  return (
+    rowIsMotionflowCatalogSubscription(r) &&
+    !isExtraGenerationsPackPriceId(r.paddle_price_id?.trim())
+  );
 }
 
 const PRODUCT_PAGES: Record<number | string, string> = {
@@ -224,7 +233,7 @@ export async function getSubscriptionsForUser(
   const pool = getPool();
   const [rows] = await pool.execute<SubRow[]>(LIST_SUBSCRIPTION_SQL, [userId]);
 
-  return rows.map((r) => {
+  return rows.filter((r) => rowIsBillableMotionflowSubscription(r)).map((r) => {
     const pres = resolveSubscriptionPresentation(r);
 
     const { active, cancelled } = computeRowActiveState(r);
@@ -365,7 +374,7 @@ export async function getActiveSubscriptionForUser(
   const [rows] = await pool.execute<SubRow[]>(GENERATION_SUBSCRIPTION_SQL, [userId]);
 
   const activeCatalog = rows.filter(
-    (r) => rowIsMotionflowCatalogSubscription(r) && rowIsActive(r),
+    (r) => rowIsBillableMotionflowSubscription(r) && rowIsActive(r),
   );
   if (activeCatalog.length === 0) return null;
   const tierRow = pickTierRowForGenerations(activeCatalog);
@@ -386,7 +395,7 @@ export async function hasActiveMotionflowSubscription(
 ): Promise<boolean> {
   const pool = getPool();
   const [rows] = await pool.execute<SubRow[]>(LIST_SUBSCRIPTION_SQL, [userId]);
-  return rows.some((r) => rowIsMotionflowCatalogSubscription(r) && rowIsActive(r));
+  return rows.some((r) => rowIsBillableMotionflowSubscription(r) && rowIsActive(r));
 }
 
 /**
@@ -479,7 +488,7 @@ export async function getMotionflowGenerationContext(
   ]);
 
   const activeCatalog = rows.filter(
-    (r) => rowIsMotionflowCatalogSubscription(r) && rowIsActive(r),
+    (r) => rowIsBillableMotionflowSubscription(r) && rowIsActive(r),
   );
   const tierRow = pickTierRowForGenerations(activeCatalog);
 

@@ -24,7 +24,6 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Motion Flow - Video Templates & Audio Assets",
   description: "Premium video templates for After Effects, Premiere Pro, DaVinci Resolve and royalty-free music & sound effects",
-  generator: "v0.app",
   icons: {
     icon: [
       {
@@ -36,8 +35,8 @@ export const metadata: Metadata = {
         media: "(prefers-color-scheme: dark)",
       },
       {
-        url: "/icon.svg",
-        type: "image/svg+xml",
+        url: "/favicon.ico",
+        type: "image/x-icon",
       },
     ],
     apple: "/apple-icon.png",

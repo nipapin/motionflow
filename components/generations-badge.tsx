@@ -27,8 +27,17 @@ export function GenerationsBadge({
     return null;
   }
 
-  const primary = `${status.remaining} / ${status.limit}`;
-  const secondary = "Generations remaining";
+  const isCreatorAi = status.plan === "creator_ai";
+  const primary = isCreatorAi
+    ? String(status.total_generations_left)
+    : `${status.remaining} / ${status.limit}`;
+  const secondary = isCreatorAi
+    ? status.extra_generations_left > 0
+      ? status.subscription_generations_left === 0
+        ? "All remaining are extra (never expire)"
+        : `${status.subscription_generations_left} monthly · ${status.extra_generations_left} extra`
+      : `${status.subscription_generations_left} monthly`
+    : "Generations remaining";
 
   return (
     <div className="flex items-center gap-3 px-5 py-3 rounded-xl border border-blue-500/30 bg-card/50">

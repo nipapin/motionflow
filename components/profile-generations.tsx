@@ -7,7 +7,9 @@ import { ImageIcon, Loader2, Mic, Video, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/components/auth-provider";
-import { useGenerations } from "@/lib/use-generations";
+import { useGenerations as useGenerationHistory } from "@/lib/use-generations";
+import { useGenerations as useGenerationQuota } from "@/hooks/use-generations";
+import { ProfileGenerationsQuota } from "@/components/profile-generations-quota";
 import type { SttHistory, TabValue } from "@/lib/generations-types";
 import { VideoSection } from "@/components/generations/video-section";
 import { ImageSection } from "@/components/generations/image-section";
@@ -17,7 +19,7 @@ import { VideoLightbox, ImageLightbox } from "@/components/generations/lightbox"
 import { TranscriptDialog } from "@/components/generations/transcript-dialog";
 
 const TAB_TRIGGER_CLASS =
-  "text-xs sm:text-sm text-muted-foreground data-[state=active]:border-transparent data-[state=active]:bg-linear-to-r data-[state=active]:from-blue-600 data-[state=active]:to-blue-500 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:shadow-blue-500/30";
+  "h-9 text-xs sm:text-sm px-2 sm:px-3 text-muted-foreground data-[state=active]:border-transparent data-[state=active]:bg-linear-to-r data-[state=active]:from-blue-600 data-[state=active]:to-blue-500 data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=active]:shadow-blue-500/25";
 
 function isValidTab(value: string): value is TabValue {
   return value === "image" || value === "video" || value === "tts" || value === "stt";
@@ -45,7 +47,13 @@ export function ProfileGenerations() {
   );
 
   const { videoItems, imageItems, ttsItems, sttItems, loading, error, deleteError, reload, removeRecord } =
-    useGenerations();
+    useGenerationHistory();
+  const {
+    status: quotaStatus,
+    loading: quotaLoading,
+    error: quotaError,
+    refresh: refreshQuota,
+  } = useGenerationQuota();
 
   const [lightboxVideo, setLightboxVideo] = useState<string | null>(null);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
@@ -64,44 +72,65 @@ export function ProfileGenerations() {
     );
   }
 
+  const pageIntro = (
+    <div className="space-y-1">
+      <h1 className="text-2xl sm:text-3xl font-semibold text-foreground tracking-tight">
+        My generations
+      </h1>
+      <p className="text-sm text-muted-foreground max-w-2xl">
+        Image, video and audio from the AI tools. Open a generator from the sidebar anytime.
+      </p>
+    </div>
+  );
+
+  const quotaBlock = (
+    <ProfileGenerationsQuota
+      status={quotaStatus}
+      loading={quotaLoading}
+      error={quotaError}
+      onRefresh={refreshQuota}
+    />
+  );
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24 text-muted-foreground">
-        <Loader2 className="w-8 h-8 animate-spin mr-3" />
-        Loading generations…
+      <div className="space-y-4">
+        {pageIntro}
+        {quotaBlock}
+        <div className="flex items-center justify-center py-24 text-muted-foreground">
+          <Loader2 className="w-8 h-8 animate-spin mr-3" />
+          Loading generations…
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="rounded-2xl border border-red-500/30 bg-card/50 p-8 text-center">
-        <p className="text-red-400 mb-4">{error}</p>
-        <Button variant="secondary" onClick={reload}>
-          Retry
-        </Button>
+      <div className="space-y-4">
+        {pageIntro}
+        {quotaBlock}
+        <div className="rounded-2xl border border-red-500/30 bg-card/50 p-8 text-center">
+          <p className="text-red-400 mb-4">{error}</p>
+          <Button variant="secondary" onClick={reload}>
+            Retry
+          </Button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-semibold text-foreground tracking-tight mb-2">
-          My generations
-        </h1>
-        <p className="text-muted-foreground">
-          Image, video and audio outputs from the AI tools. Open a generator
-          anytime from the sidebar.
-        </p>
-      </div>
+    <div className="space-y-4">
+      {pageIntro}
+      {quotaBlock}
 
       {deleteError ? (
         <p className="text-sm text-red-400 text-center">{deleteError}</p>
       ) : null}
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid grid-cols-2 sm:grid-cols-4 h-auto gap-1.5 rounded-xl border border-blue-500/25 bg-muted/40 p-1.5 max-w-2xl">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto gap-1 rounded-lg border border-blue-500/25 bg-muted/40 p-1">
           <TabsTrigger value="image" className={TAB_TRIGGER_CLASS}>
             <ImageIcon className="w-4 h-4 mr-2" />
             Images
@@ -120,27 +149,27 @@ export function ProfileGenerations() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="image" className="mt-4">
+        <TabsContent value="image" className="mt-3">
           <ImageSection
             items={imageItems}
             onPreview={setLightboxImage}
             onRemove={(id) => void removeRecord(id, "image")}
           />
         </TabsContent>
-        <TabsContent value="video" className="mt-4">
+        <TabsContent value="video" className="mt-3">
           <VideoSection
             items={videoItems}
             onPlay={setLightboxVideo}
             onRemove={(id) => void removeRecord(id, "video")}
           />
         </TabsContent>
-        <TabsContent value="tts" className="mt-4">
+        <TabsContent value="tts" className="mt-3">
           <TtsSection
             items={ttsItems}
             onRemove={(id) => void removeRecord(id, "tts")}
           />
         </TabsContent>
-        <TabsContent value="stt" className="mt-4">
+        <TabsContent value="stt" className="mt-3">
           <SttSection
             items={sttItems}
             onViewTranscript={setTranscriptItem}

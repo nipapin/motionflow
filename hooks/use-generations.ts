@@ -2,19 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
-import { CREATOR_AI_REQUIRED_CODE } from "@/lib/ai-generation-gate";
 import type { MotionflowGenerationPlan } from "@/lib/subscriptions";
-
-export class ConsumeGenerationError extends Error {
-  constructor(
-    message: string,
-    public readonly code?: string,
-    public readonly plan?: MotionflowGenerationPlan,
-  ) {
-    super(message);
-    this.name = "ConsumeGenerationError";
-  }
-}
 
 export interface GenerationStatus {
   used: number;
@@ -22,9 +10,10 @@ export interface GenerationStatus {
   remaining: number;
   hasSubscription: boolean;
   plan: MotionflowGenerationPlan;
+  subscription_generations_left: number;
+  extra_generations_left: number;
+  total_generations_left: number;
 }
-
-export type GenerationTool = "image" | "video" | "tts" | "stt";
 
 export interface UseGenerationsResult {
   status: GenerationStatus | null;
@@ -32,8 +21,6 @@ export interface UseGenerationsResult {
   error: string | null;
   authenticated: boolean;
   refresh: () => Promise<void>;
-  /** Records one generation server-side. Returns the new status, or throws on failure. */
-  consume: (tool: GenerationTool) => Promise<GenerationStatus>;
   /** Replace local status (used by routes that already debited server-side). */
   setStatus: (next: GenerationStatus) => void;
 }
@@ -41,6 +28,30 @@ export interface UseGenerationsResult {
 function parseGenerationPlan(value: unknown): MotionflowGenerationPlan {
   if (value === "creator" || value === "creator_ai") return value;
   return "none";
+}
+
+export function normalizeGenerationStatus(
+  data: Partial<GenerationStatus>,
+): GenerationStatus {
+  const remaining = Number(data.remaining ?? 0);
+  const subscription_generations_left = Number(
+    data.subscription_generations_left ?? remaining,
+  );
+  const extra_generations_left = Number(data.extra_generations_left ?? 0);
+  const total_generations_left = Number(
+    data.total_generations_left ??
+      subscription_generations_left + extra_generations_left,
+  );
+  return {
+    used: Number(data.used ?? 0),
+    limit: Number(data.limit ?? 0),
+    remaining,
+    hasSubscription: Boolean(data.hasSubscription),
+    plan: parseGenerationPlan(data.plan),
+    subscription_generations_left,
+    extra_generations_left,
+    total_generations_left,
+  };
 }
 
 export function useGenerations(): UseGenerationsResult {
@@ -74,13 +85,7 @@ export function useGenerations(): UseGenerationsResult {
       }
 
       setAuthenticated(true);
-      setStatusState({
-        used: Number(data.used ?? 0),
-        limit: Number(data.limit ?? 0),
-        remaining: Number(data.remaining ?? 0),
-        hasSubscription: Boolean(data.hasSubscription),
-        plan: parseGenerationPlan(data.plan),
-      });
+      setStatusState(normalizeGenerationStatus(data));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load status");
     } finally {
@@ -93,59 +98,9 @@ export function useGenerations(): UseGenerationsResult {
     void refresh();
   }, [refresh, user?.id]);
 
-  const consume = useCallback(
-    async (tool: GenerationTool): Promise<GenerationStatus> => {
-      const res = await fetch("/api/me/generations", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tool }),
-      });
-
-      const data = (await res.json().catch(() => ({}))) as Partial<
-        GenerationStatus
-      > & { error?: string; code?: string };
-
-      if (!res.ok) {
-        if (
-          typeof data.used === "number" &&
-          typeof data.limit === "number" &&
-          typeof data.remaining === "number"
-        ) {
-          setStatusState({
-            used: data.used,
-            limit: data.limit,
-            remaining: data.remaining,
-            hasSubscription: Boolean(data.hasSubscription),
-            plan: parseGenerationPlan(data.plan),
-          });
-        }
-        if (data.code === CREATOR_AI_REQUIRED_CODE) {
-          throw new ConsumeGenerationError(
-            data.error || "This feature is included with Creator + AI.",
-            data.code,
-            parseGenerationPlan(data.plan),
-          );
-        }
-        throw new Error(data.error || `Request failed (${res.status})`);
-      }
-
-      const next: GenerationStatus = {
-        used: Number(data.used ?? 0),
-        limit: Number(data.limit ?? 0),
-        remaining: Number(data.remaining ?? 0),
-        hasSubscription: Boolean(data.hasSubscription),
-        plan: parseGenerationPlan(data.plan),
-      };
-      setStatusState(next);
-      return next;
-    },
-    [],
-  );
-
   const setStatus = useCallback((next: GenerationStatus) => {
     setStatusState(next);
   }, []);
 
-  return { status, loading, error, authenticated, refresh, consume, setStatus };
+  return { status, loading, error, authenticated, refresh, setStatus };
 }

@@ -6,27 +6,12 @@ import { useRouter } from "next/navigation";
 import { Check, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { usePaddle } from "@/lib/paddle";
-import type {
-  ActiveSubscriptionSummary,
-  PricingBillingPeriod,
-  PricingTier,
-} from "@/lib/subscriptions";
+import { useAuth } from "@/components/auth-provider";
+import type { ActiveSubscriptionSummary, PricingBillingPeriod, PricingTier } from "@/lib/subscriptions";
 
 type PlanId = PricingTier;
 type BillingPeriod = PricingBillingPeriod;
@@ -98,19 +83,12 @@ function formatMoney(amount: number, currency: string): string {
   }
 }
 
-function relationFor(
-  current: ActiveSubscriptionSummary | null,
-  cardTier: PlanId,
-  cardBillingPeriod: BillingPeriod,
-): CardRelation {
+function relationFor(current: ActiveSubscriptionSummary | null, cardTier: PlanId, cardBillingPeriod: BillingPeriod): CardRelation {
   if (!current) return "none";
   const sameTier = current.tier === cardTier;
   const samePeriod = current.billingPeriod === cardBillingPeriod;
   if (sameTier && samePeriod) return "current";
-  if (
-    current.scheduledChange?.tier === cardTier &&
-    current.scheduledChange?.billingPeriod === cardBillingPeriod
-  ) {
+  if (current.scheduledChange?.tier === cardTier && current.scheduledChange?.billingPeriod === cardBillingPeriod) {
     return "scheduled-target";
   }
   // Tier first, then billing period.
@@ -131,15 +109,11 @@ function formatDateDMY(raw: string | null | undefined): string {
   return `${dd}.${mm}.${d.getFullYear()}`;
 }
 
-export function PricingPageClient({
-  currentUser,
-  currentSubscription,
-}: PricingPageClientProps) {
+export function PricingPageClient({ currentUser, currentSubscription }: PricingPageClientProps) {
   const router = useRouter();
   const { paddle, ready, subscribe } = usePaddle();
-  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>(
-    currentSubscription?.billingPeriod ?? "yearly",
-  );
+  const { openSignIn } = useAuth();
+  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>(currentSubscription?.billingPeriod ?? "yearly");
   const [pendingPlan, setPendingPlan] = useState<PlanId | null>(null);
   const [downgradeTarget, setDowngradeTarget] = useState<{
     tier: PlanId;
@@ -184,7 +158,7 @@ export function PricingPageClient({
    */
   const openCheckout = (plan: PlanId) => {
     if (!currentUser) {
-      router.push(`/login?next=${encodeURIComponent("/pricing")}`);
+      openSignIn("signin");
       return;
     }
 
@@ -302,11 +276,7 @@ export function PricingPageClient({
         toast.error(data.error ?? "Failed to schedule plan change");
         return;
       }
-      toast.success(
-        data.effectiveAt
-          ? `Plan will switch on ${formatDateDMY(data.effectiveAt)}.`
-          : "Plan change scheduled.",
-      );
+      toast.success(data.effectiveAt ? `Plan will switch on ${formatDateDMY(data.effectiveAt)}.` : "Plan change scheduled.");
       setDowngradeTarget(null);
       router.refresh();
     } catch (err) {
@@ -385,9 +355,7 @@ export function PricingPageClient({
   return (
     <div className="relative max-w-5xl mx-auto px-6 py-12">
       <div className="text-center mb-8">
-        <h1 className="text-4xl md:text-5xl font-semibold text-foreground mb-4 text-balance tracking-tight">
-          Plans and Pricing
-        </h1>
+        <h1 className="text-4xl md:text-5xl font-semibold text-foreground mb-4 text-balance tracking-tight">Plans and Pricing</h1>
         <p className="text-muted-foreground text-lg max-w-2xl mx-auto text-pretty leading-relaxed">
           Get unlimited access to all templates, music, and sound effects. Cancel anytime.
         </p>
@@ -400,8 +368,8 @@ export function PricingPageClient({
             <div className="flex items-start gap-3 flex-1">
               <AlertCircle className="h-5 w-5 shrink-0 text-amber-500 mt-0.5" />
               <div className="text-sm leading-relaxed">
-                Your plan switches to <span className="font-medium">{scheduledTargetLabel}</span>{" "}
-                on <span className="font-medium">{formatDateDMY(scheduledChange.effectiveAt)}</span>.
+                Your plan switches to <span className="font-medium">{scheduledTargetLabel}</span> on{" "}
+                <span className="font-medium">{formatDateDMY(scheduledChange.effectiveAt)}</span>.
               </div>
             </div>
             <Button
@@ -429,20 +397,13 @@ export function PricingPageClient({
         <p className="mb-8 text-center text-sm text-muted-foreground">
           You are on{" "}
           <span className="text-foreground font-medium">
-            {TIER_LABELS[currentSubscription.tier]} (
-            {currentSubscription.billingPeriod === "yearly" ? "Annual" : "Monthly"})
+            {TIER_LABELS[currentSubscription.tier]} ({currentSubscription.billingPeriod === "yearly" ? "Annual" : "Monthly"})
           </span>
           {currentSubscription.currentPeriodEnd && !currentSubscription.cancelled && (
-            <>
-              {" "}
-              · renews on {formatDateDMY(currentSubscription.currentPeriodEnd)}
-            </>
+            <> · renews on {formatDateDMY(currentSubscription.currentPeriodEnd)}</>
           )}
           {currentSubscription.cancelled && currentSubscription.currentPeriodEnd && (
-            <>
-              {" "}
-              · access ends {formatDateDMY(currentSubscription.currentPeriodEnd)}
-            </>
+            <> · access ends {formatDateDMY(currentSubscription.currentPeriodEnd)}</>
           )}
         </p>
       )}
@@ -500,10 +461,7 @@ export function PricingPageClient({
             <div
               key={plan.id}
               id={plan.id === "creator_ai" ? "creator-ai" : undefined}
-              className={cn(
-                "relative rounded-3xl backdrop-blur-sm p-8 transition-all duration-300 scroll-mt-24",
-                cardClasses,
-              )}
+              className={cn("relative rounded-3xl backdrop-blur-sm p-8 transition-all duration-300 scroll-mt-24", cardClasses)}
             >
               {plan.isFeatured && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
@@ -571,88 +529,11 @@ export function PricingPageClient({
         })}
       </div>
 
-      <div className="mt-16 max-w-4xl mx-auto w-full">
-        <h2 className="text-2xl font-semibold text-foreground text-center mb-2 tracking-tight">
-          Pricing FAQ
-        </h2>
-        <p className="text-center text-muted-foreground text-sm mb-8 leading-relaxed">
-          Answers about plans, billing, and what happens after you subscribe.
-        </p>
-        <Accordion
-          type="single"
-          collapsible
-          className="rounded-2xl border border-blue-500/20 bg-card/50 px-1 sm:px-4"
-        >
-          <AccordionItem value="q1" className="border-blue-500/10 px-3">
-            <AccordionTrigger className="text-foreground text-base hover:no-underline">
-              What is the difference between Creator and Creator + AI?
-            </AccordionTrigger>
-            <AccordionContent className="text-muted-foreground leading-relaxed">
-              <strong className="text-foreground/90">Creator</strong> includes the full template and asset library
-              with unlimited marketplace downloads.{" "}
-              <strong className="text-foreground/90">Creator + AI</strong> adds image and video generation, text to
-              speech, and speech to text on top of the same library and commercial license.
-            </AccordionContent>
-          </AccordionItem>
-          <AccordionItem value="q2" className="border-blue-500/10 px-3">
-            <AccordionTrigger className="text-foreground text-base hover:no-underline">
-              Can I change or cancel my plan?
-            </AccordionTrigger>
-            <AccordionContent className="text-muted-foreground leading-relaxed">
-              You can upgrade or schedule a plan change from this page when you are logged in. Cancel anytime from your
-              account; you keep access until the end of the current billing period. See our refund policy for details on
-              eligibility.
-            </AccordionContent>
-          </AccordionItem>
-          <AccordionItem value="q3" className="border-blue-500/10 px-3">
-            <AccordionTrigger className="text-foreground text-base hover:no-underline">
-              Is yearly billing really cheaper?
-            </AccordionTrigger>
-            <AccordionContent className="text-muted-foreground leading-relaxed">
-              Yes — the yearly option is billed once per year at a discounted rate compared to twelve monthly payments.
-              The page shows the effective monthly cost for easy comparison.
-            </AccordionContent>
-          </AccordionItem>
-          <AccordionItem value="q4" className="border-blue-500/10 px-3">
-            <AccordionTrigger className="text-foreground text-base hover:no-underline">
-              How do downloads and licensing work?
-            </AccordionTrigger>
-            <AccordionContent className="text-muted-foreground leading-relaxed">
-              While you have an active subscription you can download items from the catalog and use them under our
-              license in personal and commercial work. You can re-download from your profile, and a separate purchase
-              code applies to one-time store purchases. See the License page for full terms.
-            </AccordionContent>
-          </AccordionItem>
-          <AccordionItem value="q5" className="border-blue-500/10 px-3">
-            <AccordionTrigger className="text-foreground text-base hover:no-underline">
-              How are AI generation limits applied?
-            </AccordionTrigger>
-            <AccordionContent className="text-muted-foreground leading-relaxed">
-              Creator + AI includes a monthly allowance for AI tools. Usage resets each billing period; the exact
-              balance appears in the app. If you need a higher cap for a team, contact us for custom options.
-            </AccordionContent>
-          </AccordionItem>
-          <AccordionItem value="q6" className="border-blue-500/10 px-3 border-b-0">
-            <AccordionTrigger className="text-foreground text-base hover:no-underline">
-              Can I get an invoice or custom / team pricing?
-            </AccordionTrigger>
-            <AccordionContent className="text-muted-foreground leading-relaxed">
-              Paddle provides receipts for your payments. For teams, agencies, or custom licensing, use the contact
-              form or email support — we can suggest a plan that matches your workflow.
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
-      </div>
-
       {/* Custom plan / enterprise CTA */}
       <div className="mt-6 max-w-4xl mx-auto">
-        <div className="relative rounded-3xl border border-blue-500/20 bg-card/60 backdrop-blur-sm p-8 md:p-10 text-center">
-          <h3 className="text-2xl font-semibold text-foreground mb-3 tracking-tight">Need a custom plan?</h3>
-          <p className="text-muted-foreground text-base leading-relaxed max-w-xl mx-auto">
-            Working with a team, agency or studio? Looking for extended licensing, higher AI usage limits, custom
-            integrations or volume pricing? Tell us about your workflow — we&apos;ll put together a plan that fits.
-          </p>
-          <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
+        <div className="relative rounded-3xl border border-blue-500/20 bg-card/60 backdrop-blur-sm p-8 md:p-10 text-center flex items-center">
+          <h3 className="text-2xl font-semibold text-foreground tracking-tight">Need a custom plan?</h3>
+          <div className="ml-auto flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link
               href="/contact"
               className="inline-flex items-center justify-center h-11 px-6 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 text-white text-sm font-medium shadow-lg shadow-blue-500/25 hover:from-blue-500 hover:to-blue-400 transition-all duration-300"
@@ -667,6 +548,71 @@ export function PricingPageClient({
             </a>
           </div>
         </div>
+      </div>
+
+      <div className="mt-16 max-w-4xl mx-auto w-full">
+        <h2 className="text-2xl font-semibold text-foreground text-center mb-2 tracking-tight">Pricing FAQ</h2>
+        <p className="text-center text-muted-foreground text-sm mb-8 leading-relaxed">
+          Answers about plans, billing, and what happens after you subscribe.
+        </p>
+        <Accordion type="single" collapsible className="rounded-2xl border border-blue-500/20 bg-card/50 px-1 sm:px-4">
+          <AccordionItem value="q1" className="border-blue-500/10 px-3">
+            <AccordionTrigger className="text-foreground text-base hover:no-underline">
+              What is the difference between Creator and Creator + AI?
+            </AccordionTrigger>
+            <AccordionContent className="text-muted-foreground leading-relaxed">
+              <strong className="text-foreground/90">Creator</strong> includes the full template and asset library with unlimited
+              marketplace downloads. <strong className="text-foreground/90">Creator + AI</strong> adds image and video generation, text
+              to speech, and speech to text on top of the same library and commercial license.
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="q2" className="border-blue-500/10 px-3">
+            <AccordionTrigger className="text-foreground text-base hover:no-underline">
+              Can I change or cancel my plan?
+            </AccordionTrigger>
+            <AccordionContent className="text-muted-foreground leading-relaxed">
+              You can upgrade or schedule a plan change from this page when you are logged in. Cancel anytime from your account; you
+              keep access until the end of the current billing period. See our refund policy for details on eligibility.
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="q3" className="border-blue-500/10 px-3">
+            <AccordionTrigger className="text-foreground text-base hover:no-underline">
+              Is yearly billing really cheaper?
+            </AccordionTrigger>
+            <AccordionContent className="text-muted-foreground leading-relaxed">
+              Yes — the yearly option is billed once per year at a discounted rate compared to twelve monthly payments. The page shows
+              the effective monthly cost for easy comparison.
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="q4" className="border-blue-500/10 px-3">
+            <AccordionTrigger className="text-foreground text-base hover:no-underline">
+              How do downloads and licensing work?
+            </AccordionTrigger>
+            <AccordionContent className="text-muted-foreground leading-relaxed">
+              While you have an active subscription you can download items from the catalog and use them under our license in personal
+              and commercial work. You can re-download from your profile, and a separate purchase code applies to one-time store
+              purchases. See the License page for full terms.
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="q5" className="border-blue-500/10 px-3">
+            <AccordionTrigger className="text-foreground text-base hover:no-underline">
+              How are AI generation limits applied?
+            </AccordionTrigger>
+            <AccordionContent className="text-muted-foreground leading-relaxed">
+              Creator + AI includes a monthly allowance for AI tools. Usage resets each billing period; the exact balance appears in
+              the app. If you need a higher cap for a team, contact us for custom options.
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="q6" className="border-blue-500/10 px-3 border-b-0">
+            <AccordionTrigger className="text-foreground text-base hover:no-underline">
+              Can I get an invoice or custom / team pricing?
+            </AccordionTrigger>
+            <AccordionContent className="text-muted-foreground leading-relaxed">
+              Paddle provides receipts for your payments. For teams, agencies, or custom licensing, use the contact form or email
+              support — we can suggest a plan that matches your workflow.
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </div>
 
       {/* Downgrade confirmation modal */}
@@ -684,29 +630,20 @@ export function PricingPageClient({
                 <>
                   Your subscription will switch from{" "}
                   <span className="font-medium text-foreground">
-                    {TIER_LABELS[currentSubscription.tier]} (
-                    {currentSubscription.billingPeriod === "yearly" ? "Annual" : "Monthly"})
+                    {TIER_LABELS[currentSubscription.tier]} ({currentSubscription.billingPeriod === "yearly" ? "Annual" : "Monthly"})
                   </span>{" "}
                   to{" "}
                   <span className="font-medium text-foreground">
-                    {TIER_LABELS[downgradeTarget.tier]} (
-                    {downgradeTarget.billingPeriod === "yearly" ? "Annual" : "Monthly"})
+                    {TIER_LABELS[downgradeTarget.tier]} ({downgradeTarget.billingPeriod === "yearly" ? "Annual" : "Monthly"})
                   </span>{" "}
-                  on{" "}
-                  <span className="font-medium text-foreground">
-                    {formatDateDMY(currentSubscription.currentPeriodEnd)}
-                  </span>
-                  . You keep your current plan until then. No charge today.
+                  on <span className="font-medium text-foreground">{formatDateDMY(currentSubscription.currentPeriodEnd)}</span>. You
+                  keep your current plan until then. No charge today.
                 </>
               )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setDowngradeTarget(null)}
-              disabled={submittingDowngrade}
-            >
+            <Button variant="outline" onClick={() => setDowngradeTarget(null)} disabled={submittingDowngrade}>
               Cancel
             </Button>
             <Button onClick={submitDowngrade} disabled={submittingDowngrade}>
@@ -741,13 +678,11 @@ export function PricingPageClient({
                 <>
                   Switching from{" "}
                   <span className="font-medium text-foreground">
-                    {TIER_LABELS[currentSubscription.tier]} (
-                    {currentSubscription.billingPeriod === "yearly" ? "Annual" : "Monthly"})
+                    {TIER_LABELS[currentSubscription.tier]} ({currentSubscription.billingPeriod === "yearly" ? "Annual" : "Monthly"})
                   </span>{" "}
                   to{" "}
                   <span className="font-medium text-foreground">
-                    {TIER_LABELS[upgradeTarget.tier]} (
-                    {upgradeTarget.billingPeriod === "yearly" ? "Annual" : "Monthly"})
+                    {TIER_LABELS[upgradeTarget.tier]} ({upgradeTarget.billingPeriod === "yearly" ? "Annual" : "Monthly"})
                   </span>
                   . You&apos;ll be charged the prorated difference today.
                 </>
@@ -767,9 +702,7 @@ export function PricingPageClient({
               {upgradePreview.subtotalToday > 0 && (
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">New plan</span>
-                  <span className="text-foreground">
-                    {formatMoney(upgradePreview.subtotalToday, upgradePreview.currencyCode)}
-                  </span>
+                  <span className="text-foreground">{formatMoney(upgradePreview.subtotalToday, upgradePreview.currencyCode)}</span>
                 </div>
               )}
               {upgradePreview.creditApplied > 0 && (
@@ -811,10 +744,7 @@ export function PricingPageClient({
             >
               Cancel
             </Button>
-            <Button
-              onClick={submitUpgrade}
-              disabled={submittingUpgrade || loadingUpgradePreview || !upgradePreview}
-            >
+            <Button onClick={submitUpgrade} disabled={submittingUpgrade || loadingUpgradePreview || !upgradePreview}>
               {submittingUpgrade ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -868,11 +798,7 @@ function PlanActionButton({
   if (!isLoggedIn) {
     // Default behaviour for logged-out visitors: any click → checkout/login.
     return (
-      <Button
-        onClick={onUpgrade}
-        disabled={isPending}
-        className={isFeatured ? baseFeatured : baseSecondary}
-      >
+      <Button onClick={onUpgrade} disabled={isPending} className={isFeatured ? baseFeatured : baseSecondary}>
         {isPending ? (
           <>
             <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Opening checkout…
@@ -902,11 +828,7 @@ function PlanActionButton({
 
   if (relation === "upgrade") {
     return (
-      <Button
-        onClick={onUpgrade}
-        disabled={isPending}
-        className={isFeatured ? baseFeatured : baseSecondary}
-      >
+      <Button onClick={onUpgrade} disabled={isPending} className={isFeatured ? baseFeatured : baseSecondary}>
         {isPending ? (
           <>
             <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Opening checkout…
