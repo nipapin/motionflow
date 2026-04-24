@@ -8,6 +8,7 @@ import { ProductGrid } from "@/components/product-grid";
 import { SignInModal } from "@/components/sign-in-modal";
 import { SubscriptionModal } from "@/components/subscription-modal";
 import { ImageGenerator } from "@/components/image-generator";
+import { ImageEditor } from "@/components/image-editor";
 import { VideoGenerator } from "@/components/video-generator";
 import type { Product } from "@/lib/product-types";
 import { productMatchesSearch, productMatchesSidebarCategory } from "@/lib/product-ui";
@@ -65,6 +66,8 @@ export default function Home({ sections }: HomePageProps) {
     <>
       {activeCategory === "Image Gen" ? (
         <ImageGenerator />
+      ) : activeCategory === "Image Edit" ? (
+        <ImageEditor />
       ) : activeCategory === "Video Gen" ? (
         <VideoGenerator />
       ) : isHomeView(activeCategory) && !searchQuery ? (

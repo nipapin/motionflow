@@ -21,6 +21,9 @@ export const IMAGE_STYLE_PRESETS = [
   { id: "digital-art", label: "Digital Art" },
   { id: "oil-painting", label: "Oil Painting" },
   { id: "watercolor", label: "Watercolor" },
+  { id: "image_edit", label: "Prompt image edit" },
+  { id: "image_remove_bg", label: "Remove background" },
+  { id: "image_upscale", label: "Upscale" },
 ] as const;
 
 export const STT_FORMAT_META: Record<
@@ -94,10 +97,14 @@ export function mapImageRecord(row: ApiGenerationRecord): ImageHistory {
     row.result.images.every((x) => typeof x === "string")
       ? (row.result.images as string[])
       : [];
+  const defaultStyle =
+    typeof s.kind === "string" && s.kind === "image_edit"
+      ? "image_edit"
+      : "realistic";
   return {
     id: row.id,
     prompt: typeof s.prompt === "string" ? s.prompt : "",
-    style: typeof s.style === "string" ? s.style : "realistic",
+    style: typeof s.style === "string" ? s.style : defaultStyle,
     ratio: typeof s.aspect_ratio === "string" ? s.aspect_ratio : "1:1",
     images,
     timestamp: new Date(row.created_at),

@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        return NextResponse.json({ url });
+        return NextResponse.json({ url, content_type: type });
     } catch (error) {
         console.error("[first-frame-upload] unexpected error:", error);
         return NextResponse.json(
