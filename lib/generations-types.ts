@@ -21,6 +21,7 @@ export interface VideoHistory {
   recordStatus?: "ok" | "failed";
   errorMessage?: string;
   firstFrameUrl?: string;
+  lastFrameUrl?: string;
 }
 
 export interface ImageHistory {

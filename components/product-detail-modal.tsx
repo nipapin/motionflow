@@ -142,7 +142,7 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
     if (attrs.ae_version || softwareLabel) {
       details.push({
         icon: <span className="text-[10px] font-bold leading-none">{softwareLabel === "Premiere Pro" ? "Pr" : softwareLabel === "DaVinci Resolve" ? "Dr" : softwareLabel === "Illustrator" ? "Ai" : "Ae"}</span>,
-        label: `${softwareLabel} version`,
+        label: "Version",
         value: attrs.ae_version || "—",
       });
     }
@@ -189,33 +189,39 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
       setSignInOpen(true);
       return;
     }
-    if (canDownload) {
-      void startMarketplaceDownload(product.id);
+    // Only block when we know the user has no access. While `canDownload` is null (fetch pending)
+    // or if the check is wrong, `/api/download` is the source of truth (redirects to sign-in/pricing).
+    if (canDownload === false) {
+      setSubscriptionOpen(true);
       return;
     }
-    setSubscriptionOpen(true);
+    void startMarketplaceDownload(product.id);
   };
 
   return (
     <>
       <div
         ref={scrollRef}
-        className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm overflow-y-auto"
+        className="fixed inset-0 z-100 bg-black/90 backdrop-blur-sm overflow-y-auto"
         onClick={() => onOpenChange(false)}
       >
-        <div className="dark w-[70vw] max-w-[70vw] mx-auto my-8 px-4 flex flex-col min-h-[calc(100vh-4rem)]">
+        <div className="dark w-full max-w-full mx-auto my-0 min-h-screen px-3 pt-3 pb-10 sm:px-4 sm:my-8 sm:min-h-[calc(100vh-4rem)] lg:w-[70vw] lg:max-w-[70vw] flex flex-col">
           {/* Header */}
-          <div className="flex items-center justify-end gap-2 mb-6 shrink-0">
+          <div className="flex items-center justify-end gap-2 mb-4 sm:mb-6 shrink-0">
+            {!isAudio && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); void toggleFav(product.id); }}
+                className={cn(
+                  "w-10 h-10 rounded-full flex items-center justify-center smooth",
+                  favorited ? "bg-red-500/20 text-red-400" : "bg-white/10 text-white hover:bg-white/20",
+                )}
+              >
+                <Heart className={cn("w-5 h-5", favorited && "fill-current")} />
+              </button>
+            )}
             <button
-              onClick={(e) => { e.stopPropagation(); void toggleFav(product.id); }}
-              className={cn(
-                "w-10 h-10 rounded-full flex items-center justify-center smooth",
-                favorited ? "bg-red-500/20 text-red-400" : "bg-white/10 text-white hover:bg-white/20",
-              )}
-            >
-              <Heart className={cn("w-5 h-5", favorited && "fill-current")} />
-            </button>
-            <button
+              type="button"
               onClick={() => onOpenChange(false)}
               className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 smooth"
             >
@@ -295,10 +301,12 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
                   </div>
                 )}
                 {isAudio && (
-                  <div className="flex-1 w-full flex items-center justify-center">
+                  <div className="hidden lg:flex flex-1 w-full items-center justify-center">
                     <AudioTrack
-                      key={product.id}
+                      key={`${product.id}-detail-audio-lg`}
                       product={product}
+                      hideTitleRow
+                      hideDownloadButton
                       containerClassName="bg-card/50 w-full backdrop-blur-xl rounded-2xl border border-blue-500/20 flex items-center gap-4 px-5 py-4"
                     />
                   </div>
@@ -306,8 +314,20 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
 
                 {/* Info Sidebar */}
                 <div className="w-full lg:w-96 shrink-0">
-                  <div className="bg-card/50 backdrop-blur-xl rounded-2xl border border-blue-500/20 p-6">
-                    <h1 className="text-xl font-semibold text-foreground leading-tight">{product.name}</h1>
+                  <div className="bg-card/50 backdrop-blur-xl rounded-2xl border border-blue-500/20 overflow-hidden">
+                    {isAudio && (
+                      <div className="border-b border-blue-500/15 lg:hidden">
+                        <AudioTrack
+                          key={`${product.id}-detail-audio-sm`}
+                          product={product}
+                          hideTitleRow
+                          hideDownloadButton
+                          containerClassName="bg-transparent w-full rounded-none border-0 flex items-center gap-3 px-4 py-4 sm:px-5 sm:gap-4"
+                        />
+                      </div>
+                    )}
+                    <div className="p-5 sm:p-6">
+                    <h1 className="text-xl sm:text-2xl font-semibold text-foreground leading-tight">{product.name}</h1>
 
                     {/* Description */}
                     {product.description_html ? (
@@ -322,12 +342,15 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
                     ) : null}
 
                     <Button
-                      onClick={handleAction}
-                      disabled={!!user && canDownload === null}
-                      className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-xl font-medium mt-6 mb-6 shadow-lg shadow-blue-500/25 disabled:opacity-60"
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleAction();
+                      }}
+                      className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-xl font-medium mt-6 mb-6 shadow-lg shadow-blue-500/25"
                     >
                       <Download className="w-5 h-5 mr-2" />
-                      {!user ? "Sign in to Download" : canDownload === null ? "Checking…" : "Download"}
+                      {!user ? "Sign in to Download" : "Download"}
                     </Button>
 
                     {/* Tags */}
@@ -345,14 +368,20 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
                     {/* Details */}
                     <div className="divide-y divide-border/50">
                       {details.map((detail) => (
-                        <div key={detail.label} className="flex items-center gap-3 py-3 text-sm">
-                          <span className="w-6 h-6 flex items-center justify-center text-muted-foreground shrink-0">
+                        <div
+                          key={detail.label}
+                          className="grid grid-cols-[1.5rem_1fr_auto] items-start gap-x-3 gap-y-1 py-3 text-sm"
+                        >
+                          <span className="flex h-6 items-center justify-center text-muted-foreground shrink-0">
                             {detail.icon}
                           </span>
-                          <span className="text-muted-foreground">{detail.label}</span>
-                          <span className="ml-auto text-foreground font-medium">{detail.value}</span>
+                          <span className="text-muted-foreground min-w-0 pt-0.5 leading-snug">{detail.label}</span>
+                          <span className="text-foreground font-medium text-right tabular-nums pt-0.5 leading-snug whitespace-nowrap">
+                            {detail.value}
+                          </span>
                         </div>
                       ))}
+                    </div>
                     </div>
                   </div>
                 </div>

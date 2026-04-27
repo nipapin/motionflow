@@ -85,6 +85,8 @@ export function mapVideoRecord(row: ApiGenerationRecord): VideoHistory {
     errorMessage: row.error_message ?? undefined,
     firstFrameUrl:
       typeof s.first_frame_url === "string" ? s.first_frame_url : undefined,
+    lastFrameUrl:
+      typeof s.last_frame_url === "string" ? s.last_frame_url : undefined,
   };
 }
 

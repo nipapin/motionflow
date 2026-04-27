@@ -29,7 +29,7 @@ import {
   type GenerationStatus,
 } from "@/hooks/use-generations";
 import { useExtraGenerationsPurchase } from "@/hooks/use-extra-generations-purchase";
-import { GenerationsBadge } from "@/components/generations-badge";
+import { AiToolPageHeader } from "@/components/ai-tool-page-header";
 import { BuyExtraGenerationsDialog } from "@/components/buy-extra-generations-dialog";
 import {
   CREATOR_AI_REQUIRED_CODE,
@@ -294,26 +294,17 @@ export function ImageGenerator() {
 
   return (
     <div className="max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-semibold text-foreground mb-2 tracking-tight">
-            AI Image Generation
-          </h1>
-          <p className="text-muted-foreground">
-            Create stunning images from text descriptions using AI
-          </p>
-        </div>
+      <AiToolPageHeader
+        title="AI Image Generation"
+        description="Create stunning images from text descriptions using AI"
+        status={generations}
+        loading={generationsLoading}
+        authenticated={authenticated}
+        error={generationsError}
+      />
 
-        <GenerationsBadge
-          status={generations}
-          loading={generationsLoading}
-          authenticated={authenticated}
-          error={generationsError}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <form onSubmit={handleGenerate} className="lg:col-span-1 space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
+        <form onSubmit={handleGenerate} className="lg:col-span-1 space-y-3 lg:space-y-6">
           <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
             <label
               htmlFor="image-prompt"

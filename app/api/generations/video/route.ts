@@ -187,6 +187,7 @@ export async function POST(req: NextRequest) {
             duration?: number;
             target_resolution?: string;
             first_frame_url?: string;
+            last_frame_url?: string;
             audio_enabled?: boolean;
         };
 
@@ -197,6 +198,7 @@ export async function POST(req: NextRequest) {
             typeof body.duration === "number" ? body.duration : 5;
         const target_resolution = body.target_resolution ?? "720";
         const first_frame_url = body.first_frame_url?.trim();
+        const last_frame_url = body.last_frame_url?.trim();
         const audio_enabled = body.audio_enabled !== false;
 
         if (!prompt) {
@@ -238,6 +240,17 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        if (
+            last_frame_url !== undefined &&
+            last_frame_url.length > 0 &&
+            !isAllowedFirstFrameUrl(last_frame_url)
+        ) {
+            return NextResponse.json(
+                { error: "Last frame must be a valid image URL or a saved Replicate file path." },
+                { status: 400 },
+            );
+        }
+
         const preStatus = await getGenerationsStatus(user.id);
         if (preStatus.total_generations_left <= 0) {
             return NextResponse.json(
@@ -271,6 +284,12 @@ export async function POST(req: NextRequest) {
             pVideoInput.image = normalizeFirstFrameUrlForReplicate(first_frame_url);
         }
 
+        /** Replicate P-Video: optional last frame reference image. */
+        if (last_frame_url) {
+            pVideoInput.last_frame_image =
+                normalizeFirstFrameUrlForReplicate(last_frame_url);
+        }
+
         let videoOutput: unknown;
         try {
             videoOutput = await replicate.run(P_VIDEO_MODEL, {
@@ -293,6 +312,9 @@ export async function POST(req: NextRequest) {
                     audio_enabled,
                     ...(first_frame_url
                         ? { first_frame_url: first_frame_url }
+                        : {}),
+                    ...(last_frame_url
+                        ? { last_frame_url: last_frame_url }
                         : {}),
                 },
                 errorMessage: message,
@@ -317,6 +339,9 @@ export async function POST(req: NextRequest) {
                     audio_enabled,
                     ...(first_frame_url
                         ? { first_frame_url: first_frame_url }
+                        : {}),
+                    ...(last_frame_url
+                        ? { last_frame_url: last_frame_url }
                         : {}),
                 },
                 errorMessage: GENERIC_ERROR,
@@ -367,6 +392,9 @@ export async function POST(req: NextRequest) {
                 audio_enabled,
                 ...(first_frame_url
                     ? { first_frame_url: first_frame_url }
+                    : {}),
+                ...(last_frame_url
+                    ? { last_frame_url: last_frame_url }
                     : {}),
             },
             result: { video: persistedVideoUrl },

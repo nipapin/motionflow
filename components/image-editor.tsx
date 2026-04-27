@@ -5,7 +5,6 @@ import {
   useState,
   useEffect,
   useCallback,
-  useRef,
   type FormEvent,
 } from "react";
 import {
@@ -16,7 +15,6 @@ import {
   X,
   Trash2,
   RotateCcw,
-  Upload,
   Eraser,
   Maximize2,
 } from "lucide-react";
@@ -38,7 +36,7 @@ import {
   type GenerationStatus,
 } from "@/hooks/use-generations";
 import { useExtraGenerationsPurchase } from "@/hooks/use-extra-generations-purchase";
-import { GenerationsBadge } from "@/components/generations-badge";
+import { AiToolPageHeader } from "@/components/ai-tool-page-header";
 import { BuyExtraGenerationsDialog } from "@/components/buy-extra-generations-dialog";
 import {
   CREATOR_AI_REQUIRED_CODE,
@@ -47,6 +45,7 @@ import {
 } from "@/lib/ai-generation-gate";
 import { replicateFileUrlToDisplaySrc } from "@/lib/replicate-file-display-url";
 import { cn } from "@/lib/utils";
+import { FirstFrameDialog } from "@/components/video-generator/first-frame-dialog";
 
 export type SuiteToolId = "prompt_edit" | "remove_bg" | "upscale";
 
@@ -80,15 +79,6 @@ const aspectRatios = [
 ];
 
 const KNOWN_RATIOS = new Set(aspectRatios.map((r) => r.id));
-
-/** Image Edit uploads: PNG, JPEG, WebP only (no GIF). */
-const IMAGE_SUITE_ACCEPT =
-  "image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp";
-const ALLOWED_SUITE_UPLOAD_MIMES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-]);
 
 type ApiGenerationRecord = {
   id: string;
@@ -220,14 +210,9 @@ export function ImageEditor() {
     null,
   );
   const [secondaryUrl, setSecondaryUrl] = useState<string | null>(null);
-  const [uploadingSlot, setUploadingSlot] = useState<"primary" | "secondary" | null>(
-    null,
-  );
-  const [dragOverSlot, setDragOverSlot] = useState<"primary" | "secondary" | null>(
-    null,
-  );
-  const primaryInputRef = useRef<HTMLInputElement>(null);
-  const secondaryInputRef = useRef<HTMLInputElement>(null);
+  const [sourcePickerSlot, setSourcePickerSlot] = useState<
+    "primary" | "secondary" | null
+  >(null);
 
   /** Scale factor only: 2×, 4×, or 8× (API always uses factor mode). */
   const [scaleFactor, setScaleFactor] = useState<"2" | "4" | "8">("2");
@@ -286,7 +271,6 @@ export function ImageEditor() {
     if (activeTool !== "prompt_edit") {
       setSecondaryUrl(null);
     }
-    setDragOverSlot(null);
   }, [activeTool]);
 
   const deleteRecent = useCallback(
@@ -373,89 +357,6 @@ export function ImageEditor() {
     },
     [setGenerationsStatus, refreshGenerations],
   );
-
-  const uploadFile = async (
-    file: File,
-    slot: "primary" | "secondary",
-  ): Promise<void> => {
-    setErrorMessage(null);
-    const mime = file.type || "application/octet-stream";
-    if (!ALLOWED_SUITE_UPLOAD_MIMES.has(mime)) {
-      setErrorMessage("Please use PNG, JPEG, or WebP only.");
-      return;
-    }
-    if (!checkGenerationGate()) return;
-
-    setUploadingSlot(slot);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/generations/video/first-frame-upload", {
-        method: "POST",
-        body: fd,
-        credentials: "include",
-      });
-      const data = (await res.json().catch(() => ({}))) as {
-        url?: string;
-        content_type?: string;
-        error?: string;
-        code?: string;
-        plan?: string;
-      };
-      if (res.status === 403 && data.code === CREATOR_AI_REQUIRED_CODE) {
-        handle403CreatorAiGate(data.plan);
-        return;
-      }
-      if (!res.ok) {
-        throw new Error(data.error || `Upload failed (${res.status})`);
-      }
-      if (!data.url) throw new Error("No URL returned");
-      if (slot === "primary") {
-        setPrimaryUrl(data.url);
-        const ct = data.content_type ?? mime;
-        setPrimarySourceMime(
-          ALLOWED_SUITE_UPLOAD_MIMES.has(ct) ? ct : mime,
-        );
-      } else {
-        setSecondaryUrl(data.url);
-      }
-    } catch (err) {
-      setErrorMessage(
-        err instanceof Error ? err.message : "Failed to upload image",
-      );
-    } finally {
-      setUploadingSlot(null);
-    }
-  };
-
-  const onPrimaryFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (file) void uploadFile(file, "primary");
-  };
-
-  const onSecondaryFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (file) void uploadFile(file, "secondary");
-  };
-
-  const openFilePicker = (slot: "primary" | "secondary") => {
-    if (uploadBusy) return;
-    if (slot === "primary") primaryInputRef.current?.click();
-    else secondaryInputRef.current?.click();
-  };
-
-  const handleZoneDrop = (
-    slot: "primary" | "secondary",
-    e: React.DragEvent,
-  ) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOverSlot(null);
-    const file = e.dataTransfer.files?.[0];
-    if (file) void uploadFile(file, slot);
-  };
 
   const runSuiteRequest = async (
     url: string,
@@ -562,50 +463,45 @@ export function ImageEditor() {
   const triggerClasses =
     "w-full h-11 bg-background/50 border-blue-500/30 text-foreground rounded-xl px-4 hover:border-blue-500/60 focus-visible:border-blue-500/60 focus-visible:ring-blue-500/30";
 
-  const uploadBusy = uploadingSlot !== null;
   const ActiveIcon = SUITE_TOOLS.find((t) => t.id === activeTool)!.icon;
 
   const submitDisabled =
     !primaryUrl ||
     isGenerating ||
     generationsLoading ||
-    uploadBusy ||
     (activeTool === "prompt_edit" && !prompt.trim());
 
   const emptyHint =
     activeTool === "prompt_edit"
-      ? "Upload image 1, describe the change, then run."
+      ? "Choose Image 1, add prompt, then run."
       : activeTool === "remove_bg"
-        ? "Upload an image, then remove its background."
-        : "Upload a PNG, JPEG, or WebP image and choose 2×, 4×, or 8× scale.";
+        ? "Choose a source image, then remove its background."
+        : "Choose a source image and set 2×, 4×, or 8× scale.";
+
+  const handleSourceSelected = (url: string) => {
+    if (sourcePickerSlot === "primary") {
+      setPrimaryUrl(url);
+      setPrimarySourceMime(null);
+    } else if (sourcePickerSlot === "secondary") {
+      setSecondaryUrl(url);
+    }
+    setSourcePickerSlot(null);
+  };
 
   return (
     <div className="max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-semibold text-foreground mb-2 tracking-tight">
-            AI Image Edit
-          </h1>
-          <p className="text-muted-foreground max-w-2xl">
-            Choose a tool below.{" "}
-            <span className="text-foreground/90">
-              Each successful run uses{" "}
-              <span className="font-medium text-foreground">1 generation</span>{" "}
-              from your quota.
-            </span>
-          </p>
-        </div>
+      <AiToolPageHeader
+        title="Image Edit"
+        description="AI tools for editing images."
+        descriptionClassName="max-w-2xl"
+        status={generations}
+        loading={generationsLoading}
+        authenticated={authenticated}
+        error={generationsError}
+      />
 
-        <GenerationsBadge
-          status={generations}
-          loading={generationsLoading}
-          authenticated={authenticated}
-          error={generationsError}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <form onSubmit={handleSubmit} className="lg:col-span-1 space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
+        <form onSubmit={handleSubmit} className="lg:col-span-1 space-y-3 lg:space-y-6">
           <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5 space-y-3">
             <label
               htmlFor="suite-tool"
@@ -643,170 +539,93 @@ export function ImageEditor() {
                 : "One image per run."}{" "}
               <span className="text-foreground/80">PNG, JPEG, or WebP.</span>
             </p>
-            <input
-              ref={primaryInputRef}
-              type="file"
-              accept={IMAGE_SUITE_ACCEPT}
-              className="hidden"
-              onChange={onPrimaryFile}
-            />
-            <input
-              ref={secondaryInputRef}
-              type="file"
-              accept={IMAGE_SUITE_ACCEPT}
-              className="hidden"
-              onChange={onSecondaryFile}
-            />
             <div
               className={cn(
                 "grid gap-3",
-                activeTool === "prompt_edit"
-                  ? "grid-cols-1 sm:grid-cols-2"
-                  : "grid-cols-1",
+                activeTool === "prompt_edit" ? "grid-cols-2" : "grid-cols-1",
               )}
             >
-              {/* Image 1 */}
-              <div
-                role="button"
-                tabIndex={0}
-                aria-label="Image 1 drop zone"
-                onClick={() => openFilePicker("primary")}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    openFilePicker("primary");
-                  }
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
-                onDragEnter={(e) => {
-                  e.preventDefault();
-                  setDragOverSlot("primary");
-                }}
-                onDragLeave={(e) => {
-                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                    setDragOverSlot((prev) => (prev === "primary" ? null : prev));
-                  }
-                }}
-                onDrop={(e) => handleZoneDrop("primary", e)}
-                className={cn(
-                  "relative flex min-h-[148px] flex-col items-center justify-center rounded-xl border-2 border-dashed p-4 text-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50",
-                  dragOverSlot === "primary"
-                    ? "border-blue-400 bg-blue-500/15"
-                    : "border-blue-500/40 bg-background/40 hover:border-blue-500/60 hover:bg-background/55",
-                  uploadBusy ? "pointer-events-none opacity-70" : "cursor-pointer",
-                )}
-              >
+              <div className="relative mx-auto w-full max-w-[180px]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setErrorMessage(null);
+                    setSourcePickerSlot("primary");
+                  }}
+                  className="flex aspect-square w-full cursor-pointer flex-col overflow-hidden rounded-xl border border-blue-500/30 bg-background/35 text-left transition-colors hover:border-blue-500/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
+                >
+                  <div className="relative flex min-h-0 flex-1 flex-col">
+                    {primaryUrl ? (
+                      <img
+                        src={replicateFileUrlToDisplaySrc(primaryUrl)}
+                        alt="Image 1"
+                        className="h-full w-full flex-1 object-cover"
+                      />
+                    ) : (
+                      <div className="flex flex-1 flex-col items-center justify-center gap-2 px-3 text-muted-foreground/70">
+                        <ImageIcon className="h-8 w-8" />
+                        <span className="text-xs font-medium text-foreground/90 text-center leading-snug">
+                          Image 1
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </button>
                 {primaryUrl ? (
-                  <>
-                    <img
-                      src={replicateFileUrlToDisplaySrc(primaryUrl)}
-                      alt=""
-                      className="max-h-32 w-full max-w-full rounded-lg object-contain"
-                    />
-                    <Button
+                  <button
+                    type="button"
+                    aria-label="Clear Image 1"
+                    className="absolute right-1 top-1 z-10 h-7 w-7 cursor-pointer rounded-full border border-blue-500/35 bg-background/80 p-0 text-muted-foreground leading-none backdrop-blur-sm transition-colors hover:text-foreground"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPrimaryUrl(null);
+                      setPrimarySourceMime(null);
+                    }}
+                  >
+                    <X className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2" />
+                  </button>
+                ) : null}
+              </div>
+              {activeTool === "prompt_edit" ? (
+                <div className="relative mx-auto w-full max-w-[180px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setErrorMessage(null);
+                      setSourcePickerSlot("secondary");
+                    }}
+                    className="flex aspect-square w-full cursor-pointer flex-col overflow-hidden rounded-xl border border-blue-500/30 bg-background/35 text-left transition-colors hover:border-blue-500/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
+                  >
+                    <div className="relative flex min-h-0 flex-1 flex-col">
+                      {secondaryUrl ? (
+                        <img
+                          src={replicateFileUrlToDisplaySrc(secondaryUrl)}
+                          alt="Image 2"
+                          className="h-full w-full flex-1 object-cover"
+                        />
+                      ) : (
+                        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-3 text-muted-foreground/70">
+                          <ImageIcon className="h-8 w-8" />
+                          <span className="text-xs font-medium text-foreground/90 text-center leading-snug">
+                            Image 2 (optional)
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                  {secondaryUrl ? (
+                    <button
                       type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="absolute right-2 top-2 h-8 border border-blue-500/40 bg-background/90 px-2 text-xs"
+                      aria-label="Clear Image 2"
+                      className="absolute right-1 top-1 z-10 h-7 w-7 cursor-pointer rounded-full border border-blue-500/35 bg-background/80 p-0 text-muted-foreground leading-none backdrop-blur-sm transition-colors hover:text-foreground"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setPrimaryUrl(null);
-                        setPrimarySourceMime(null);
+                        setSecondaryUrl(null);
                       }}
                     >
-                      Clear
-                    </Button>
-                  </>
-                ) : uploadingSlot === "primary" ? (
-                  <RefreshCw className="h-8 w-8 animate-spin text-blue-400" />
-                ) : (
-                  <>
-                    <Upload className="mb-2 h-8 w-8 text-blue-400/90" />
-                    <span className="text-sm font-medium text-foreground">
-                      {activeTool === "prompt_edit"
-                        ? "Image 1"
-                        : "Drop image here"}
-                    </span>
-                    <span className="mt-1 text-xs text-muted-foreground">
-                      Drop or click
-                    </span>
-                  </>
-                )}
-              </div>
-
-              {/* Image 2 — only prompt edit */}
-              {activeTool === "prompt_edit" ? (
-                <div
-                  role="button"
-                  tabIndex={0}
-                  aria-label="Image 2 drop zone"
-                  onClick={() => openFilePicker("secondary")}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      openFilePicker("secondary");
-                    }
-                  }}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }}
-                  onDragEnter={(e) => {
-                    e.preventDefault();
-                    setDragOverSlot("secondary");
-                  }}
-                  onDragLeave={(e) => {
-                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                      setDragOverSlot((prev) =>
-                        prev === "secondary" ? null : prev,
-                      );
-                    }
-                  }}
-                  onDrop={(e) => handleZoneDrop("secondary", e)}
-                  className={cn(
-                    "relative flex min-h-[148px] flex-col items-center justify-center rounded-xl border-2 border-dashed p-4 text-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50",
-                    dragOverSlot === "secondary"
-                      ? "border-blue-400 bg-blue-500/15"
-                      : "border-blue-500/30 bg-background/30 hover:border-blue-500/50 hover:bg-background/45",
-                    uploadBusy ? "pointer-events-none opacity-70" : "cursor-pointer",
-                  )}
-                >
-                  {secondaryUrl ? (
-                    <>
-                      <img
-                        src={replicateFileUrlToDisplaySrc(secondaryUrl)}
-                        alt=""
-                        className="max-h-32 w-full max-w-full rounded-lg object-contain"
-                      />
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        className="absolute right-2 top-2 h-8 border border-blue-500/40 bg-background/90 px-2 text-xs"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSecondaryUrl(null);
-                        }}
-                      >
-                        Clear
-                      </Button>
-                    </>
-                  ) : uploadingSlot === "secondary" ? (
-                    <RefreshCw className="h-8 w-8 animate-spin text-blue-400" />
-                  ) : (
-                    <>
-                      <Upload className="mb-2 h-8 w-8 text-blue-400/70" />
-                      <span className="text-sm font-medium text-foreground">
-                        Image 2
-                      </span>
-                      <span className="mt-1 text-xs text-muted-foreground">
-                        Drop or click (optional)
-                      </span>
-                    </>
-                  )}
+                      <X className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2" />
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -1073,6 +892,26 @@ export function ImageEditor() {
         onContinue={continuePurchase}
         continueLoading={checkoutLoading}
         continueDisabled={purchaseDisabled}
+      />
+
+      <FirstFrameDialog
+        open={sourcePickerSlot !== null}
+        onOpenChange={(open) => {
+          if (!open) setSourcePickerSlot(null);
+        }}
+        dialogTitle={
+          sourcePickerSlot === "secondary"
+            ? "Choose Image 2 (optional)"
+            : "Choose Image 1"
+        }
+        generateDescription="Creates an image and uses it as the selected source image."
+        onFrameSelected={handleSourceSelected}
+        userId={user?.id}
+        checkGate={checkGenerationGate}
+        onCreatorAiGate={handle403CreatorAiGate}
+        syncGenerations={syncGenerations}
+        onError={setErrorMessage}
+        generationsLoading={generationsLoading}
       />
 
       {lightboxImage && (

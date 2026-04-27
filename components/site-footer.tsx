@@ -20,7 +20,7 @@ export function SiteFooter({ className, sidebarCollapsed }: SiteFooterProps) {
   return (
     <footer
       className={cn(
-        "fixed bottom-0 right-0 left-0 z-40 border-t border-border/50 bg-background/80 backdrop-blur-xl transition-all duration-300",
+        "fixed bottom-0 right-0 left-0 z-40 hidden border-t border-border/50 bg-background/80 backdrop-blur-xl transition-all duration-300 lg:block",
         sidebarCollapsed ? "lg:left-[72px]" : "lg:left-72",
         className
       )}
