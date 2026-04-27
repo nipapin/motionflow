@@ -8,7 +8,7 @@ import { ProductGrid } from "@/components/product-grid";
 import { SignInModal } from "@/components/sign-in-modal";
 import { SubscriptionModal } from "@/components/subscription-modal";
 import type { Product } from "@/lib/product-types";
-import { productMatchesSearch, productPopularityScore } from "@/lib/product-ui";
+import { productMatchesSearch, productMatchesSidebarCategory, productPopularityScore } from "@/lib/product-ui";
 import { startMarketplaceDownload } from "@/lib/open-marketplace-download";
 
 function titleCaseSlug(slug: string): string {
@@ -56,7 +56,7 @@ export function CategoryPageLayout({
   initialHasMore = false,
 }: CategoryPageLayoutProps) {
   const { user } = useAuth();
-  const { searchQuery } = useAppChrome();
+  const { searchQuery, searchCategory } = useAppChrome();
   const [sortBy, setSortBy] = useState("popular");
   const [selectedSubCategory, setSelectedSubCategory] = useState("");
   const [signInOpen, setSignInOpen] = useState(false);
@@ -107,6 +107,9 @@ export function CategoryPageLayout({
   }, [selectedSubCategory, subCategoryMap]);
 
   const filteredProducts = allProducts.filter((product) => {
+    if (searchQuery && !productMatchesSidebarCategory(product, searchCategory)) {
+      return false;
+    }
     if (selectedSlug && !productMatchesSubCategory(product, selectedSlug)) return false;
     if (searchQuery && !productMatchesSearch(product, searchQuery)) return false;
     return true;

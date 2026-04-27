@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/components/auth-provider";
 import { CreatorAiGateModal } from "@/components/creator-ai-gate-modal";
 import { SignInModal } from "@/components/sign-in-modal";
@@ -45,7 +46,7 @@ const TARGET_RESOLUTION = "720" as const;
 
 const durationOptions = [
   { id: "5", label: "5 sec" },
-  { id: "10", label: "10 sec" },
+  { id: "8", label: "8 sec" },
 ];
 
 const aspectRatios = [
@@ -61,6 +62,7 @@ export interface RecentVideo {
   prompt: string;
   style: string;
   durationSec: string;
+  audioEnabled: boolean;
 }
 
 export const stylePresets = [
@@ -102,6 +104,8 @@ function recordsToRecentVideos(rows: ApiGenerationRecord[]): RecentVideo[] {
     const durationSec = KNOWN_VIDEO_DURATIONS.has(rawDuration)
       ? rawDuration
       : "5";
+    const audioEnabled =
+      typeof s.audio_enabled === "boolean" ? s.audio_enabled : true;
     out.push({
       id: row.id,
       url,
@@ -109,6 +113,7 @@ function recordsToRecentVideos(rows: ApiGenerationRecord[]): RecentVideo[] {
       prompt: typeof s.prompt === "string" ? s.prompt : "",
       style,
       durationSec,
+      audioEnabled,
     });
   }
   return out;
@@ -155,6 +160,7 @@ export function VideoGenerator() {
   const [selectedDuration, setSelectedDuration] = useState("5");
   const [selectedAspectRatio, setSelectedAspectRatio] = useState("16:9");
   const [selectedStyle, setSelectedStyle] = useState("realistic");
+  const [audioEnabled, setAudioEnabled] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedVideo, setGeneratedVideo] = useState<string | null>(null);
   const [lightboxVideo, setLightboxVideo] = useState<string | null>(null);
@@ -203,6 +209,7 @@ export function VideoGenerator() {
     setSelectedStyle(item.style);
     setSelectedAspectRatio(item.aspectRatio);
     setSelectedDuration(item.durationSec);
+    setAudioEnabled(item.audioEnabled);
     setErrorMessage(null);
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -288,6 +295,7 @@ export function VideoGenerator() {
           aspect_ratio: selectedAspectRatio,
           duration: Number(selectedDuration),
           target_resolution: TARGET_RESOLUTION,
+          audio_enabled: audioEnabled,
           ...(firstFrameUrl ? { first_frame_url: firstFrameUrl } : {}),
         }),
       });
@@ -461,6 +469,23 @@ export function VideoGenerator() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between rounded-xl border border-blue-500/30 bg-background/40 p-3">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Audio</p>
+                  <p className="text-xs text-muted-foreground">
+                    Generate video with sound
+                  </p>
+                </div>
+                <Switch
+                  id="video-audio"
+                  checked={audioEnabled}
+                  onCheckedChange={setAudioEnabled}
+                  aria-label="Toggle video audio"
+                />
+              </div>
             </div>
 
             <div>

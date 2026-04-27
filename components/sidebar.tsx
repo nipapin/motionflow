@@ -322,7 +322,7 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
       <Button
         variant="ghost"
         size="icon"
-        className="fixed top-4 left-4 z-60 lg:hidden bg-background/95 backdrop-blur-sm border border-blue-500/30 shadow-lg h-10 w-10"
+        className="fixed top-3 left-4 z-60 lg:hidden bg-background/95 backdrop-blur-sm border border-blue-500/30 shadow-lg h-10 w-10"
         onClick={() => setMobileOpen(!mobileOpen)}
       >
         {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}

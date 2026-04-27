@@ -15,10 +15,26 @@ import { sidebarLabelForPath } from "@/lib/app-chrome-paths";
 import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
 import { SiteFooter } from "@/components/site-footer";
+import { MobileAudioDrawer } from "@/components/mobile-audio-drawer";
+import {
+  DEFAULT_SEARCH_CATEGORY,
+  isSidebarSearchCategory,
+  type SearchCategory,
+} from "@/lib/search-categories";
+
+const AI_TOOL_SIDEBAR_LABELS = new Set([
+  "Image Gen",
+  "Image Edit",
+  "Video Gen",
+  "Text to Speech",
+  "Speech to Text",
+]);
 
 type AppChromeContextValue = {
   searchQuery: string;
   setSearchQuery: (q: string) => void;
+  searchCategory: SearchCategory;
+  setSearchCategory: (category: SearchCategory) => void;
   /** Home (`/`) SPA category; other routes ignore reads from pages. */
   spaActiveCategory: string;
   setSpaActiveCategory: (category: string) => void;
@@ -42,17 +58,32 @@ export function AppChrome({ children }: { children: ReactNode }) {
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchCategory, setSearchCategory] = useState<SearchCategory>(DEFAULT_SEARCH_CATEGORY);
   const [spaActiveCategory, setSpaActiveCategory] = useState("All");
 
-  useEffect(() => {
-    setSearchQuery("");
-  }, [normalizedPath]);
-
   const routeSidebarLabel = sidebarLabelForPath(normalizedPath);
+  const isAiToolPage = AI_TOOL_SIDEBAR_LABELS.has(routeSidebarLabel);
+  const showSearch = isSpaHome || isSidebarSearchCategory(routeSidebarLabel) || isAiToolPage;
   const activeCategory = isSpaHome ? spaActiveCategory : routeSidebarLabel;
+
+  useEffect(() => {
+    if (isSidebarSearchCategory(routeSidebarLabel)) {
+      setSearchCategory(routeSidebarLabel);
+      return;
+    }
+    if (isSpaHome || isAiToolPage) {
+      return;
+    }
+    setSearchQuery("");
+    setSearchCategory(DEFAULT_SEARCH_CATEGORY);
+  }, [isSpaHome, isAiToolPage, routeSidebarLabel]);
 
   const setSearchQueryStable = useCallback((q: string) => {
     setSearchQuery(q);
+  }, []);
+
+  const setSearchCategoryStable = useCallback((category: SearchCategory) => {
+    setSearchCategory(category);
   }, []);
 
   const setSpaActiveCategoryStable = useCallback((c: string) => {
@@ -63,6 +94,8 @@ export function AppChrome({ children }: { children: ReactNode }) {
     () => ({
       searchQuery,
       setSearchQuery: setSearchQueryStable,
+      searchCategory,
+      setSearchCategory: setSearchCategoryStable,
       spaActiveCategory,
       setSpaActiveCategory: setSpaActiveCategoryStable,
       isSpaHome,
@@ -71,6 +104,8 @@ export function AppChrome({ children }: { children: ReactNode }) {
       isSpaHome,
       searchQuery,
       setSearchQueryStable,
+      searchCategory,
+      setSearchCategoryStable,
       spaActiveCategory,
       setSpaActiveCategoryStable,
     ]
@@ -100,11 +135,15 @@ export function AppChrome({ children }: { children: ReactNode }) {
           )}
         >
           <Header
+            showSearch={showSearch}
             searchQuery={searchQuery}
             onSearchChange={setSearchQueryStable}
+            searchCategory={searchCategory}
+            onSearchCategoryChange={setSearchCategoryStable}
             sidebarCollapsed={sidebarCollapsed}
           />
           <main className="p-6 pt-22 pb-24">{children}</main>
+          <MobileAudioDrawer />
           <SiteFooter sidebarCollapsed={sidebarCollapsed} />
         </div>
       </div>
