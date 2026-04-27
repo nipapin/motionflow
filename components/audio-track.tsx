@@ -17,6 +17,10 @@ interface AudioTrackProps {
   onDownload?: (product: Product) => void;
   onClick?: () => void;
   containerClassName?: string;
+  /** Hide the title/category row when the parent already shows the product name (e.g. detail modal). */
+  hideTitleRow?: boolean;
+  /** Hide the trailing download icon (e.g. when the parent provides a primary Download action). */
+  hideDownloadButton?: boolean;
 }
 
 export function AudioTrack({
@@ -24,6 +28,8 @@ export function AudioTrack({
   onDownload,
   onClick,
   containerClassName,
+  hideTitleRow = false,
+  hideDownloadButton = false,
 }: AudioTrackProps) {
   const { isFav, toggle: toggleFav } = useFavorites();
   const favorited = isFav(product.id);
@@ -46,14 +52,16 @@ export function AudioTrack({
         hideWaveformOnMobile
         trackMeta={{ title: product.name, subtitle: productCategoryLabel(product) }}
         leadingSlot={
-          <div className="w-32 shrink-0 sm:w-48">
-            <h3 className="text-sm font-medium text-foreground line-clamp-1">
-              {product.name}
-            </h3>
-            <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
-              {productCategoryLabel(product)}
-            </p>
-          </div>
+          hideTitleRow ? undefined : (
+            <div className="w-32 shrink-0 sm:w-48">
+              <h3 className="text-sm font-medium text-foreground line-clamp-1">
+                {product.name}
+              </h3>
+              <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+                {productCategoryLabel(product)}
+              </p>
+            </div>
+          )
         }
         trailingSlot={
           <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
@@ -75,17 +83,19 @@ export function AudioTrack({
             >
               <Heart className={cn("w-4 h-4", favorited && "fill-current")} />
             </button>
-            <button
-              type="button"
-              className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-foreground/5 rounded-full smooth"
-              aria-label="Download"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDownload?.(product);
-              }}
-            >
-              <Download className="w-4 h-4" />
-            </button>
+            {!hideDownloadButton && (
+              <button
+                type="button"
+                className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-foreground/5 rounded-full smooth"
+                aria-label="Download"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDownload?.(product);
+                }}
+              >
+                <Download className="w-4 h-4" />
+              </button>
+            )}
           </div>
         }
       />

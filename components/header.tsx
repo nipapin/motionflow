@@ -13,6 +13,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
@@ -99,7 +100,12 @@ export function Header({
 
   return (
     <header className={`fixed top-0 right-0 left-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50 transition-all duration-300 ${sidebarCollapsed ? 'lg:left-[72px]' : 'lg:left-72'}`}>
-      <div className="flex items-center justify-between h-16 px-4 lg:px-6">
+      <div
+        className={cn(
+          "flex items-center h-16 px-4 lg:px-6",
+          showSearch ? "justify-between" : "justify-end",
+        )}
+      >
         {/* Spacer for mobile hamburger */}
         <div className={showSearch ? "w-12 lg:hidden" : "w-0 lg:hidden"} />
         
@@ -200,49 +206,54 @@ export function Header({
             </Button>
             
             {isLoggedIn ? (
-              <div className="relative group">
-                <Button 
-                  variant="ghost" 
-                  className="text-foreground hover:bg-foreground/5 rounded-full h-10 p-2 text-sm font-medium smooth border border-blue-500/30 hover:border-blue-500/50 gap-2"
-                >
-                  <div className="w-7 h-7 rounded-full bg-linear-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-                    <span className="text-sm text-white font-semibold">{user?.name?.charAt(0).toUpperCase() ?? "U"}</span>
-                  </div>
-                  {user?.name ?? "Account"}
-                </Button>
-                <div className="absolute right-0 top-full pt-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
-                  <div className="w-64 bg-card/95 backdrop-blur-xl border border-blue-500/20 rounded-xl p-3 shadow-xl">
-                    <div className="flex flex-col gap-1">
-                      {[
-                        { icon: User, label: "Profile", href: "/profile" },
-                        { icon: Sparkles, label: "My generations", href: "/profile/generations" },
-                        { icon: ShoppingBag, label: "My purchases", href: "/profile/purchases" },
-                        { icon: CreditCard, label: "My subscriptions", href: "/profile/subscriptions" },
-                        { icon: Download, label: "My downloads", href: "/profile/downloads" },
-                        { icon: Bookmark, label: "Favorites", href: "/profile/favorites" },
-                      ].map(({ icon: Icon, label, href }) => (
-                        <Link
-                          key={label}
-                          href={href}
-                          className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-foreground/5 smooth text-left"
-                        >
-                          <Icon className="w-5 h-5 text-blue-400" />
-                          <span className="text-sm text-foreground">{label}</span>
-                        </Link>
-                      ))}
-                      <div className="h-px bg-border/50 my-1" />
-                      <button
-                        type="button"
-                        onClick={() => void signOut()}
-                        className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-foreground/5 smooth text-left text-red-400"
-                      >
-                        <LogOut className="w-5 h-5" />
-                        <span className="text-sm">Sign out</span>
-                      </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="text-foreground hover:bg-foreground/5 rounded-full h-10 p-2 text-sm font-medium smooth border border-blue-500/30 hover:border-blue-500/50 gap-2"
+                  >
+                    <div className="w-7 h-7 shrink-0 rounded-full bg-linear-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                      <span className="text-sm text-white font-semibold">
+                        {user?.name?.charAt(0).toUpperCase() ?? "U"}
+                      </span>
                     </div>
-                  </div>
-                </div>
-              </div>
+                    <span className="max-w-[100px] truncate sm:max-w-[140px] md:max-w-none">
+                      {user?.name ?? "Account"}
+                    </span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  sideOffset={8}
+                  className="w-64 bg-card/95 backdrop-blur-xl border border-blue-500/20 rounded-xl p-2 shadow-xl"
+                >
+                  {[
+                    { icon: User, label: "Profile", href: "/profile" },
+                    { icon: Sparkles, label: "My generations", href: "/profile/generations" },
+                    { icon: ShoppingBag, label: "My purchases", href: "/profile/purchases" },
+                    { icon: CreditCard, label: "My subscriptions", href: "/profile/subscriptions" },
+                    { icon: Download, label: "My downloads", href: "/profile/downloads" },
+                    { icon: Bookmark, label: "Favorites", href: "/profile/favorites" },
+                  ].map(({ icon: Icon, label, href }) => (
+                    <DropdownMenuItem key={label} asChild className="cursor-pointer rounded-lg px-3 py-3">
+                      <Link href={href} className="flex items-center gap-3">
+                        <Icon className="w-5 h-5 text-blue-400" />
+                        <span>{label}</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator className="bg-border/50" />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    className="cursor-pointer rounded-lg px-3 py-3"
+                    onClick={() => void signOut()}
+                  >
+                    <LogOut className="w-5 h-5" />
+                    <span>Sign out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : (
               <>
                 <Button

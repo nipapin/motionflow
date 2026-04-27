@@ -38,7 +38,7 @@ import {
   type GenerationStatus,
 } from "@/hooks/use-generations";
 import { useExtraGenerationsPurchase } from "@/hooks/use-extra-generations-purchase";
-import { GenerationsBadge } from "@/components/generations-badge";
+import { AiToolPageHeader } from "@/components/ai-tool-page-header";
 import { BuyExtraGenerationsDialog } from "@/components/buy-extra-generations-dialog";
 import {
   CREATOR_AI_REQUIRED_CODE,
@@ -445,26 +445,17 @@ export function TextToSpeech() {
 
   return (
     <div className="max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-semibold text-foreground mb-2 tracking-tight">
-            Text to Speech
-          </h1>
-          <p className="text-muted-foreground">
-            Convert text into natural-sounding speech with MiniMax Speech 2.8 HD
-          </p>
-        </div>
+      <AiToolPageHeader
+        title="Text to Speech"
+        description="Convert text into natural-sounding speech with MiniMax Speech 2.8 HD"
+        status={generations}
+        loading={generationsLoading}
+        authenticated={authenticated}
+        error={generationsError}
+      />
 
-        <GenerationsBadge
-          status={generations}
-          loading={generationsLoading}
-          authenticated={authenticated}
-          error={generationsError}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <form onSubmit={handleGenerate} className="lg:col-span-1 space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
+        <form onSubmit={handleGenerate} className="lg:col-span-1 space-y-3 lg:space-y-6">
           <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
             <div className="flex items-center justify-between mb-3">
               <label
@@ -660,12 +651,12 @@ export function TextToSpeech() {
         </form>
 
         <div className="lg:col-span-2 space-y-6">
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5 min-h-[300px]">
-            <h3 className="text-lg font-medium text-foreground mb-4">
+          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
+            <h3 className="text-lg font-medium text-foreground mb-3">
               Generated audio
             </h3>
             {generatedAudio ? (
-              <div className="rounded-xl border border-blue-500/20 bg-background/30 p-5 space-y-4">
+              <div className="rounded-xl border border-blue-500/20 bg-background/30 p-4 space-y-4">
                 <WaveformPlayer
                   audioUrl={generatedAudio}
                   eagerLoad
@@ -692,14 +683,14 @@ export function TextToSpeech() {
                 </div>
               </div>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center py-16">
-                <div className="w-20 h-20 rounded-2xl bg-blue-500/10 flex items-center justify-center mb-4">
-                  <Volume2 className="w-10 h-10 text-blue-400" />
+              <div className="flex flex-col items-center justify-center text-center py-8">
+                <div className="w-14 h-14 rounded-xl bg-blue-500/10 flex items-center justify-center mb-3">
+                  <Volume2 className="w-7 h-7 text-blue-400" />
                 </div>
-                <h3 className="text-lg font-medium text-foreground mb-2">
+                <h3 className="text-base font-medium text-foreground mb-1.5">
                   No audio generated yet
                 </h3>
-                <p className="text-muted-foreground max-w-sm">
+                <p className="text-sm text-muted-foreground max-w-sm">
                   Enter text and click generate to create AI speech.
                 </p>
               </div>
@@ -724,84 +715,130 @@ export function TextToSpeech() {
                   Loading…
                 </p>
               ) : history.length > 0 ? (
-                <ul className="space-y-3">
+                <div className="flex flex-col divide-y divide-border/50 rounded-2xl border border-border/50 overflow-hidden bg-card/50">
                   {history.slice(0, 5).map((item) => {
+                    const voiceLabel =
+                      VOICE_LABELS.get(item.voice) ??
+                      item.voice ??
+                      "Voice";
+                    const metaLine = `${voiceLabel} · ${item.speed.toFixed(2)}x`;
+                    const displayTitle = item.text?.trim() || "Untitled";
+                    const listTitleMax = 32;
+                    const listTitle =
+                      displayTitle.length > listTitleMax
+                        ? `${displayTitle.slice(0, listTitleMax)}…`
+                        : displayTitle;
+                    const trackTitle =
+                      displayTitle.length > 48
+                        ? `${displayTitle.slice(0, 48)}…`
+                        : displayTitle;
+
                     const actions = (
-                      <div className="flex items-center gap-1 shrink-0">
+                      <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
                         <button
                           type="button"
-                          onClick={() => repeatHistoryItem(item)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            repeatHistoryItem(item);
+                          }}
                           title="Use these settings"
                           aria-label="Use these settings"
-                          className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth"
+                          className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-foreground/5 smooth"
                         >
                           <RotateCcw className="w-4 h-4" />
                         </button>
                         {item.audioUrl ? (
                           <button
                             type="button"
-                            onClick={() =>
+                            onClick={(e) => {
+                              e.stopPropagation();
                               void downloadRemoteAudioFile(
                                 item.audioUrl,
                                 `speech-${item.id}.mp3`,
-                              )
-                            }
+                              );
+                            }}
                             title="Download"
                             aria-label="Download audio"
-                            className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth"
+                            className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-foreground/5 smooth"
                           >
                             <Download className="w-4 h-4" />
                           </button>
                         ) : null}
                         <button
                           type="button"
-                          onClick={() => void removeHistoryItem(item.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void removeHistoryItem(item.id);
+                          }}
                           title="Delete"
                           aria-label="Delete"
-                          className="p-2 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 smooth"
+                          className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-full text-muted-foreground hover:text-red-400 hover:bg-red-500/10 smooth"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     );
 
-                    return (
-                      <li
-                        key={item.id}
-                        className="p-3 rounded-xl border border-blue-500/20 bg-background/30 hover:border-blue-500/40 smooth space-y-3"
-                      >
-                        <div className="flex items-start gap-4">
-                          <div className="w-10 h-10 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0">
-                            <Volume2 className="w-5 h-5" />
+                    if (!item.audioUrl) {
+                      return (
+                        <div
+                          key={item.id}
+                          className="flex items-center gap-3 px-3 py-4 sm:gap-4 sm:px-5"
+                        >
+                          <div className="w-9 h-9 shrink-0 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400">
+                            <Volume2 className="w-4 h-4" />
                           </div>
-                          <div className="flex-1 min-w-0">
+                          <div className="min-w-0 flex-1 max-w-[55%]">
                             <p
-                              className="text-sm text-foreground line-clamp-2"
-                              title={item.text}
+                              className="text-sm font-medium text-foreground line-clamp-2"
+                              title={displayTitle}
                             >
-                              {item.text || "Untitled"}
+                              {listTitle}
                             </p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {VOICE_LABELS.get(item.voice) ??
-                                item.voice ??
-                                "Voice"}
-                              {" · "}
-                              {item.speed.toFixed(2)}x
+                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+                              {metaLine}
                             </p>
                           </div>
-                          {!item.audioUrl ? actions : null}
+                          {actions}
                         </div>
-                        {item.audioUrl ? (
-                          <WaveformPlayer
-                            audioUrl={item.audioUrl}
-                            className="gap-3"
-                            trailingSlot={actions}
-                          />
-                        ) : null}
-                      </li>
+                      );
+                    }
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="group flex items-center gap-3 px-3 py-4 sm:gap-4 sm:px-5 hover:bg-foreground/2 smooth"
+                      >
+                        <WaveformPlayer
+                          audioUrl={item.audioUrl}
+                          className="flex-1 min-w-0 gap-2 sm:gap-4"
+                          buttonClassName="w-9 h-9 sm:w-10 sm:h-10"
+                          waveformClassName="h-8 sm:h-10"
+                          timeClassName="hidden sm:inline"
+                          hideWaveformOnMobile
+                          trackMeta={{
+                            title: trackTitle,
+                            subtitle: metaLine,
+                          }}
+                          leadingSlot={
+                            <div className="w-25 shrink-0 sm:w-28 md:w-32">
+                              <h3
+                                className="text-sm font-medium text-foreground line-clamp-1"
+                                title={displayTitle}
+                              >
+                                {listTitle}
+                              </h3>
+                              <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+                                {metaLine}
+                              </p>
+                            </div>
+                          }
+                          trailingSlot={actions}
+                        />
+                      </div>
                     );
                   })}
-                </ul>
+                </div>
               ) : (
                 <p className="text-sm text-muted-foreground text-center py-8">
                   No previous generations yet.

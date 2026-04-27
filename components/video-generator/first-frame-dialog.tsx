@@ -20,6 +20,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CREATOR_AI_REQUIRED_CODE } from "@/lib/ai-generation-gate";
 import type { GenerationStatus } from "@/hooks/use-generations";
 import { triggerClasses } from "@/components/video-generator/styles";
+import { cn } from "@/lib/utils";
 
 const ffImageStyles = [
   { id: "realistic", label: "Realistic" },
@@ -48,6 +49,8 @@ type ApiGenerationRecord = {
 interface FirstFrameDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  dialogTitle?: string;
+  generateDescription?: string;
   /** Called with the chosen frame URL when the user picks an image. */
   onFrameSelected: (url: string) => void;
   /** User id — used to gate the library load. Null when signed out. */
@@ -66,6 +69,8 @@ interface FirstFrameDialogProps {
 export function FirstFrameDialog({
   open,
   onOpenChange,
+  dialogTitle = "Choose first frame",
+  generateDescription = "Creates a still using one image generation, then uses it as the first frame.",
   onFrameSelected,
   userId,
   checkGate,
@@ -81,6 +86,7 @@ export function FirstFrameDialog({
   const [ffPrompt, setFfPrompt] = useState("");
   const [ffStyle, setFfStyle] = useState("realistic");
   const [ffRatio, setFfRatio] = useState("1:1");
+  const [ffDropActive, setFfDropActive] = useState(false);
 
   useEffect(() => {
     if (!open || !userId) return;
@@ -113,10 +119,11 @@ export function FirstFrameDialog({
     };
   }, [open, userId]);
 
-  const handleFfFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
+  useEffect(() => {
+    if (!open) setFfDropActive(false);
+  }, [open]);
+
+  const uploadFfFile = async (file: File) => {
     onError(null);
     if (!checkGate()) return;
 
@@ -148,6 +155,51 @@ export function FirstFrameDialog({
     } finally {
       setFfUploading(false);
     }
+  };
+
+  const handleFfFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    await uploadFfFile(file);
+  };
+
+  const onFfDeviceDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (ffUploading) return;
+    setFfDropActive(true);
+  };
+
+  const onFfDeviceDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const next = e.relatedTarget as Node | null;
+    if (next && e.currentTarget.contains(next)) return;
+    setFfDropActive(false);
+  };
+
+  const onFfDeviceDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (ffUploading) return;
+    e.dataTransfer.dropEffect = "copy";
+  };
+
+  const onFfDeviceDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setFfDropActive(false);
+    if (ffUploading) return;
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    const byMime = /^image\/(jpeg|png|gif|webp)$/i.test(file.type);
+    const byName = /\.(jpe?g|png|gif|webp)$/i.test(file.name);
+    if (!byMime && !byName) {
+      onError("Please use a JPEG, PNG, WebP, or GIF file.");
+      return;
+    }
+    void uploadFfFile(file);
   };
 
   const handleFfGenerate = async () => {
@@ -198,7 +250,7 @@ export function FirstFrameDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
-          <DialogTitle>Choose first frame</DialogTitle>
+          <DialogTitle>{dialogTitle}</DialogTitle>
         </DialogHeader>
         <Tabs defaultValue="generate" className="w-full mt-2">
           <TabsList className="grid w-full grid-cols-3 h-auto gap-1.5 rounded-xl border border-blue-500/25 bg-muted/40 p-1.5">
@@ -214,9 +266,7 @@ export function FirstFrameDialog({
           </TabsList>
 
           <TabsContent value="generate" className="pt-4 space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Creates a still using one image generation, then uses it as the first frame.
-            </p>
+            <p className="text-sm text-muted-foreground">{generateDescription}</p>
             <textarea
               value={ffPrompt}
               onChange={(e) => setFfPrompt(e.target.value)}
@@ -313,19 +363,37 @@ export function FirstFrameDialog({
             <p className="text-sm text-muted-foreground">
               Upload a JPEG, PNG, WebP, or GIF (max 15 MB).
             </p>
-            <label className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-blue-500/40 bg-background/40 px-4 py-10 cursor-pointer hover:border-blue-500/60 smooth">
-              <ImageIcon className="w-10 h-10 text-blue-400/80" />
-              <span className="text-sm text-foreground">
-                {ffUploading ? "Uploading…" : "Click to select a file"}
-              </span>
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                className="sr-only"
-                disabled={ffUploading}
-                onChange={(e) => void handleFfFileChange(e)}
-              />
-            </label>
+            <div
+              onDragEnter={onFfDeviceDragEnter}
+              onDragLeave={onFfDeviceDragLeave}
+              onDragOver={onFfDeviceDragOver}
+              onDrop={onFfDeviceDrop}
+            >
+              <label
+                className={cn(
+                  "flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed bg-background/40 px-4 py-10 cursor-pointer smooth transition-colors",
+                  "border-blue-500/40 hover:border-blue-500/60",
+                  ffDropActive && "border-blue-500/80 bg-blue-500/10 ring-2 ring-blue-500/30",
+                  ffUploading && "pointer-events-none opacity-80",
+                )}
+              >
+                <ImageIcon className="w-10 h-10 text-blue-400/80" />
+                <span className="text-sm text-foreground text-center">
+                  {ffUploading
+                    ? "Uploading…"
+                    : ffDropActive
+                      ? "Drop to upload"
+                      : "Click or drop a file"}
+                </span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  className="sr-only"
+                  disabled={ffUploading}
+                  onChange={(e) => void handleFfFileChange(e)}
+                />
+              </label>
+            </div>
           </TabsContent>
         </Tabs>
       </DialogContent>

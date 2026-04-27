@@ -1,7 +1,8 @@
 "use client";
 
-import { Pause, Play } from "lucide-react";
+import { Pause, Play, X } from "lucide-react";
 import {
+  pauseGlobalAudioPlayback,
   seekGlobalAudioPlayback,
   toggleGlobalAudioPlayback,
   useGlobalAudioPlaybackState,
@@ -24,19 +25,29 @@ export function MobileAudioDrawer() {
   return (
     <div className="fixed inset-x-0 bottom-0 z-60 px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] lg:hidden">
       <div className="rounded-2xl border border-border/70 bg-card/95 p-3 shadow-2xl backdrop-blur-xl">
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <div className="min-w-0">
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1 pr-1">
             <p className="truncate text-sm font-semibold text-foreground">{title}</p>
             {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
           </div>
-          <button
-            type="button"
-            onClick={toggleGlobalAudioPlayback}
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-foreground/8 text-foreground hover:bg-foreground/12"
-            aria-label={isPlaying ? "Pause" : "Play"}
-          >
-            {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="ml-0.5 h-4 w-4" />}
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={toggleGlobalAudioPlayback}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-foreground/8 text-foreground hover:bg-foreground/12"
+              aria-label={isPlaying ? "Pause" : "Play"}
+            >
+              {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="ml-0.5 h-4 w-4" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => pauseGlobalAudioPlayback()}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-foreground/8 text-muted-foreground hover:bg-foreground/12 hover:text-foreground"
+              aria-label="Close player"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         <input

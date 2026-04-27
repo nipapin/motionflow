@@ -160,17 +160,19 @@ function claimPlayback(
 function releasePlayback(track: { pause: () => void }) {
   if (activeTrack === track) {
     activeTrack = null;
+    activeMeta = null;
     bindGlobalAudio(null);
   }
 }
 
-/** Stops whichever WaveformPlayer is currently playing (e.g. before opening a modal). */
+/** Stops whichever WaveformPlayer is playing and clears now-playing metadata (e.g. modals, mobile drawer close). */
 export function pauseGlobalAudioPlayback() {
   if (activeTrack) {
     activeTrack.pause();
-    activeTrack = null;
-    bindGlobalAudio(null);
   }
+  activeTrack = null;
+  activeMeta = null;
+  bindGlobalAudio(null);
 }
 
 export function toggleGlobalAudioPlayback() {

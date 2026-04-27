@@ -8,7 +8,8 @@ import {
   Clock,
   Ratio,
   Palette,
-  Frame,
+  ImageIcon,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,7 +30,7 @@ import {
   type GenerationStatus,
 } from "@/hooks/use-generations";
 import { useExtraGenerationsPurchase } from "@/hooks/use-extra-generations-purchase";
-import { GenerationsBadge } from "@/components/generations-badge";
+import { AiToolPageHeader } from "@/components/ai-tool-page-header";
 import { BuyExtraGenerationsDialog } from "@/components/buy-extra-generations-dialog";
 import {
   CREATOR_AI_REQUIRED_CODE,
@@ -63,6 +64,8 @@ export interface RecentVideo {
   style: string;
   durationSec: string;
   audioEnabled: boolean;
+  firstFrameUrl?: string;
+  lastFrameUrl?: string;
 }
 
 export const stylePresets = [
@@ -106,6 +109,10 @@ function recordsToRecentVideos(rows: ApiGenerationRecord[]): RecentVideo[] {
       : "5";
     const audioEnabled =
       typeof s.audio_enabled === "boolean" ? s.audio_enabled : true;
+    const firstFrameUrl =
+      typeof s.first_frame_url === "string" ? s.first_frame_url : undefined;
+    const lastFrameUrl =
+      typeof s.last_frame_url === "string" ? s.last_frame_url : undefined;
     out.push({
       id: row.id,
       url,
@@ -114,6 +121,8 @@ function recordsToRecentVideos(rows: ApiGenerationRecord[]): RecentVideo[] {
       style,
       durationSec,
       audioEnabled,
+      firstFrameUrl,
+      lastFrameUrl,
     });
   }
   return out;
@@ -210,6 +219,8 @@ export function VideoGenerator() {
     setSelectedAspectRatio(item.aspectRatio);
     setSelectedDuration(item.durationSec);
     setAudioEnabled(item.audioEnabled);
+    setFirstFrameUrl(item.firstFrameUrl ?? null);
+    setLastFrameUrl(item.lastFrameUrl ?? null);
     setErrorMessage(null);
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -271,7 +282,10 @@ export function VideoGenerator() {
   );
 
   const [firstFrameUrl, setFirstFrameUrl] = useState<string | null>(null);
-  const [firstFrameDialogOpen, setFirstFrameDialogOpen] = useState(false);
+  const [lastFrameUrl, setLastFrameUrl] = useState<string | null>(null);
+  const [framePickerSlot, setFramePickerSlot] = useState<"first" | "last" | null>(
+    null,
+  );
 
   const handleGenerate = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -297,6 +311,7 @@ export function VideoGenerator() {
           target_resolution: TARGET_RESOLUTION,
           audio_enabled: audioEnabled,
           ...(firstFrameUrl ? { first_frame_url: firstFrameUrl } : {}),
+          ...(lastFrameUrl ? { last_frame_url: lastFrameUrl } : {}),
         }),
       });
 
@@ -345,26 +360,17 @@ export function VideoGenerator() {
 
   return (
     <div className="max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-semibold text-foreground mb-2 tracking-tight">
-            AI Video Generation
-          </h1>
-          <p className="text-muted-foreground">
-            Create stunning videos from text descriptions using AI
-          </p>
-        </div>
+      <AiToolPageHeader
+        title="AI Video Generation"
+        description="Create stunning videos from text descriptions using AI"
+        status={generations}
+        loading={generationsLoading}
+        authenticated={authenticated}
+        error={generationsError}
+      />
 
-        <GenerationsBadge
-          status={generations}
-          loading={generationsLoading}
-          authenticated={authenticated}
-          error={generationsError}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <form onSubmit={handleGenerate} className="lg:col-span-1 space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
+        <form onSubmit={handleGenerate} className="lg:col-span-1 space-y-3 lg:space-y-6">
           <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
             <label
               htmlFor="video-prompt"
@@ -382,45 +388,96 @@ export function VideoGenerator() {
           </div>
 
           <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5 space-y-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-3">
               <div>
-                <p className="text-sm font-medium text-foreground mb-1">
-                  First frame (optional)
-                </p>
+                <p className="text-sm font-medium text-foreground">Frames (optional)</p>
                 <p className="text-xs text-muted-foreground">
-                  Image-to-video: motion starts from this still.
+                  Optional reference images for the first and last frames. PNG, JPEG, or WebP.
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="border border-blue-500/40 bg-blue-500/10 text-foreground hover:bg-blue-500/20"
-                  onClick={() => setFirstFrameDialogOpen(true)}
-                >
-                  <Frame className="w-4 h-4 mr-2 shrink-0" />
-                  First frame
-                </Button>
-                {firstFrameUrl ? (
-                  <>
-                    <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-blue-500/30 bg-black shrink-0">
-                      <img
-                        src={replicateFileUrlToDisplaySrc(firstFrameUrl)}
-                        alt=""
-                        className="w-full h-full object-cover"
-                      />
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="relative mx-auto w-full max-w-[180px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setErrorMessage(null);
+                      setFramePickerSlot("first");
+                    }}
+                    className="flex aspect-square w-full cursor-pointer flex-col overflow-hidden rounded-xl border border-blue-500/30 bg-background/35 text-left transition-colors hover:border-blue-500/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
+                  >
+                    <div className="relative flex min-h-0 flex-1 flex-col">
+                      {firstFrameUrl ? (
+                        <img
+                          src={replicateFileUrlToDisplaySrc(firstFrameUrl)}
+                          alt="First frame"
+                          className="h-full w-full flex-1 object-cover"
+                        />
+                      ) : (
+                        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-3 text-muted-foreground/70">
+                          <ImageIcon className="h-8 w-8" />
+                          <span className="text-xs font-medium text-foreground/90 text-center leading-snug">
+                            First frame
+                          </span>
+                        </div>
+                      )}
                     </div>
-                    <Button
+                  </button>
+                  {firstFrameUrl ? (
+                    <button
                       type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="text-muted-foreground"
-                      onClick={() => setFirstFrameUrl(null)}
+                      aria-label="Clear first frame"
+                      className="absolute right-1 top-1 z-10 h-7 w-7 cursor-pointer rounded-full border border-blue-500/35 bg-background/80 p-0 text-muted-foreground leading-none backdrop-blur-sm transition-colors hover:text-foreground"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFirstFrameUrl(null);
+                      }}
                     >
-                      Clear
-                    </Button>
-                  </>
-                ) : null}
+                      <X className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2" />
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="relative mx-auto w-full max-w-[180px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setErrorMessage(null);
+                      setFramePickerSlot("last");
+                    }}
+                    className="flex aspect-square w-full cursor-pointer flex-col overflow-hidden rounded-xl border border-blue-500/30 bg-background/35 text-left transition-colors hover:border-blue-500/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
+                  >
+                    <div className="relative flex min-h-0 flex-1 flex-col">
+                      {lastFrameUrl ? (
+                        <img
+                          src={replicateFileUrlToDisplaySrc(lastFrameUrl)}
+                          alt="Last frame"
+                          className="h-full w-full flex-1 object-cover"
+                        />
+                      ) : (
+                        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-3 text-muted-foreground/70">
+                          <ImageIcon className="h-8 w-8" />
+                          <span className="text-xs font-medium text-foreground/90 text-center leading-snug">
+                            Last frame
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                  {lastFrameUrl ? (
+                    <button
+                      type="button"
+                      aria-label="Clear last frame"
+                      className="absolute right-1 top-1 z-10 h-7 w-7 cursor-pointer rounded-full border border-blue-500/35 bg-background/80 p-0 text-muted-foreground leading-none backdrop-blur-sm transition-colors hover:text-foreground"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setLastFrameUrl(null);
+                      }}
+                    >
+                      <X className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2" />
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </div>
 
@@ -535,11 +592,27 @@ export function VideoGenerator() {
         </form>
 
         <FirstFrameDialog
-          open={firstFrameDialogOpen}
-          onOpenChange={setFirstFrameDialogOpen}
+          open={framePickerSlot !== null}
+          onOpenChange={(open) => {
+            if (!open) setFramePickerSlot(null);
+          }}
+          dialogTitle={
+            framePickerSlot === "last"
+              ? "Choose last frame (optional)"
+              : "Choose first frame (optional)"
+          }
+          generateDescription={
+            framePickerSlot === "last"
+              ? "Creates an image and uses it as the last-frame reference."
+              : "Creates a still using one image generation, then uses it as the first frame."
+          }
           onFrameSelected={(url) => {
-            setFirstFrameUrl(url);
-            setFirstFrameDialogOpen(false);
+            if (framePickerSlot === "last") {
+              setLastFrameUrl(url);
+            } else {
+              setFirstFrameUrl(url);
+            }
+            setFramePickerSlot(null);
           }}
           userId={user?.id}
           checkGate={checkGenerationGate}

@@ -8,14 +8,15 @@ import {
   Music,
   Menu,
   X,
+  ImageIcon,
   Wand2,
-  Pencil,
   Video,
   MessageSquare,
   AudioLines,
   PanelLeftClose,
   PanelLeftOpen,
   Mic,
+  Film,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useGenerations } from "@/hooks/use-generations";
@@ -27,15 +28,24 @@ const categories = [
   { name: "Illustrator", text: "Ai", href: "/illustrator" },
   { name: "Stock Music", icon: Music, href: "/stock-audio" },
   { name: "Sound FX", icon: AudioLines, href: "/sound-fx" },
+  { name: "Footages", icon: Film, href: "/footages" },
 ];
 
 const aiTools = [
-  { name: "Image Gen", icon: Wand2, href: "/image-generation" },
-  { name: "Image Edit", icon: Pencil, href: "/image-edit" },
+  { name: "Image Gen", icon: ImageIcon, href: "/image-generation" },
+  { name: "Image Edit", icon: Wand2, href: "/image-edit" },
   { name: "Video Gen", icon: Video, href: "/video-generation" },
   { name: "Text to Speech", icon: MessageSquare, href: "/text-to-speech" },
   { name: "Speech to Text", icon: Mic, href: "/speech-to-text" },
 ];
+
+const footerLinks = [
+  { label: "Privacy Policy", href: "/privacy" },
+  { label: "Terms of Use", href: "/terms" },
+  { label: "Refund Policy", href: "/refund" },
+  { label: "License", href: "/license" },
+  { label: "Contact", href: "/contact" },
+] as const;
 
 interface SidebarProps {
   activeCategory: string;
@@ -298,6 +308,28 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
             ))}
           </ul>
         </div>
+
+        <div className="mt-8 border-t border-border/50 pt-5 lg:hidden">
+          <h3 className="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Info
+          </h3>
+          <ul className="space-y-1">
+            {footerLinks.map(({ label, href }) => (
+              <li key={label}>
+                <Link
+                  href={href}
+                  className="flex w-full items-center rounded-xl px-4 py-3 text-sm font-medium text-muted-foreground smooth hover:bg-foreground/5 hover:text-foreground"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  {label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-4 px-4 text-[11px] text-muted-foreground/70">
+            {new Date().getFullYear()} Motion Flow. All rights reserved.
+          </p>
+        </div>
       </nav>
 
       {showUpgradeBlock && !hideUpgradeForPlan && (
@@ -322,7 +354,11 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
       <Button
         variant="ghost"
         size="icon"
-        className="fixed top-3 left-4 z-60 lg:hidden bg-background/95 backdrop-blur-sm border border-blue-500/30 shadow-lg h-10 w-10"
+        className={cn(
+          "fixed top-3 left-4 lg:hidden bg-background/95 backdrop-blur-sm border border-blue-500/30 shadow-lg h-10 w-10",
+          /* Below aside (z-70) when open so the drawer covers the control; above audio drawer (z-60) when closed */
+          mobileOpen ? "z-50" : "z-65",
+        )}
         onClick={() => setMobileOpen(!mobileOpen)}
       >
         {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -330,7 +366,7 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
 
       {mobileOpen && (
         <div
-          className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40 lg:hidden"
+          className="fixed inset-0 bg-background/80 backdrop-blur-sm z-65 lg:hidden"
           onClick={() => setMobileOpen(false)}
           onKeyDown={(e) => e.key === "Escape" && setMobileOpen(false)}
           role="button"
@@ -341,7 +377,7 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
 
       <aside
         className={cn(
-          "fixed top-0 left-0 z-40 h-screen bg-background/80 backdrop-blur-xl border-r border-border/50 flex flex-col transition-all duration-300 lg:translate-x-0",
+          "fixed top-0 left-0 z-70 lg:z-40 h-screen bg-background/80 backdrop-blur-xl border-r border-border/50 flex flex-col transition-all duration-300 lg:translate-x-0",
           collapsed ? "w-[72px]" : "w-72",
           mobileOpen ? "translate-x-0 w-72" : "-translate-x-full",
         )}
