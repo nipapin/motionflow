@@ -18,8 +18,8 @@ const replicate = new Replicate({
     auth: process.env.REPLICATE_API_TOKEN,
 });
 
-/** See https://replicate.com/bytedance/seedance-1-pro-fast/api/schema */
-const SEEDANCE_MODEL = "bytedance/seedance-1-pro-fast" as const;
+/** See https://replicate.com/prunaai/p-video/api/schema */
+const P_VIDEO_MODEL = "prunaai/p-video" as const;
 
 const VIDEO_STYLE_HINTS: Record<string, string> = {
     cinematic:
@@ -33,7 +33,7 @@ const VIDEO_STYLE_HINTS: Record<string, string> = {
 };
 
 const ALLOWED_RATIOS = new Set(["16:9", "9:16", "1:1"]);
-const ALLOWED_DURATIONS = new Set([5, 10]);
+const ALLOWED_DURATIONS = new Set([5, 8]);
 const ALLOWED_TARGET_RES = new Set(["720"]);
 
 const FPS = 24;
@@ -187,6 +187,7 @@ export async function POST(req: NextRequest) {
             duration?: number;
             target_resolution?: string;
             first_frame_url?: string;
+            audio_enabled?: boolean;
         };
 
         const prompt = body.prompt?.trim();
@@ -196,6 +197,7 @@ export async function POST(req: NextRequest) {
             typeof body.duration === "number" ? body.duration : 5;
         const target_resolution = body.target_resolution ?? "720";
         const first_frame_url = body.first_frame_url?.trim();
+        const audio_enabled = body.audio_enabled !== false;
 
         if (!prompt) {
             return NextResponse.json(
@@ -213,7 +215,7 @@ export async function POST(req: NextRequest) {
 
         if (!ALLOWED_DURATIONS.has(duration)) {
             return NextResponse.json(
-                { error: "Please choose a supported duration (5 or 10 seconds)." },
+                { error: "Please choose a supported duration (5 or 8 seconds)." },
                 { status: 400 },
             );
         }
@@ -248,31 +250,34 @@ export async function POST(req: NextRequest) {
         }
 
         const styleHint = VIDEO_STYLE_HINTS[style] ?? VIDEO_STYLE_HINTS.cinematic;
-        const finalPrompt = `${prompt}. Style: ${styleHint}.`;
+        const audioHint = audio_enabled
+            ? "natural synced audio when appropriate"
+            : "silent video, no generated audio";
+        const finalPrompt = `${prompt}. Style: ${styleHint}. Audio: ${audioHint}.`;
 
         const resolution = "720p" as const;
 
-        const seedInput: Record<string, string | number | boolean> = {
+        const pVideoInput: Record<string, string | number | boolean> = {
             prompt: finalPrompt,
             fps: FPS,
             duration,
             resolution,
             aspect_ratio,
-            camera_fixed: false,
+            draft: false,
         };
 
-        /** Replicate Seedance: optional image URL as motion reference / first frame. */
+        /** Replicate P-Video: optional image URL for image-to-video generation. */
         if (first_frame_url) {
-            seedInput.image = normalizeFirstFrameUrlForReplicate(first_frame_url);
+            pVideoInput.image = normalizeFirstFrameUrlForReplicate(first_frame_url);
         }
 
-        let seedOutput: unknown;
+        let videoOutput: unknown;
         try {
-            seedOutput = await replicate.run(SEEDANCE_MODEL, {
-                input: seedInput,
+            videoOutput = await replicate.run(P_VIDEO_MODEL, {
+                input: pVideoInput,
             });
         } catch (err) {
-            console.error("[video generation] seedance error:", err);
+            console.error("[video generation] p-video error:", err);
             const { status, message } = mapReplicateError(err);
             void insertGenerationRecord({
                 userId: user.id,
@@ -285,6 +290,7 @@ export async function POST(req: NextRequest) {
                     aspect_ratio,
                     duration,
                     target_resolution,
+                    audio_enabled,
                     ...(first_frame_url
                         ? { first_frame_url: first_frame_url }
                         : {}),
@@ -294,9 +300,9 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: message }, { status });
         }
 
-        const videoUrl = extractMediaUrl(seedOutput);
+        const videoUrl = extractMediaUrl(videoOutput);
         if (!videoUrl) {
-            console.error("[video generation] empty seedance output");
+            console.error("[video generation] empty p-video output");
             void insertGenerationRecord({
                 userId: user.id,
                 tool: "video",
@@ -308,6 +314,7 @@ export async function POST(req: NextRequest) {
                     aspect_ratio,
                     duration,
                     target_resolution,
+                    audio_enabled,
                     ...(first_frame_url
                         ? { first_frame_url: first_frame_url }
                         : {}),
@@ -325,29 +332,14 @@ export async function POST(req: NextRequest) {
             });
             persistedVideoUrl = mirrored;
         } catch (mirrorErr) {
-            console.error("[video generation] mirror to R2 failed:", mirrorErr);
-            const msg =
-                mirrorErr instanceof Error
-                    ? mirrorErr.message
-                    : "Could not save the generated video. Please try again.";
-            void insertGenerationRecord({
-                userId: user.id,
-                tool: "video",
-                status: "failed",
-                settings: {
-                    kind: "generate",
-                    prompt,
-                    style,
-                    aspect_ratio,
-                    duration,
-                    target_resolution,
-                    ...(first_frame_url
-                        ? { first_frame_url: first_frame_url }
-                        : {}),
-                },
-                errorMessage: msg,
-            });
-            return NextResponse.json({ error: msg }, { status: 502 });
+            console.error(
+                "[video generation] mirror to R2 failed; using source URL fallback:",
+                mirrorErr,
+            );
+            // Keep generation successful even if transient CDN->R2 copy fails.
+            // Replicate delivery URLs can expire, but returning a playable result
+            // is better than failing the entire generation request.
+            persistedVideoUrl = videoUrl;
         }
 
         const consumed = await consumeGeneration(user.id, "video");
@@ -372,6 +364,7 @@ export async function POST(req: NextRequest) {
                 aspect_ratio,
                 duration,
                 target_resolution,
+                audio_enabled,
                 ...(first_frame_url
                     ? { first_frame_url: first_frame_url }
                     : {}),
@@ -386,6 +379,7 @@ export async function POST(req: NextRequest) {
             aspect_ratio,
             duration,
             target_resolution,
+            audio_enabled,
             generations: consumed.status,
             record_id: recordId > 0 ? String(recordId) : undefined,
         });

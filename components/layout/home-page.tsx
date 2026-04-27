@@ -24,7 +24,7 @@ interface HomePageProps {
 
 export default function Home({ sections }: HomePageProps) {
   const { user } = useAuth();
-  const { searchQuery, spaActiveCategory, setSpaActiveCategory } = useAppChrome();
+  const { searchQuery, searchCategory, spaActiveCategory, setSpaActiveCategory } = useAppChrome();
   const activeCategory = spaActiveCategory;
   const setActiveCategory = setSpaActiveCategory;
   const [sortBy, setSortBy] = useState("popular");
@@ -58,8 +58,12 @@ export default function Home({ sections }: HomePageProps) {
 
   const filteredProducts = allProducts.filter((product) => {
     const matchesSearch = !searchQuery.trim() || productMatchesSearch(product, searchQuery);
-    if (activeCategory === "All" || activeCategory === "New Releases") return matchesSearch;
-    return matchesSearch && productMatchesSidebarCategory(product, activeCategory);
+    const matchesSearchCategory =
+      !searchQuery.trim() || productMatchesSidebarCategory(product, searchCategory);
+    if (activeCategory === "All" || activeCategory === "New Releases") {
+      return matchesSearch && matchesSearchCategory;
+    }
+    return matchesSearch && matchesSearchCategory && productMatchesSidebarCategory(product, activeCategory);
   });
 
   return (
@@ -70,7 +74,7 @@ export default function Home({ sections }: HomePageProps) {
         <ImageEditor />
       ) : activeCategory === "Video Gen" ? (
         <VideoGenerator />
-      ) : isHomeView(activeCategory) && !searchQuery ? (
+      ) : isHomeView(activeCategory) ? (
         <>
           <HeroBanner onCategoryChange={setActiveCategory} />
           {sections.map((section) => (

@@ -147,6 +147,27 @@ export interface UploadToR2Result {
     contentType: string;
 }
 
+function shouldRetryStatus(status: number): boolean {
+    return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+function isRetryableDownloadError(error: unknown): boolean {
+    if (!error) return false;
+    const text = error instanceof Error ? error.message : String(error);
+    if (/terminated|econnreset|etimedout|socket hang up|und_err_/i.test(text)) {
+        return true;
+    }
+    const cause = (error as { cause?: unknown }).cause as
+        | { code?: string }
+        | undefined;
+    const code = cause?.code ?? (error as { code?: string }).code;
+    return typeof code === "string" && /ECONNRESET|ETIMEDOUT|UND_ERR_/i.test(code);
+}
+
+function delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Upload bytes to R2 and return the public CDN URL.
  *
@@ -203,29 +224,44 @@ export async function uploadRemoteUrlToR2(
         cacheControl?: string;
     },
 ): Promise<UploadToR2Result> {
-    const res = await fetch(sourceUrl, {
-        headers: opts.headers,
-    });
-    if (!res.ok) {
-        const detail = await res.text().catch(() => "");
-        throw new Error(
-            `Could not download source (${res.status}). ${detail.slice(0, 200)}`,
-        );
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+            const res = await fetch(sourceUrl, {
+                headers: opts.headers,
+            });
+            if (!res.ok) {
+                const detail = await res.text().catch(() => "");
+                const msg = `Could not download source (${res.status}). ${detail.slice(0, 200)}`;
+                if (attempt < maxAttempts && shouldRetryStatus(res.status)) {
+                    await delay(300 * attempt);
+                    continue;
+                }
+                throw new Error(msg);
+            }
+
+            const contentType =
+                res.headers.get("content-type")?.split(";")[0]?.trim() ||
+                opts.defaultContentType ||
+                "application/octet-stream";
+
+            const buf = Buffer.from(await res.arrayBuffer());
+            const ext = pickExtension(contentType, sourceUrl);
+
+            return uploadBufferToR2(buf, {
+                contentType,
+                keyPrefix: opts.keyPrefix,
+                extension: ext,
+                baseName: opts.baseName,
+                cacheControl: opts.cacheControl,
+            });
+        } catch (error) {
+            if (attempt < maxAttempts && isRetryableDownloadError(error)) {
+                await delay(300 * attempt);
+                continue;
+            }
+            throw error;
+        }
     }
-
-    const contentType =
-        res.headers.get("content-type")?.split(";")[0]?.trim() ||
-        opts.defaultContentType ||
-        "application/octet-stream";
-
-    const buf = Buffer.from(await res.arrayBuffer());
-    const ext = pickExtension(contentType, sourceUrl);
-
-    return uploadBufferToR2(buf, {
-        contentType,
-        keyPrefix: opts.keyPrefix,
-        extension: ext,
-        baseName: opts.baseName,
-        cacheControl: opts.cacheControl,
-    });
+    throw new Error("Could not download source after retries.");
 }

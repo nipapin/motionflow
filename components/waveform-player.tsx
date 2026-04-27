@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Pause, Play } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
@@ -62,14 +62,106 @@ function extractPeaks(buffer: AudioBuffer, barCount: number): number[] {
 
 // --------------- global playback (one track at a time) ---------------
 let activeTrack: { pause: () => void } | null = null;
+let activeAudio: HTMLAudioElement | null = null;
+let activeMeta: { title: string; subtitle?: string } | null = null;
 
-function claimPlayback(track: { pause: () => void }) {
+type GlobalPlaybackState = {
+  title: string | null;
+  subtitle: string | null;
+  isPlaying: boolean;
+  currentTime: number;
+  duration: number;
+};
+
+const globalPlaybackListeners = new Set<() => void>();
+const EMPTY_PLAYBACK_STATE: GlobalPlaybackState = {
+  title: null,
+  subtitle: null,
+  isPlaying: false,
+  currentTime: 0,
+  duration: 0,
+};
+let globalPlaybackSnapshot: GlobalPlaybackState = EMPTY_PLAYBACK_STATE;
+
+function subscribeGlobalPlayback(listener: () => void): () => void {
+  globalPlaybackListeners.add(listener);
+  return () => globalPlaybackListeners.delete(listener);
+}
+
+function computeGlobalPlaybackSnapshot(): GlobalPlaybackState {
+  return {
+    title: activeMeta?.title ?? null,
+    subtitle: activeMeta?.subtitle ?? null,
+    isPlaying: !!activeAudio && !activeAudio.paused && !activeAudio.ended,
+    currentTime: activeAudio?.currentTime ?? 0,
+    duration: Number.isFinite(activeAudio?.duration) ? (activeAudio?.duration ?? 0) : 0,
+  };
+}
+
+function refreshGlobalPlaybackSnapshot(): boolean {
+  const next = computeGlobalPlaybackSnapshot();
+  const prev = globalPlaybackSnapshot;
+  if (
+    prev.title === next.title &&
+    prev.subtitle === next.subtitle &&
+    prev.isPlaying === next.isPlaying &&
+    prev.currentTime === next.currentTime &&
+    prev.duration === next.duration
+  ) {
+    return false;
+  }
+  globalPlaybackSnapshot = next;
+  return true;
+}
+
+function emitGlobalPlayback() {
+  if (!refreshGlobalPlaybackSnapshot()) return;
+  for (const listener of globalPlaybackListeners) listener();
+}
+
+function getGlobalPlaybackSnapshot(): GlobalPlaybackState {
+  return globalPlaybackSnapshot;
+}
+
+function onGlobalAudioEvent() {
+  emitGlobalPlayback();
+}
+
+function bindGlobalAudio(audio: HTMLAudioElement | null) {
+  if (activeAudio) {
+    activeAudio.removeEventListener("timeupdate", onGlobalAudioEvent);
+    activeAudio.removeEventListener("loadedmetadata", onGlobalAudioEvent);
+    activeAudio.removeEventListener("play", onGlobalAudioEvent);
+    activeAudio.removeEventListener("pause", onGlobalAudioEvent);
+    activeAudio.removeEventListener("ended", onGlobalAudioEvent);
+  }
+  activeAudio = audio;
+  if (activeAudio) {
+    activeAudio.addEventListener("timeupdate", onGlobalAudioEvent);
+    activeAudio.addEventListener("loadedmetadata", onGlobalAudioEvent);
+    activeAudio.addEventListener("play", onGlobalAudioEvent);
+    activeAudio.addEventListener("pause", onGlobalAudioEvent);
+    activeAudio.addEventListener("ended", onGlobalAudioEvent);
+  }
+  emitGlobalPlayback();
+}
+
+function claimPlayback(
+  track: { pause: () => void },
+  audio: HTMLAudioElement | null,
+  meta?: { title: string; subtitle?: string },
+) {
   if (activeTrack && activeTrack !== track) activeTrack.pause();
   activeTrack = track;
+  activeMeta = meta ?? null;
+  bindGlobalAudio(audio);
 }
 
 function releasePlayback(track: { pause: () => void }) {
-  if (activeTrack === track) activeTrack = null;
+  if (activeTrack === track) {
+    activeTrack = null;
+    bindGlobalAudio(null);
+  }
 }
 
 /** Stops whichever WaveformPlayer is currently playing (e.g. before opening a modal). */
@@ -77,7 +169,30 @@ export function pauseGlobalAudioPlayback() {
   if (activeTrack) {
     activeTrack.pause();
     activeTrack = null;
+    bindGlobalAudio(null);
   }
+}
+
+export function toggleGlobalAudioPlayback() {
+  if (!activeAudio) return;
+  if (activeAudio.paused) {
+    void activeAudio.play().catch(() => {});
+  } else {
+    activeAudio.pause();
+  }
+}
+
+export function seekGlobalAudioPlayback(ratio: number) {
+  if (!activeAudio) return;
+  const clamped = Math.max(0, Math.min(1, ratio));
+  const duration = Number.isFinite(activeAudio.duration) ? activeAudio.duration : 0;
+  if (duration <= 0) return;
+  activeAudio.currentTime = clamped * duration;
+  emitGlobalPlayback();
+}
+
+export function useGlobalAudioPlaybackState() {
+  return useSyncExternalStore(subscribeGlobalPlayback, getGlobalPlaybackSnapshot, getGlobalPlaybackSnapshot);
 }
 
 // --------------- helpers ---------------
@@ -199,6 +314,12 @@ export interface WaveformPlayerProps {
   leadingSlot?: React.ReactNode;
   /** Rendered after the time readout (typical place for action buttons). */
   trailingSlot?: React.ReactNode;
+  /** Optional metadata for global now-playing UI. */
+  trackMeta?: { title: string; subtitle?: string };
+  /** Optional class for time label. */
+  timeClassName?: string;
+  /** Hide canvas only on mobile while keeping layout spacing. */
+  hideWaveformOnMobile?: boolean;
 }
 
 /**
@@ -215,6 +336,9 @@ export function WaveformPlayer({
   waveformClassName,
   leadingSlot,
   trailingSlot,
+  trackMeta,
+  timeClassName,
+  hideWaveformOnMobile = false,
 }: WaveformPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
@@ -310,20 +434,6 @@ export function WaveformPlayer({
     setPeaks(url && peakCache.has(url) ? peakCache.get(url)! : null);
   }, [url]);
 
-  useEffect(() => {
-    const handle = {
-      pause: () => {
-        audioRef.current?.pause();
-        setIsPlaying(false);
-      },
-    };
-    return () => {
-      releasePlayback(handle);
-      audioRef.current?.pause();
-      audioRef.current = null;
-    };
-  }, []);
-
   const getOrCreateAudio = useCallback(() => {
     if (audioRef.current) return audioRef.current;
     if (!url) return null;
@@ -332,14 +442,22 @@ export function WaveformPlayer({
     audioRef.current = audio;
     audio.addEventListener("loadedmetadata", () => setDuration(audio.duration));
     audio.addEventListener("timeupdate", () => setCurrentTime(audio.currentTime));
-    audio.addEventListener("playing", () => setIsBuffering(false));
+    audio.addEventListener("playing", () => {
+      setIsBuffering(false);
+      setIsPlaying(true);
+    });
+    audio.addEventListener("play", () => setIsPlaying(true));
+    audio.addEventListener("pause", () => {
+      setIsPlaying(false);
+      setIsBuffering(false);
+    });
     audio.addEventListener("waiting", () => setIsBuffering(true));
     audio.addEventListener("error", () => setIsBuffering(false));
     audio.addEventListener("ended", () => {
       setIsPlaying(false);
       setIsBuffering(false);
       setCurrentTime(0);
-      releasePlayback({ pause: () => {} });
+      emitGlobalPlayback();
     });
     return audio;
   }, [url]);
@@ -372,18 +490,30 @@ export function WaveformPlayer({
     setIsBuffering(false);
   }, []);
 
+  const handleRef = useRef<{ pause: () => void }>({ pause: pauseThis });
+  useEffect(() => {
+    handleRef.current.pause = pauseThis;
+  }, [pauseThis]);
+
+  useEffect(() => {
+    return () => {
+      releasePlayback(handleRef.current);
+      audioRef.current?.pause();
+      audioRef.current = null;
+    };
+  }, []);
+
   const togglePlay = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
       if (!url) return;
       if (isPlaying || isBuffering) {
         pauseThis();
-        releasePlayback({ pause: pauseThis });
       } else {
         const audio = getOrCreateAudio();
         if (!audio) return;
-        const handle = { pause: pauseThis };
-        claimPlayback(handle);
+        const handle = handleRef.current;
+        claimPlayback(handle, audio, trackMeta);
         if (audio.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
           setIsBuffering(true);
         }
@@ -392,11 +522,11 @@ export function WaveformPlayer({
           .then(() => setIsPlaying(true))
           .catch(() => {
             setIsBuffering(false);
-            releasePlayback(handle);
+            releasePlayback(handleRef.current);
           });
       }
     },
-    [url, isPlaying, isBuffering, getOrCreateAudio, pauseThis],
+    [url, isPlaying, isBuffering, getOrCreateAudio, pauseThis, trackMeta],
   );
 
   const handleWaveformClick = useCallback(
@@ -456,11 +586,19 @@ export function WaveformPlayer({
         <canvas
           ref={canvasRef}
           onClick={handleWaveformClick}
-          className="w-full h-full cursor-pointer text-foreground"
+          className={cn(
+            "w-full h-full cursor-pointer text-foreground",
+            hideWaveformOnMobile && "hidden sm:block",
+          )}
         />
       </div>
 
-      <span className="text-xs text-muted-foreground tabular-nums w-12 text-right shrink-0">
+      <span
+        className={cn(
+          "text-[11px] sm:text-xs text-muted-foreground tabular-nums w-10 sm:w-12 text-right shrink-0",
+          timeClassName,
+        )}
+      >
         {duration > 0
           ? isPlaying
             ? formatTime(currentTime)
