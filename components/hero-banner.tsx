@@ -72,7 +72,7 @@ export function HeroBanner({ onCategoryChange }: HeroBannerProps) {
                 className="group flex flex-col items-center justify-center gap-3 sm:gap-4 w-full sm:w-36 h-32 sm:h-36 xl:w-40 xl:h-40 rounded-2xl border border-blue-500/30 hover:border-2 hover:border-blue-500 bg-background/50 hover:bg-background/70 smooth hover-lift cursor-pointer"
               >
                 <div className={cn(
-                  "w-10 h-10 sm:w-12 sm:h-12 xl:w-14 xl:h-14 rounded-xl flex items-center justify-center bg-gradient-to-br smooth group-hover:scale-110 shadow-lg",
+                  "w-10 h-10 sm:w-12 sm:h-12 xl:w-14 xl:h-14 rounded-sm flex items-center justify-center bg-linear-to-br smooth group-hover:rounded-xl group-hover:scale-120 shadow-lg",
                   cat.gradient
                 )}>
                   {cat.text ? (
