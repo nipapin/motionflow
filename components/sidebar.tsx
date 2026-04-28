@@ -280,7 +280,7 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
               collapsed ? "mb-0 h-0 overflow-hidden opacity-0" : "mb-3 opacity-100",
             )}
           >
-            Categories
+            Stock Assets
           </h3>
           <ul className="space-y-1">
             {categories.map((category) => (

@@ -106,6 +106,17 @@ function normalizePhoto(photo: UnsplashPhoto): FootagePhoto {
   };
 }
 
+function matchesOrientation(photo: UnsplashPhoto, orientation: string | null): boolean {
+  if (!orientation) return true;
+  if (!photo.width || !photo.height) return true;
+
+  const ratio = photo.width / photo.height;
+  if (orientation === "landscape") return ratio >= 1;
+  if (orientation === "portrait") return ratio <= 1;
+  // Unsplash API orientation value for square-like images is `squarish`.
+  return ratio >= 0.9 && ratio <= 1.1;
+}
+
 export async function GET(req: NextRequest) {
   const accessKey = process.env.UNSPLASH_ACCESS_KEY;
   if (!accessKey) {
@@ -125,16 +136,17 @@ export async function GET(req: NextRequest) {
   const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.min(Math.floor(pageRaw), 100) : 1;
   const perPage = Number.isFinite(perPageRaw) && perPageRaw > 0 ? Math.min(Math.floor(perPageRaw), 30) : 24;
 
-  const params = new URLSearchParams();
-  params.set("page", String(page));
-  params.set("per_page", String(perPage));
-  if (orientation) params.set("orientation", orientation);
+  const getEndpoint = (sourcePage: number) => {
+    const params = new URLSearchParams();
+    params.set("page", String(sourcePage));
+    params.set("per_page", String(perPage));
+    if (orientation) params.set("orientation", orientation);
+    return query
+      ? `${UNSPLASH_API}/search/photos?${params.toString()}&query=${encodeURIComponent(query)}`
+      : `${UNSPLASH_API}/photos?${params.toString()}`;
+  };
 
-  const endpoint = query
-    ? `${UNSPLASH_API}/search/photos?${params.toString()}&query=${encodeURIComponent(query)}`
-    : `${UNSPLASH_API}/photos?${params.toString()}`;
-
-  try {
+  const fetchUnsplash = async (endpoint: string) => {
     const upstream = await fetch(endpoint, {
       headers: {
         Authorization: `Client-ID ${accessKey}`,
@@ -146,31 +158,78 @@ export async function GET(req: NextRequest) {
     if (!upstream.ok) {
       const text = await upstream.text();
       console.error("[unsplash] upstream error", upstream.status, text);
+      return { ok: false as const, upstreamStatus: upstream.status, body: text };
+    }
+
+    const json = (await upstream.json()) as UnsplashSearchResponse | UnsplashPhoto[];
+    return { ok: true as const, json };
+  };
+
+  try {
+    const first = await fetchUnsplash(getEndpoint(page));
+    if (!first.ok) {
       return NextResponse.json(
-        { error: "Failed to fetch from Unsplash.", status: upstream.status },
+        { error: "Failed to fetch from Unsplash.", status: first.upstreamStatus },
         { status: 502 },
       );
     }
 
-    const json = (await upstream.json()) as UnsplashSearchResponse | UnsplashPhoto[];
-
     let payload: FootageSearchResult;
-    if (Array.isArray(json)) {
-      const results = json.map(normalizePhoto);
+    if (Array.isArray(first.json)) {
+      // `/photos` does not provide totals; when filtering by orientation we may
+      // receive too few items from a single upstream page, so we backfill from
+      // subsequent pages to keep infinite-scroll smooth.
+      const maxPagesToProbe = orientation ? 6 : 1;
+      let sourcePage = page;
+      const collected: UnsplashPhoto[] = [];
+      const seenIds = new Set<string>();
+
+      for (let i = 0; i < maxPagesToProbe && collected.length < perPage; i++) {
+        const batch = i === 0
+          ? first.json
+          : (() => {
+              sourcePage += 1;
+              return null;
+            })();
+
+        let photos: UnsplashPhoto[];
+        if (batch) {
+          photos = batch;
+        } else {
+          const next = await fetchUnsplash(getEndpoint(sourcePage));
+          if (!next.ok || !Array.isArray(next.json) || next.json.length === 0) break;
+          photos = next.json;
+        }
+
+        const oriented = orientation
+          ? photos.filter((photo) => matchesOrientation(photo, orientation))
+          : photos;
+
+        for (const photo of oriented) {
+          if (seenIds.has(photo.id)) continue;
+          seenIds.add(photo.id);
+          collected.push(photo);
+          if (collected.length >= perPage) break;
+        }
+      }
+
+      const results = collected.map(normalizePhoto);
       payload = {
         total: results.length,
-        totalPages: 1,
-        page,
+        // Unsplash `/photos` does not return total pages.
+        // Keep this as 0 so the client falls back to length-based infinite pagination.
+        totalPages: 0,
+        page: sourcePage,
         perPage,
         results,
       };
     } else {
       payload = {
-        total: json.total ?? 0,
-        totalPages: json.total_pages ?? 0,
+        total: first.json.total ?? 0,
+        totalPages: first.json.total_pages ?? 0,
         page,
         perPage,
-        results: (json.results ?? []).map(normalizePhoto),
+        results: (first.json.results ?? []).map(normalizePhoto),
       };
     }
 
