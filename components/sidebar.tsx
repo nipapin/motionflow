@@ -57,10 +57,11 @@ interface SidebarProps {
 
 export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollapsedChange, useLinks = true }: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [showUpgradeBlock, setShowUpgradeBlock] = useState(!collapsed);
+  const [showUpgradeBlock, setShowUpgradeBlock] = useState(false);
   const hasCollapsedOnce = useRef(false);
-  const { status: generationStatus } = useGenerations();
-  const hideUpgradeForPlan = generationStatus?.plan === "creator_ai";
+  const { status: generationStatus, loading: generationStatusLoading, authenticated } = useGenerations();
+  const shouldShowUpgradeForUser = !generationStatusLoading
+    && (!authenticated || generationStatus?.plan !== "creator_ai");
 
   useEffect(() => {
     if (collapsed) {
@@ -280,7 +281,7 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
               collapsed ? "mb-0 h-0 overflow-hidden opacity-0" : "mb-3 opacity-100",
             )}
           >
-            Categories
+            Stock Assets
           </h3>
           <ul className="space-y-1">
             {categories.map((category) => (
@@ -332,7 +333,7 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
         </div>
       </nav>
 
-      {showUpgradeBlock && !hideUpgradeForPlan && (
+      {showUpgradeBlock && shouldShowUpgradeForUser && (
         <div className="shrink-0 w-full min-w-0 p-4">
           <div className="w-full rounded-2xl border border-blue-500/20 bg-linear-to-br from-blue-500/10 via-purple-500/5 to-cyan-500/10 p-5 animate-in fade-in-0 duration-300">
             <h4 className="mb-1.5 whitespace-nowrap font-semibold tracking-tight text-foreground">Go Unlimited</h4>
