@@ -28,19 +28,19 @@ export function HeroBanner({ onCategoryChange }: HeroBannerProps) {
       <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gradient-to-bl from-blue-500/10 via-purple-500/5 to-transparent rounded-full blur-3xl" />
       <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-gradient-to-tr from-cyan-500/10 to-transparent rounded-full blur-3xl" />
       
-      <div className="relative flex flex-col lg:flex-row gap-10 p-8 lg:p-14">
-        <div className="flex-1 flex flex-col justify-center text-center lg:text-left">
-          <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium bg-foreground/5 text-foreground mb-6 w-fit mx-auto lg:mx-0 border border-blue-500/30">
+      <div className="relative flex flex-col gap-10 p-8 lg:p-10 xl:flex-row xl:p-14">
+        <div className="flex-1 flex flex-col justify-center text-center xl:text-left">
+          <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium bg-foreground/5 text-foreground mb-6 w-fit mx-auto xl:mx-0 border border-blue-500/30">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
             Unlimited Downloads
           </span>
           <h1 className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-semibold text-foreground mb-5 tracking-tight leading-[1.1] text-balance">
             Create stunning videos <br/> with premium templates
           </h1>
-          <p className="text-muted-foreground mb-8 max-w-lg mx-auto lg:mx-0 text-pretty text-lg leading-relaxed">
+          <p className="text-muted-foreground mb-8 max-w-lg mx-auto xl:mx-0 text-pretty text-lg leading-relaxed">
             Access thousands of professionally crafted templates for After Effects, Premiere Pro, and DaVinci Resolve.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center xl:justify-start">
             <Button 
               size="lg" 
               asChild
@@ -63,22 +63,22 @@ export function HeroBanner({ onCategoryChange }: HeroBannerProps) {
           </div>
         </div>
 
-        <div className="flex items-center justify-center lg:justify-end w-full lg:w-auto">
+        <div className="flex items-center justify-center xl:justify-end w-full xl:w-auto">
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 w-full sm:w-auto">
             {categories.map((cat) => (
               <Link
                 key={cat.name}
                 href={cat.href}
-                className="group flex flex-col items-center justify-center gap-3 sm:gap-4 w-full sm:w-36 lg:w-40 h-32 sm:h-36 lg:h-40 rounded-2xl border border-blue-500/30 hover:border-2 hover:border-blue-500 bg-background/50 hover:bg-background/70 smooth hover-lift cursor-pointer"
+                className="group flex flex-col items-center justify-center gap-3 sm:gap-4 w-full sm:w-36 h-32 sm:h-36 xl:w-40 xl:h-40 rounded-2xl border border-blue-500/30 hover:border-2 hover:border-blue-500 bg-background/50 hover:bg-background/70 smooth hover-lift cursor-pointer"
               >
                 <div className={cn(
-                  "w-10 h-10 sm:w-12 sm:h-12 lg:w-14 lg:h-14 rounded-xl flex items-center justify-center bg-gradient-to-br smooth group-hover:scale-110 shadow-lg",
+                  "w-10 h-10 sm:w-12 sm:h-12 xl:w-14 xl:h-14 rounded-xl flex items-center justify-center bg-gradient-to-br smooth group-hover:scale-110 shadow-lg",
                   cat.gradient
                 )}>
                   {cat.text ? (
-                    <span className="text-base sm:text-lg lg:text-xl font-bold text-white drop-shadow-md">{cat.text}</span>
+                    <span className="text-base sm:text-lg xl:text-xl font-bold text-white drop-shadow-md">{cat.text}</span>
                   ) : cat.icon ? (
-                    <cat.icon className="w-5 h-5 sm:w-6 sm:h-6 lg:w-7 lg:h-7 text-white drop-shadow-md" />
+                    <cat.icon className="w-5 h-5 sm:w-6 sm:h-6 xl:w-7 xl:h-7 text-white drop-shadow-md" />
                   ) : null}
                 </div>
                 <span className="text-xs sm:text-sm font-medium text-foreground smooth text-center leading-tight px-2">
