@@ -633,6 +633,7 @@ export function VideoGenerator() {
                   <video
                     src={generatedVideo}
                     controls
+                    controlsList="nodownload"
                     playsInline
                     className="block max-w-full h-auto max-h-[420px] w-auto rounded-xl border border-blue-500/20"
                   />

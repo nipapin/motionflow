@@ -26,6 +26,10 @@ type PexelsVideo = {
   duration?: number;
   image?: string;
   url?: string;
+  /** Present on some API responses; used when available. */
+  description?: string | null;
+  title?: string | null;
+  tags?: Array<string | { name?: string }>;
   user?: PexelsUser;
   video_files?: PexelsVideoFile[];
 };
@@ -45,6 +49,9 @@ export type FootageVideo = {
   image: string;
   videoUrl: string;
   htmlLink: string;
+  /** Human-readable line when the API does not send copy; may be derived from the Pexels URL slug. */
+  description: string | null;
+  tags: string[];
   author: {
     name: string;
     url: string;
@@ -58,6 +65,47 @@ export type FootageVideoSearchResult = {
   perPage: number;
   results: FootageVideo[];
 };
+
+function normalizeVideoTags(tags: PexelsVideo["tags"]): string[] {
+  if (!Array.isArray(tags)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const entry of tags) {
+    let name: string | null = null;
+    if (typeof entry === "string") name = entry.trim() || null;
+    else if (entry && typeof entry === "object") name = entry.name?.trim() || null;
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out;
+}
+
+function slugTitleFromPexelsUrl(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    const segments = new URL(url).pathname.split("/").filter(Boolean);
+    const slug = segments[segments.length - 1];
+    if (!slug) return null;
+    const withoutTrailingId = slug.replace(/-\d+$/, "");
+    const base = withoutTrailingId || slug;
+    const words = base.replace(/-/g, " ").trim();
+    if (!words) return null;
+    return words.charAt(0).toUpperCase() + words.slice(1);
+  } catch {
+    return null;
+  }
+}
+
+function videoDescriptionFromPexels(video: PexelsVideo): string | null {
+  const d = typeof video.description === "string" ? video.description.trim() : "";
+  if (d) return d;
+  const title = typeof video.title === "string" ? video.title.trim() : "";
+  if (title) return title;
+  return slugTitleFromPexelsUrl(video.url);
+}
 
 function pickBestVideoFile(videoFiles?: PexelsVideoFile[]): string | null {
   if (!videoFiles || videoFiles.length === 0) return null;
@@ -92,6 +140,8 @@ function normalizeVideo(video: PexelsVideo): FootageVideo | null {
     image: video.image ?? "",
     videoUrl,
     htmlLink: video.url ?? "https://www.pexels.com/videos/",
+    description: videoDescriptionFromPexels(video),
+    tags: normalizeVideoTags(video.tags),
     author: {
       name: video.user?.name ?? "Pexels",
       url: video.user?.url ?? "https://www.pexels.com",

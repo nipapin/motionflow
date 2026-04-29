@@ -29,6 +29,7 @@ export function VideoLightbox({ videoUrl, onClose }: VideoLightboxProps) {
           <video
             src={videoUrl}
             controls
+            controlsList="nodownload"
             playsInline
             autoPlay
             className="w-full max-h-[80vh] object-contain"

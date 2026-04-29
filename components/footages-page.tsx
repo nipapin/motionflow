@@ -34,26 +34,30 @@ import type {
   FootageVideoSearchResult,
 } from "@/app/api/stock/pexels/videos/route";
 import { cn } from "@/lib/utils";
+import { MasonryGrid } from "@/components/masonry-grid";
 
 const ORIENTATION_OPTIONS = [
+  { value: "any", label: "Any" },
   { value: "landscape", label: "Landscape" },
   { value: "square", label: "Square" },
   { value: "portrait", label: "Portrait" },
 ] as const;
 
 const ORIENTATION_TO_UNSPLASH: Record<OrientationValue, string> = {
+  any: "",
   landscape: "landscape",
   square: "squarish",
   portrait: "portrait",
 };
 
 const ORIENTATION_TO_PEXELS: Record<OrientationValue, string> = {
+  any: "",
   landscape: "landscape",
   square: "square",
   portrait: "portrait",
 };
 
-const RATIO_ASPECT: Record<OrientationValue, string> = {
+const RATIO_ASPECT: Record<Exclude<OrientationValue, "any">, string> = {
   landscape: "16 / 9",
   square: "1 / 1",
   portrait: "9 / 16",
@@ -122,7 +126,7 @@ export function FootagesPage() {
   const videoRequestIdRef = useRef(0);
   const { download, isDownloading } = useDownloadAsset();
 
-  const forcedAspectRatio = RATIO_ASPECT[orientation];
+  const forcedAspectRatio = orientation === "any" ? null : RATIO_ASPECT[orientation];
 
   const fetchPhotos = useCallback(
     async (opts: { query: string; orientation: OrientationValue; page: number; append: boolean }) => {
@@ -144,7 +148,7 @@ export function FootagesPage() {
         params.set("page", String(page));
         params.set("perPage", String(PER_PAGE));
         if (query.trim()) params.set("query", query.trim());
-        const apiOrientation = ORIENTATION_TO_UNSPLASH[nextOrientation];
+        const apiOrientation = ORIENTATION_TO_UNSPLASH[nextOrientation].trim();
         if (apiOrientation) params.set("orientation", apiOrientation);
 
         const res = await fetch(`/api/stock/unsplash?${params.toString()}`);
@@ -199,7 +203,7 @@ export function FootagesPage() {
         params.set("page", String(page));
         params.set("perPage", String(PER_PAGE));
         if (query.trim()) params.set("query", query.trim());
-        const apiOrientation = ORIENTATION_TO_PEXELS[nextOrientation];
+        const apiOrientation = ORIENTATION_TO_PEXELS[nextOrientation].trim();
         if (apiOrientation) params.set("orientation", apiOrientation);
 
         const res = await fetch(`/api/stock/pexels/videos?${params.toString()}`);
@@ -365,30 +369,57 @@ export function FootagesPage() {
             activeQuery={activeQuery}
             summaryLabel="images"
             emptyLabel="No images to display."
-            renderItems={() => (
-              <FixedAspectGrid
-                items={photosFeed.items}
-                getKey={(photo) => photo.id}
-                orientation={orientation}
-                renderItem={(photo, index) => (
-                  <PhotoCard
-                    photo={photo}
-                    onOpen={() => setSelectedPhoto(photo)}
-                    onDownload={() =>
-                      void download({
-                        provider: "unsplash",
-                        kind: "image",
-                        id: photo.id,
-                        suggestedName: `motionflow-unsplash-${photo.id}.jpg`,
-                      })
-                    }
-                    isDownloading={isDownloading}
-                    priority={index < 4}
-                    forcedAspectRatio={forcedAspectRatio}
-                  />
-                )}
-              />
-            )}
+            renderItems={() =>
+              orientation === "any" ? (
+                <MasonryGrid
+                  items={photosFeed.items}
+                  getKey={(photo) => photo.id}
+                  columnsClassName="columns-1 sm:columns-2 lg:columns-3 xl:columns-4"
+                  gapClassName="gap-2"
+                  itemSpacingClassName="mb-2"
+                  renderItem={(photo, index) => (
+                    <PhotoCard
+                      photo={photo}
+                      onOpen={() => setSelectedPhoto(photo)}
+                      onDownload={() =>
+                        void download({
+                          provider: "unsplash",
+                          kind: "image",
+                          id: photo.id,
+                          suggestedName: `motionflow-unsplash-${photo.id}.jpg`,
+                        })
+                      }
+                      isDownloading={isDownloading}
+                      priority={index < 4}
+                      forcedAspectRatio={null}
+                    />
+                  )}
+                />
+              ) : (
+                <FixedAspectGrid
+                  items={photosFeed.items}
+                  getKey={(photo) => photo.id}
+                  orientation={orientation}
+                  renderItem={(photo, index) => (
+                    <PhotoCard
+                      photo={photo}
+                      onOpen={() => setSelectedPhoto(photo)}
+                      onDownload={() =>
+                        void download({
+                          provider: "unsplash",
+                          kind: "image",
+                          id: photo.id,
+                          suggestedName: `motionflow-unsplash-${photo.id}.jpg`,
+                        })
+                      }
+                      isDownloading={isDownloading}
+                      priority={index < 4}
+                      forcedAspectRatio={forcedAspectRatio}
+                    />
+                  )}
+                />
+              )
+            }
           />
         </TabsContent>
 
@@ -399,29 +430,55 @@ export function FootagesPage() {
             activeQuery={activeQuery}
             summaryLabel="videos"
             emptyLabel="No videos to display."
-            renderItems={() => (
-              <FixedAspectGrid
-                items={videosFeed.items}
-                getKey={(video) => video.id}
-                orientation={orientation}
-                renderItem={(video) => (
-                  <VideoCard
-                    video={video}
-                    onOpen={() => setSelectedVideo(video)}
-                    onDownload={() =>
-                      void download({
-                        provider: "pexels",
-                        kind: "video",
-                        id: video.id,
-                        suggestedName: `motionflow-pexels-${video.id}.mp4`,
-                      })
-                    }
-                    isDownloading={isDownloading}
-                    forcedAspectRatio={forcedAspectRatio}
-                  />
-                )}
-              />
-            )}
+            renderItems={() =>
+              orientation === "any" ? (
+                <MasonryGrid
+                  items={videosFeed.items}
+                  getKey={(video) => video.id}
+                  columnsClassName="columns-1 sm:columns-2 lg:columns-3 xl:columns-4"
+                  gapClassName="gap-2"
+                  itemSpacingClassName="mb-2"
+                  renderItem={(video) => (
+                    <VideoCard
+                      video={video}
+                      onOpen={() => setSelectedVideo(video)}
+                      onDownload={() =>
+                        void download({
+                          provider: "pexels",
+                          kind: "video",
+                          id: video.id,
+                          suggestedName: `motionflow-pexels-${video.id}.mp4`,
+                        })
+                      }
+                      isDownloading={isDownloading}
+                      forcedAspectRatio={null}
+                    />
+                  )}
+                />
+              ) : (
+                <FixedAspectGrid
+                  items={videosFeed.items}
+                  getKey={(video) => video.id}
+                  orientation={orientation}
+                  renderItem={(video) => (
+                    <VideoCard
+                      video={video}
+                      onOpen={() => setSelectedVideo(video)}
+                      onDownload={() =>
+                        void download({
+                          provider: "pexels",
+                          kind: "video",
+                          id: video.id,
+                          suggestedName: `motionflow-pexels-${video.id}.mp4`,
+                        })
+                      }
+                      isDownloading={isDownloading}
+                      forcedAspectRatio={forcedAspectRatio}
+                    />
+                  )}
+                />
+              )
+            }
           />
         </TabsContent>
       </Tabs>
@@ -451,6 +508,12 @@ export function FootagesPage() {
       <VideoDetailModal
         video={selectedVideo}
         onOpenChange={(open) => !open && setSelectedVideo(null)}
+        onTagClick={(tag) => {
+          setSearchInput(tag);
+          setActiveQuery(tag);
+          setSelectedVideo(null);
+          setTab("videos");
+        }}
         isDownloading={isDownloading}
         onDownload={(video) =>
           void download({
@@ -527,7 +590,7 @@ function FixedAspectGrid<T>({
 }: {
   items: T[];
   getKey: (item: T) => string;
-  orientation: OrientationValue;
+  orientation: Exclude<OrientationValue, "any">;
   renderItem: (item: T, index: number) => ReactNode;
 }) {
   return (
@@ -877,11 +940,13 @@ function PhotoDetailModal({
 function VideoDetailModal({
   video,
   onOpenChange,
+  onTagClick,
   onDownload,
   isDownloading,
 }: {
   video: FootageVideo | null;
   onOpenChange: (open: boolean) => void;
+  onTagClick: (tag: string) => void;
   onDownload: (video: FootageVideo) => void;
   isDownloading: boolean;
 }) {
@@ -900,6 +965,7 @@ function VideoDetailModal({
                 src={video.videoUrl}
                 poster={video.image}
                 controls
+                controlsList="nodownload"
                 playsInline
                 preload="metadata"
                 className="h-full w-full object-cover"
@@ -908,7 +974,42 @@ function VideoDetailModal({
 
             <div className="flex max-h-[80vh] flex-col overflow-y-auto p-6">
               <div className="space-y-4 text-sm">
-                <section className="grid grid-cols-1 gap-3 text-xs text-muted-foreground">
+                <section>
+                  <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Description
+                  </h3>
+                  <p className="leading-relaxed text-foreground">
+                    {video.description ? (
+                      video.description
+                    ) : (
+                      <span className="italic text-muted-foreground">No description provided.</span>
+                    )}
+                  </p>
+                </section>
+
+                <section>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Tags
+                  </h3>
+                  {video.tags.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {video.tags.map((tag) => (
+                        <button
+                          type="button"
+                          key={tag}
+                          onClick={() => onTagClick(tag)}
+                          className="cursor-pointer rounded-full border border-border/60 bg-foreground/5 px-2.5 py-1 text-xs text-foreground transition-colors hover:border-blue-400/60 hover:bg-blue-500/10"
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="italic text-muted-foreground">No tags available.</p>
+                  )}
+                </section>
+
+                <section className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
                   <div className="rounded-lg border border-border/50 bg-card/40 p-3">
                     <p className="text-[11px] uppercase tracking-wider">Resolution</p>
                     <p className="mt-1 text-foreground">
