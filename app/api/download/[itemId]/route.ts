@@ -12,6 +12,7 @@ import {
   looksLikeHtmlErrorResponse,
 } from "@/lib/motionflow-upstream-download";
 import { getPresignedMarketplaceDownloadUrl } from "@/lib/marketplace-r2-presign";
+import { checkMarketplaceDownloadRateLimit } from "@/lib/marketplace-download-rate-limit";
 import { hasActiveMotionflowSubscription } from "@/lib/subscriptions";
 
 const DL_TABLE = "subscription_downloads";
@@ -53,6 +54,14 @@ export async function GET(
   const product = products[0];
   if (!product) {
     return NextResponse.json({ error: "item not found" }, { status: 404 });
+  }
+
+  const rate = await checkMarketplaceDownloadRateLimit(user.id);
+  if (!rate.ok) {
+    return NextResponse.redirect(
+      new URL("/profile/downloads/download-limit", _req.url),
+      302,
+    );
   }
 
   const codeParam =
