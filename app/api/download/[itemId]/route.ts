@@ -17,6 +17,15 @@ import { hasActiveMotionflowSubscription } from "@/lib/subscriptions";
 
 const DL_TABLE = "subscription_downloads";
 
+function redirectRelative(path: string, status: 302 | 303 = 302) {
+  return new NextResponse(null, {
+    status,
+    headers: {
+      Location: path,
+    },
+  });
+}
+
 /**
  * When `R2_BUCKET` is set (private marketplace bucket, same as Laravel `services.r2.bucket`),
  * successful auth returns **303** to a presigned GetObject URL (see `lib/marketplace-r2-presign.ts`).
@@ -38,7 +47,7 @@ export async function GET(
 
   const user = await getSessionUser();
   if (!user) {
-    return NextResponse.redirect(new URL("/?signin=1", _req.url));
+    return redirectRelative("/?signin=1");
   }
 
   const [subOk, owns] = await Promise.all([
@@ -47,7 +56,7 @@ export async function GET(
   ]);
 
   if (!subOk && !owns) {
-    return NextResponse.redirect(new URL("/pricing", _req.url));
+    return redirectRelative("/pricing");
   }
 
   const products = await getMarketItemsByIds([itemId]);
@@ -58,10 +67,7 @@ export async function GET(
 
   const rate = await checkMarketplaceDownloadRateLimit(user.id);
   if (!rate.ok) {
-    return NextResponse.redirect(
-      new URL("/profile/downloads/download-limit", _req.url),
-      302,
-    );
+    return redirectRelative("/profile/downloads/download-limit", 302);
   }
 
   const codeParam =
