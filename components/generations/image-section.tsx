@@ -1,9 +1,11 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { Download, Trash2 } from "lucide-react";
 import type { ImageHistory } from "@/lib/generations-types";
 import { IMAGE_STYLE_PRESETS } from "@/lib/generations-utils";
+import { downloadUrlAsFile } from "@/lib/download-url-as-file";
 import { replicateFileUrlToDisplaySrc } from "@/lib/replicate-file-display-url";
 
 interface Props {
@@ -45,10 +47,21 @@ interface CardProps {
 }
 
 function ImageCard({ item, onPreview, onRemove }: CardProps) {
+  const [downloading, setDownloading] = useState(false);
   const firstImage = item.images[0];
   const displaySrc = firstImage
     ? replicateFileUrlToDisplaySrc(firstImage)
     : null;
+
+  const onDownload = useCallback(async () => {
+    if (!displaySrc || downloading) return;
+    setDownloading(true);
+    try {
+      await downloadUrlAsFile(displaySrc, `motionflow-image-${item.id.slice(0, 8)}`);
+    } finally {
+      setDownloading(false);
+    }
+  }, [displaySrc, downloading, item.id]);
 
   return (
     <div className="flex items-center gap-4 p-3 rounded-xl border border-blue-500/20 bg-background/30 hover:border-blue-500/40 smooth">
@@ -87,15 +100,15 @@ function ImageCard({ item, onPreview, onRemove }: CardProps) {
 
       <div className="flex items-center gap-1 shrink-0">
         {displaySrc ? (
-          <a
-            href={displaySrc}
-            download
-            target="_blank"
-            rel="noreferrer"
-            className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth"
+          <button
+            type="button"
+            onClick={() => void onDownload()}
+            disabled={downloading}
+            title="Download"
+            className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth disabled:opacity-50"
           >
             <Download className="w-4 h-4" />
-          </a>
+          </button>
         ) : null}
         <button
           type="button"

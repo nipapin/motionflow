@@ -37,6 +37,7 @@ import {
   GENERATION_LIMIT_REACHED_CODE,
   getAiGenerateBlockReason,
 } from "@/lib/ai-generation-gate";
+import { downloadUrlAsFile } from "@/lib/download-url-as-file";
 import { replicateFileUrlToDisplaySrc } from "@/lib/replicate-file-display-url";
 import { VideoLightbox } from "@/components/video-generator/video-lightbox";
 import { RecentVideosList } from "@/components/video-generator/recent-videos-list";
@@ -631,7 +632,7 @@ export function VideoGenerator() {
               <div className="space-y-4">
                 <div className="flex justify-center">
                   <video
-                    src={generatedVideo}
+                    src={replicateFileUrlToDisplaySrc(generatedVideo)}
                     controls
                     controlsList="nodownload"
                     playsInline
@@ -641,18 +642,17 @@ export function VideoGenerator() {
 
                 <div className="flex flex-wrap items-center justify-end gap-3">
                   <Button
+                    type="button"
                     className="bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-lg"
-                    asChild
+                    onClick={() =>
+                      void downloadUrlAsFile(
+                        replicateFileUrlToDisplaySrc(generatedVideo),
+                        "motionflow-video",
+                      )
+                    }
                   >
-                    <a
-                      href={generatedVideo}
-                      download
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Download Video
-                    </a>
+                    <Download className="w-4 h-4 mr-2" />
+                    Download Video
                   </Button>
                 </div>
               </div>

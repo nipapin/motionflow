@@ -27,7 +27,7 @@ export function VideoLightbox({ url, onClose }: VideoLightboxProps) {
       >
         <div className="relative rounded-2xl overflow-hidden border border-blue-500/30 bg-black">
           <video
-            src={url}
+            src={replicateFileUrlToDisplaySrc(url)}
             controls
             controlsList="nodownload"
             playsInline

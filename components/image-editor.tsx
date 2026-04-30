@@ -43,6 +43,7 @@ import {
   GENERATION_LIMIT_REACHED_CODE,
   getAiGenerateBlockReason,
 } from "@/lib/ai-generation-gate";
+import { downloadUrlAsFile } from "@/lib/download-url-as-file";
 import { replicateFileUrlToDisplaySrc } from "@/lib/replicate-file-display-url";
 import { cn } from "@/lib/utils";
 import { FirstFrameDialog } from "@/components/video-generator/first-frame-dialog";
@@ -750,18 +751,17 @@ export function ImageEditor() {
 
                 <div className="flex flex-wrap items-center justify-end gap-3">
                   <Button
+                    type="button"
                     className="bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-lg"
-                    asChild
+                    onClick={() =>
+                      void downloadUrlAsFile(
+                        replicateFileUrlToDisplaySrc(generatedImages[0]),
+                        "motionflow-image",
+                      )
+                    }
                   >
-                    <a
-                      href={replicateFileUrlToDisplaySrc(generatedImages[0])}
-                      download
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Download
-                    </a>
+                    <Download className="w-4 h-4 mr-2" />
+                    Download
                   </Button>
                 </div>
               </div>
@@ -843,17 +843,20 @@ export function ImageEditor() {
                         >
                           <RotateCcw className="w-4 h-4" />
                         </button>
-                        <a
-                          href={displaySrc}
-                          download
-                          target="_blank"
-                          rel="noreferrer"
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void downloadUrlAsFile(
+                              displaySrc,
+                              `motionflow-image-${item.id.slice(0, 8)}`,
+                            )
+                          }
                           title="Download"
                           aria-label="Download"
                           className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth"
                         >
                           <Download className="w-4 h-4" />
-                        </a>
+                        </button>
                         <button
                           type="button"
                           onClick={() => void deleteRecent(item.id)}
@@ -937,18 +940,17 @@ export function ImageEditor() {
             />
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
               <Button
+                type="button"
                 className="bg-white text-black hover:bg-white/90 rounded-xl shadow-lg"
-                asChild
+                onClick={() =>
+                  void downloadUrlAsFile(
+                    replicateFileUrlToDisplaySrc(lightboxImage),
+                    "motionflow-image",
+                  )
+                }
               >
-                <a
-                  href={replicateFileUrlToDisplaySrc(lightboxImage)}
-                  download
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Download
-                </a>
+                <Download className="w-4 h-4 mr-2" />
+                Download
               </Button>
             </div>
           </div>

@@ -2,6 +2,8 @@
 
 import { X, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { downloadUrlAsFile } from "@/lib/download-url-as-file";
+import { replicateFileUrlToDisplaySrc } from "@/lib/replicate-file-display-url";
 
 interface VideoLightboxProps {
   videoUrl: string;
@@ -9,6 +11,8 @@ interface VideoLightboxProps {
 }
 
 export function VideoLightbox({ videoUrl, onClose }: VideoLightboxProps) {
+  const displayUrl = replicateFileUrlToDisplaySrc(videoUrl);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4"
@@ -27,7 +31,7 @@ export function VideoLightbox({ videoUrl, onClose }: VideoLightboxProps) {
       >
         <div className="relative rounded-2xl overflow-hidden border border-blue-500/30 bg-black">
           <video
-            src={videoUrl}
+            src={displayUrl}
             controls
             controlsList="nodownload"
             playsInline
@@ -37,13 +41,14 @@ export function VideoLightbox({ videoUrl, onClose }: VideoLightboxProps) {
         </div>
         <div className="flex justify-center mt-4">
           <Button
+            type="button"
             className="bg-white text-black hover:bg-white/90 rounded-xl shadow-lg"
-            asChild
+            onClick={() =>
+              void downloadUrlAsFile(displayUrl, "motionflow-video")
+            }
           >
-            <a href={videoUrl} download target="_blank" rel="noreferrer">
-              <Download className="w-4 h-4 mr-2" />
-              Download Video
-            </a>
+            <Download className="w-4 h-4 mr-2" />
+            Download Video
           </Button>
         </div>
       </div>

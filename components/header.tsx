@@ -265,7 +265,7 @@ export function Header({
                 </Button>
                 <Button
                   onClick={openSignUpModal}
-                  className="bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-full h-9 px-5 text-sm font-medium smooth shadow-lg shadow-blue-500/25"
+                  className="bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-full h-9 px-5 text-sm font-medium smooth shadow-lg shadow-blue-500/25"
                 >
                   Sign Up
                 </Button>
@@ -285,7 +285,7 @@ export function Header({
       {/* Mobile Search Overlay */}
       {showSearch && mobileSearchOpen && (
         <div
-          className="fixed inset-0 z-[70] bg-background/95 backdrop-blur-xl lg:hidden"
+          className="fixed inset-0 z-70 bg-background/95 backdrop-blur-xl lg:hidden"
           onClick={() => setMobileSearchOpen(false)}
         >
           <div className="border-b border-border/50 p-4" onClick={(e) => e.stopPropagation()}>

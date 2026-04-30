@@ -4,6 +4,8 @@ import Link from "next/link";
 import { Download, RotateCcw, Trash2 } from "lucide-react";
 import type { RecentVideo } from "@/components/video-generator";
 import { stylePresets } from "@/components/video-generator";
+import { downloadUrlAsFile } from "@/lib/download-url-as-file";
+import { replicateFileUrlToDisplaySrc } from "@/lib/replicate-file-display-url";
 
 interface RecentVideosListProps {
   videos: RecentVideo[];
@@ -33,6 +35,7 @@ export function RecentVideosList({
       </div>
       <ul className="space-y-2">
         {videos.map((item) => {
+          const displayUrl = replicateFileUrlToDisplaySrc(item.url);
           const styleLabel =
             stylePresets.find((s) => s.id === item.style)?.label ?? item.style;
           return (
@@ -42,11 +45,11 @@ export function RecentVideosList({
             >
               <button
                 type="button"
-                onClick={() => onOpenLightbox(item.url)}
+                onClick={() => onOpenLightbox(displayUrl)}
                 className="w-20 h-14 shrink-0 rounded-lg overflow-hidden border border-blue-500/20 bg-black hover:opacity-80 smooth focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
               >
                 <video
-                  src={item.url}
+                  src={displayUrl}
                   muted
                   playsInline
                   preload="metadata"
@@ -74,17 +77,20 @@ export function RecentVideosList({
                 >
                   <RotateCcw className="w-4 h-4" />
                 </button>
-                <a
-                  href={item.url}
-                  download
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  type="button"
+                  onClick={() =>
+                    void downloadUrlAsFile(
+                      displayUrl,
+                      `motionflow-video-${item.id.slice(0, 8)}`,
+                    )
+                  }
                   title="Download"
                   aria-label="Download video"
                   className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth"
                 >
                   <Download className="w-4 h-4" />
-                </a>
+                </button>
                 <button
                   type="button"
                   onClick={() => void onDelete(item.id)}

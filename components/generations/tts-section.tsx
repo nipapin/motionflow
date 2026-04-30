@@ -1,8 +1,11 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { Download, Trash2 } from "lucide-react";
 import type { TtsHistory } from "@/lib/generations-types";
+import { downloadUrlAsFile } from "@/lib/download-url-as-file";
+import { replicateFileUrlToDisplaySrc } from "@/lib/replicate-file-display-url";
 import { WaveformPlayer } from "@/components/waveform-player";
 
 interface Props {
@@ -37,6 +40,24 @@ interface CardProps {
 }
 
 function TtsCard({ item, onRemove }: CardProps) {
+  const [downloading, setDownloading] = useState(false);
+  const displayAudioUrl = item.audioUrl
+    ? replicateFileUrlToDisplaySrc(item.audioUrl)
+    : null;
+
+  const onDownload = useCallback(async () => {
+    if (!displayAudioUrl || downloading) return;
+    setDownloading(true);
+    try {
+      await downloadUrlAsFile(
+        displayAudioUrl,
+        `motionflow-speech-${item.id.slice(0, 8)}`,
+      );
+    } finally {
+      setDownloading(false);
+    }
+  }, [displayAudioUrl, downloading, item.id]);
+
   return (
     <div className="flex items-center gap-4 p-3 rounded-xl border border-blue-500/20 bg-background/30 hover:border-blue-500/40 smooth">
       <div className="flex-1 min-w-0">
@@ -54,25 +75,25 @@ function TtsCard({ item, onRemove }: CardProps) {
           )}{" "}
           | {item.timestamp.toLocaleString()}
         </p>
-        {item.audioUrl ? (
+        {displayAudioUrl ? (
           <WaveformPlayer
-            audioUrl={item.audioUrl}
+            audioUrl={displayAudioUrl}
             className="mt-3 rounded-lg border border-blue-500/15 bg-background/40 px-3 py-2"
           />
         ) : null}
       </div>
 
       <div className="flex items-center gap-1 shrink-0">
-        {item.audioUrl ? (
-          <a
-            href={item.audioUrl}
-            download
-            target="_blank"
-            rel="noreferrer"
-            className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth"
+        {displayAudioUrl ? (
+          <button
+            type="button"
+            onClick={() => void onDownload()}
+            disabled={downloading}
+            title="Download"
+            className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth disabled:opacity-50"
           >
             <Download className="w-4 h-4" />
-          </a>
+          </button>
         ) : null}
         <button
           type="button"

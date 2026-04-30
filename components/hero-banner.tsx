@@ -22,11 +22,11 @@ export function HeroBanner({ onCategoryChange }: HeroBannerProps) {
   const [videoOpen, setVideoOpen] = useState(false);
 
   return (
-    <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-card via-card to-primary/5 border border-blue-500/20 mb-10 glow">
+    <div className="relative rounded-3xl overflow-hidden bg-linear-to-br from-card via-card to-primary/5 border border-blue-500/20 mb-10 glow">
       {/* Colorful gradient overlays */}
-      <div className="absolute inset-0 bg-gradient-to-tr from-blue-500/5 via-transparent to-purple-500/5" />
-      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gradient-to-bl from-blue-500/10 via-purple-500/5 to-transparent rounded-full blur-3xl" />
-      <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-gradient-to-tr from-cyan-500/10 to-transparent rounded-full blur-3xl" />
+      <div className="absolute inset-0 bg-linear-to-tr from-blue-500/5 via-transparent to-purple-500/5" />
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-linear-to-bl from-blue-500/10 via-purple-500/5 to-transparent rounded-full blur-3xl" />
+      <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-linear-to-tr from-cyan-500/10 to-transparent rounded-full blur-3xl" />
       
       <div className="relative flex flex-col gap-10 p-8 lg:p-10 xl:flex-row xl:p-14">
         <div className="flex-1 flex flex-col justify-center text-center xl:text-left">
@@ -44,7 +44,7 @@ export function HeroBanner({ onCategoryChange }: HeroBannerProps) {
             <Button 
               size="lg" 
               asChild
-              className="bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-full px-8 h-12 text-sm font-medium smooth hover-lift shadow-lg shadow-blue-500/25"
+              className="bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-full px-8 h-12 text-sm font-medium smooth hover-lift shadow-lg shadow-blue-500/25"
             >
               <Link href="/after-effects">
                 Explore All
