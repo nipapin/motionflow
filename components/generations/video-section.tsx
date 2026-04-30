@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Download, Trash2 } from "lucide-react";
 import type { VideoHistory } from "@/lib/generations-types";
 import { VIDEO_STYLE_PRESETS } from "@/lib/generations-utils";
+import { CircularLoader } from "@/components/ui/circular-loader";
 import { downloadUrlAsFile } from "@/lib/download-url-as-file";
 import { replicateFileUrlToDisplaySrc } from "@/lib/replicate-file-display-url";
 
@@ -54,15 +55,11 @@ function VideoCard({ item, onPlay, onRemove }: CardProps) {
 
   const onDownload = useCallback(async () => {
     if (!displayVideoUrl || downloading) return;
-    setDownloading(true);
-    try {
-      await downloadUrlAsFile(
-        displayVideoUrl,
-        `motionflow-video-${item.id.slice(0, 8)}`,
-      );
-    } finally {
-      setDownloading(false);
-    }
+    await downloadUrlAsFile(
+      displayVideoUrl,
+      `motionflow-video-${item.id.slice(0, 8)}`,
+      { onLoadingChange: setDownloading },
+    );
   }, [displayVideoUrl, downloading, item.id]);
 
   return (
@@ -123,7 +120,11 @@ function VideoCard({ item, onPlay, onRemove }: CardProps) {
             title="Download"
             className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth disabled:opacity-50"
           >
-            <Download className="w-4 h-4" />
+            {downloading ? (
+              <CircularLoader className="w-4 h-4 text-muted-foreground" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
           </button>
         ) : null}
         <button

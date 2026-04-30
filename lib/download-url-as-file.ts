@@ -75,6 +75,11 @@ function applyBlobDownload(blob: Blob, res: Response, filename: string): void {
   setTimeout(() => URL.revokeObjectURL(objectUrl), 2000);
 }
 
+export type DownloadUrlAsFileOptions = {
+  /** Fires `true` before the first network request and `false` when the operation ends (success, error, or early return). */
+  onLoadingChange?: (loading: boolean) => void;
+};
+
 /**
  * Save a URL as a local file. Uses a same-origin proxy when needed so CDN
  * `fetch` is not blocked by CORS. Does not open a new browser tab.
@@ -82,27 +87,32 @@ function applyBlobDownload(blob: Blob, res: Response, filename: string): void {
 export async function downloadUrlAsFile(
   url: string,
   filename: string,
+  options?: DownloadUrlAsFileOptions,
 ): Promise<void> {
-  let lastStatus: number | undefined;
+  const setLoading = (v: boolean) => options?.onLoadingChange?.(v);
+  setLoading(true);
 
-  for (const fetchUrl of collectFetchUrls(url, filename)) {
-    try {
-      const res = await fetch(fetchUrl);
-      if (!res.ok) {
-        lastStatus = res.status;
-        if (isDownloadProxyRequest(fetchUrl) && res.status === 401) {
-          toast.error("Sign in to download.");
-          return;
+  try {
+    for (const fetchUrl of collectFetchUrls(url, filename)) {
+      try {
+        const res = await fetch(fetchUrl);
+        if (!res.ok) {
+          if (isDownloadProxyRequest(fetchUrl) && res.status === 401) {
+            toast.error("Sign in to download.");
+            return;
+          }
+          continue;
         }
-        continue;
+        const blob = await res.blob();
+        applyBlobDownload(blob, res, filename);
+        return;
+      } catch {
+        /* try next */
       }
-      const blob = await res.blob();
-      applyBlobDownload(blob, res, filename);
-      return;
-    } catch {
-      /* try next */
     }
-  }
 
-  toast.error("Could not download the file. Please try again.");
+    toast.error("Could not download the file. Please try again.");
+  } finally {
+    setLoading(false);
+  }
 }

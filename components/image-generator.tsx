@@ -12,6 +12,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CircularLoader } from "@/components/ui/circular-loader";
 import {
   Select,
   SelectContent,
@@ -148,6 +149,11 @@ export function ImageGenerator() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [resultDownloadLoading, setResultDownloadLoading] = useState(false);
+  const [recentDownloadId, setRecentDownloadId] = useState<string | null>(
+    null,
+  );
+  const [lightboxDownloadLoading, setLightboxDownloadLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [recentImages, setRecentImages] = useState<RecentImage[]>([]);
 
@@ -415,15 +421,21 @@ export function ImageGenerator() {
                 <div className="flex flex-wrap items-center justify-end gap-3">
                   <Button
                     type="button"
-                    className="bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-lg"
+                    disabled={resultDownloadLoading}
+                    className="bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-lg disabled:opacity-60"
                     onClick={() =>
                       void downloadUrlAsFile(
                         replicateFileUrlToDisplaySrc(generatedImages[0]),
                         "motionflow-image",
+                        { onLoadingChange: setResultDownloadLoading },
                       )
                     }
                   >
-                    <Download className="w-4 h-4 mr-2" />
+                    {resultDownloadLoading ? (
+                      <CircularLoader className="w-4 h-4 mr-2 text-white" />
+                    ) : (
+                      <Download className="w-4 h-4 mr-2" />
+                    )}
                     Download Image
                   </Button>
                 </div>
@@ -501,17 +513,31 @@ export function ImageGenerator() {
                         </button>
                         <button
                           type="button"
+                          disabled={recentDownloadId !== null}
                           onClick={() =>
                             void downloadUrlAsFile(
                               displaySrc,
                               `motionflow-image-${item.id.slice(0, 8)}`,
+                              {
+                                onLoadingChange: (v) => {
+                                  if (v) setRecentDownloadId(item.id);
+                                  else
+                                    setRecentDownloadId((prev) =>
+                                      prev === item.id ? null : prev,
+                                    );
+                                },
+                              },
                             )
                           }
                           title="Download"
                           aria-label="Download image"
-                          className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth"
+                          className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth disabled:opacity-50"
                         >
-                          <Download className="w-4 h-4" />
+                          {recentDownloadId === item.id ? (
+                            <CircularLoader className="w-4 h-4 text-muted-foreground" />
+                          ) : (
+                            <Download className="w-4 h-4" />
+                          )}
                         </button>
                         <button
                           type="button"
@@ -576,15 +602,21 @@ export function ImageGenerator() {
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
               <Button
                 type="button"
-                className="bg-white text-black hover:bg-white/90 rounded-xl shadow-lg"
+                disabled={lightboxDownloadLoading}
+                className="bg-white text-black hover:bg-white/90 rounded-xl shadow-lg disabled:opacity-60"
                 onClick={() =>
                   void downloadUrlAsFile(
                     replicateFileUrlToDisplaySrc(lightboxImage),
                     "motionflow-image",
+                    { onLoadingChange: setLightboxDownloadLoading },
                   )
                 }
               >
-                <Download className="w-4 h-4 mr-2" />
+                {lightboxDownloadLoading ? (
+                  <CircularLoader className="w-4 h-4 mr-2 text-black" />
+                ) : (
+                  <Download className="w-4 h-4 mr-2" />
+                )}
                 Download
               </Button>
             </div>

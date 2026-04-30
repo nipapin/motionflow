@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CircularLoader } from "@/components/ui/circular-loader";
 import {
   Select,
   SelectContent,
@@ -174,6 +175,8 @@ export function VideoGenerator() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedVideo, setGeneratedVideo] = useState<string | null>(null);
   const [lightboxVideo, setLightboxVideo] = useState<string | null>(null);
+  const [mainVideoDownloadLoading, setMainVideoDownloadLoading] =
+    useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [recentVideos, setRecentVideos] = useState<RecentVideo[]>([]);
 
@@ -643,15 +646,21 @@ export function VideoGenerator() {
                 <div className="flex flex-wrap items-center justify-end gap-3">
                   <Button
                     type="button"
-                    className="bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-lg"
+                    disabled={mainVideoDownloadLoading}
+                    className="bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-lg disabled:opacity-60"
                     onClick={() =>
                       void downloadUrlAsFile(
                         replicateFileUrlToDisplaySrc(generatedVideo),
                         "motionflow-video",
+                        { onLoadingChange: setMainVideoDownloadLoading },
                       )
                     }
                   >
-                    <Download className="w-4 h-4 mr-2" />
+                    {mainVideoDownloadLoading ? (
+                      <CircularLoader className="w-4 h-4 mr-2 text-white" />
+                    ) : (
+                      <Download className="w-4 h-4 mr-2" />
+                    )}
                     Download Video
                   </Button>
                 </div>

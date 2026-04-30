@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { X, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CircularLoader } from "@/components/ui/circular-loader";
 import { downloadUrlAsFile } from "@/lib/download-url-as-file";
 import { replicateFileUrlToDisplaySrc } from "@/lib/replicate-file-display-url";
 
@@ -12,6 +14,7 @@ interface VideoLightboxProps {
 
 export function VideoLightbox({ videoUrl, onClose }: VideoLightboxProps) {
   const displayUrl = replicateFileUrlToDisplaySrc(videoUrl);
+  const [downloadLoading, setDownloadLoading] = useState(false);
 
   return (
     <div
@@ -42,12 +45,19 @@ export function VideoLightbox({ videoUrl, onClose }: VideoLightboxProps) {
         <div className="flex justify-center mt-4">
           <Button
             type="button"
-            className="bg-white text-black hover:bg-white/90 rounded-xl shadow-lg"
+            disabled={downloadLoading}
+            className="bg-white text-black hover:bg-white/90 rounded-xl shadow-lg disabled:opacity-60"
             onClick={() =>
-              void downloadUrlAsFile(displayUrl, "motionflow-video")
+              void downloadUrlAsFile(displayUrl, "motionflow-video", {
+                onLoadingChange: setDownloadLoading,
+              })
             }
           >
-            <Download className="w-4 h-4 mr-2" />
+            {downloadLoading ? (
+              <CircularLoader className="w-4 h-4 mr-2 text-black" />
+            ) : (
+              <Download className="w-4 h-4 mr-2" />
+            )}
             Download Video
           </Button>
         </div>

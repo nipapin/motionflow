@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Download, Trash2 } from "lucide-react";
 import type { ImageHistory } from "@/lib/generations-types";
 import { IMAGE_STYLE_PRESETS } from "@/lib/generations-utils";
+import { CircularLoader } from "@/components/ui/circular-loader";
 import { downloadUrlAsFile } from "@/lib/download-url-as-file";
 import { replicateFileUrlToDisplaySrc } from "@/lib/replicate-file-display-url";
 
@@ -55,12 +56,11 @@ function ImageCard({ item, onPreview, onRemove }: CardProps) {
 
   const onDownload = useCallback(async () => {
     if (!displaySrc || downloading) return;
-    setDownloading(true);
-    try {
-      await downloadUrlAsFile(displaySrc, `motionflow-image-${item.id.slice(0, 8)}`);
-    } finally {
-      setDownloading(false);
-    }
+    await downloadUrlAsFile(
+      displaySrc,
+      `motionflow-image-${item.id.slice(0, 8)}`,
+      { onLoadingChange: setDownloading },
+    );
   }, [displaySrc, downloading, item.id]);
 
   return (
@@ -107,7 +107,11 @@ function ImageCard({ item, onPreview, onRemove }: CardProps) {
             title="Download"
             className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth disabled:opacity-50"
           >
-            <Download className="w-4 h-4" />
+            {downloading ? (
+              <CircularLoader className="w-4 h-4 text-muted-foreground" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
           </button>
         ) : null}
         <button

@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import Link from "next/link";
 import { Download, Trash2 } from "lucide-react";
 import type { TtsHistory } from "@/lib/generations-types";
+import { CircularLoader } from "@/components/ui/circular-loader";
 import { downloadUrlAsFile } from "@/lib/download-url-as-file";
 import { replicateFileUrlToDisplaySrc } from "@/lib/replicate-file-display-url";
 import { WaveformPlayer } from "@/components/waveform-player";
@@ -47,15 +48,11 @@ function TtsCard({ item, onRemove }: CardProps) {
 
   const onDownload = useCallback(async () => {
     if (!displayAudioUrl || downloading) return;
-    setDownloading(true);
-    try {
-      await downloadUrlAsFile(
-        displayAudioUrl,
-        `motionflow-speech-${item.id.slice(0, 8)}`,
-      );
-    } finally {
-      setDownloading(false);
-    }
+    await downloadUrlAsFile(
+      displayAudioUrl,
+      `motionflow-speech-${item.id.slice(0, 8)}`,
+      { onLoadingChange: setDownloading },
+    );
   }, [displayAudioUrl, downloading, item.id]);
 
   return (
@@ -92,7 +89,11 @@ function TtsCard({ item, onRemove }: CardProps) {
             title="Download"
             className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth disabled:opacity-50"
           >
-            <Download className="w-4 h-4" />
+            {downloading ? (
+              <CircularLoader className="w-4 h-4 text-muted-foreground" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
           </button>
         ) : null}
         <button

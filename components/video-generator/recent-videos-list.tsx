@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Download, RotateCcw, Trash2 } from "lucide-react";
 import type { RecentVideo } from "@/components/video-generator";
 import { stylePresets } from "@/components/video-generator";
+import { CircularLoader } from "@/components/ui/circular-loader";
 import { downloadUrlAsFile } from "@/lib/download-url-as-file";
 import { replicateFileUrlToDisplaySrc } from "@/lib/replicate-file-display-url";
 
@@ -20,6 +22,10 @@ export function RecentVideosList({
   onRepeat,
   onDelete,
 }: RecentVideosListProps) {
+  const [recentDownloadId, setRecentDownloadId] = useState<string | null>(
+    null,
+  );
+
   return (
     <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
       <div className="flex items-center justify-between mb-3">
@@ -79,17 +85,31 @@ export function RecentVideosList({
                 </button>
                 <button
                   type="button"
+                  disabled={recentDownloadId !== null}
                   onClick={() =>
                     void downloadUrlAsFile(
                       displayUrl,
                       `motionflow-video-${item.id.slice(0, 8)}`,
+                      {
+                        onLoadingChange: (v) => {
+                          if (v) setRecentDownloadId(item.id);
+                          else
+                            setRecentDownloadId((prev) =>
+                              prev === item.id ? null : prev,
+                            );
+                        },
+                      },
                     )
                   }
                   title="Download"
                   aria-label="Download video"
-                  className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth"
+                  className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth disabled:opacity-50"
                 >
-                  <Download className="w-4 h-4" />
+                  {recentDownloadId === item.id ? (
+                    <CircularLoader className="w-4 h-4 text-muted-foreground" />
+                  ) : (
+                    <Download className="w-4 h-4" />
+                  )}
                 </button>
                 <button
                   type="button"
