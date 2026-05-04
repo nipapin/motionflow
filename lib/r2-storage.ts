@@ -151,21 +151,35 @@ function shouldRetryStatus(status: number): boolean {
     return status === 408 || status === 425 || status === 429 || status >= 500;
 }
 
-function isRetryableDownloadError(error: unknown): boolean {
+function isRetryableTransferError(error: unknown): boolean {
     if (!error) return false;
     const text = error instanceof Error ? error.message : String(error);
-    if (/terminated|econnreset|etimedout|socket hang up|und_err_/i.test(text)) {
+    if (
+        /terminated|econnreset|etimedout|econnaborted|socket hang up|und_err_|timeout|network/i.test(
+            text,
+        )
+    ) {
         return true;
     }
     const cause = (error as { cause?: unknown }).cause as
-        | { code?: string }
+        | { code?: string; message?: string }
         | undefined;
+    const causeText = cause?.message ?? "";
+    if (/econnreset|etimedout|und_err_/i.test(causeText)) return true;
     const code = cause?.code ?? (error as { code?: string }).code;
-    return typeof code === "string" && /ECONNRESET|ETIMEDOUT|UND_ERR_/i.test(code);
+    if (typeof code === "string" && /ECONNRESET|ETIMEDOUT|EPIPE|UND_ERR_/i.test(code)) {
+        return true;
+    }
+    const name = (error as { name?: string }).name;
+    return name === "TimeoutError";
 }
 
 function delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function transferBackoffMs(attempt: number): number {
+    return Math.min(30_000, 1_500 * 2 ** (attempt - 1));
 }
 
 /**
@@ -210,6 +224,10 @@ export async function uploadBufferToR2(
 /**
  * Download a remote URL (optionally with Replicate auth) and store it in R2.
  *
+ * Fully buffers the response before `PutObject`: streaming straight into the
+ * S3 client is treated as a non-retryable request and surfaces confusing
+ * `TimeoutError` / `ECONNRESET` on transient drops.
+ *
  * Returns the public CDN URL.
  */
 export async function uploadRemoteUrlToR2(
@@ -224,7 +242,7 @@ export async function uploadRemoteUrlToR2(
         cacheControl?: string;
     },
 ): Promise<UploadToR2Result> {
-    const maxAttempts = 3;
+    const maxAttempts = 5;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
         try {
             const res = await fetch(sourceUrl, {
@@ -234,7 +252,7 @@ export async function uploadRemoteUrlToR2(
                 const detail = await res.text().catch(() => "");
                 const msg = `Could not download source (${res.status}). ${detail.slice(0, 200)}`;
                 if (attempt < maxAttempts && shouldRetryStatus(res.status)) {
-                    await delay(300 * attempt);
+                    await delay(transferBackoffMs(attempt));
                     continue;
                 }
                 throw new Error(msg);
@@ -245,9 +263,8 @@ export async function uploadRemoteUrlToR2(
                 opts.defaultContentType ||
                 "application/octet-stream";
 
-            const buf = Buffer.from(await res.arrayBuffer());
             const ext = pickExtension(contentType, sourceUrl);
-
+            const buf = Buffer.from(await res.arrayBuffer());
             return uploadBufferToR2(buf, {
                 contentType,
                 keyPrefix: opts.keyPrefix,
@@ -256,8 +273,8 @@ export async function uploadRemoteUrlToR2(
                 cacheControl: opts.cacheControl,
             });
         } catch (error) {
-            if (attempt < maxAttempts && isRetryableDownloadError(error)) {
-                await delay(300 * attempt);
+            if (attempt < maxAttempts && isRetryableTransferError(error)) {
+                await delay(transferBackoffMs(attempt));
                 continue;
             }
             throw error;

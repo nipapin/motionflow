@@ -5,7 +5,6 @@ import {
   Video,
   Download,
   RefreshCw,
-  Clock,
   Ratio,
   Palette,
   ImageIcon,
@@ -46,11 +45,7 @@ import { FirstFrameDialog } from "@/components/video-generator/first-frame-dialo
 import { triggerClasses } from "@/components/video-generator/styles";
 
 const TARGET_RESOLUTION = "720" as const;
-
-const durationOptions = [
-  { id: "5", label: "5 sec" },
-  { id: "8", label: "8 sec" },
-];
+const VIDEO_DURATION_SEC = 5;
 
 const aspectRatios = [
   { id: "16:9", label: "16:9 — Widescreen" },
@@ -88,7 +83,6 @@ type ApiGenerationRecord = {
 
 const KNOWN_VIDEO_STYLES = new Set(stylePresets.map((s) => s.id));
 const KNOWN_VIDEO_RATIOS = new Set(aspectRatios.map((r) => r.id));
-const KNOWN_VIDEO_DURATIONS = new Set(durationOptions.map((d) => d.id));
 
 function recordsToRecentVideos(rows: ApiGenerationRecord[]): RecentVideo[] {
   const out: RecentVideo[] = [];
@@ -105,10 +99,9 @@ function recordsToRecentVideos(rows: ApiGenerationRecord[]): RecentVideo[] {
       typeof s.style === "string" && KNOWN_VIDEO_STYLES.has(s.style)
         ? s.style
         : "realistic";
-    const rawDuration = String(s.duration ?? "5");
-    const durationSec = KNOWN_VIDEO_DURATIONS.has(rawDuration)
-      ? rawDuration
-      : "5";
+    const durationSec = String(
+      typeof s.duration === "number" ? s.duration : VIDEO_DURATION_SEC,
+    );
     const audioEnabled =
       typeof s.audio_enabled === "boolean" ? s.audio_enabled : true;
     const firstFrameUrl =
@@ -168,7 +161,6 @@ export function VideoGenerator() {
   );
 
   const [prompt, setPrompt] = useState("");
-  const [selectedDuration, setSelectedDuration] = useState("5");
   const [selectedAspectRatio, setSelectedAspectRatio] = useState("16:9");
   const [selectedStyle, setSelectedStyle] = useState("realistic");
   const [audioEnabled, setAudioEnabled] = useState(true);
@@ -221,7 +213,6 @@ export function VideoGenerator() {
     setPrompt(item.prompt);
     setSelectedStyle(item.style);
     setSelectedAspectRatio(item.aspectRatio);
-    setSelectedDuration(item.durationSec);
     setAudioEnabled(item.audioEnabled);
     setFirstFrameUrl(item.firstFrameUrl ?? null);
     setLastFrameUrl(item.lastFrameUrl ?? null);
@@ -311,7 +302,7 @@ export function VideoGenerator() {
           prompt: prompt.trim(),
           style: selectedStyle,
           aspect_ratio: selectedAspectRatio,
-          duration: Number(selectedDuration),
+          duration: VIDEO_DURATION_SEC,
           target_resolution: TARGET_RESOLUTION,
           audio_enabled: audioEnabled,
           ...(firstFrameUrl ? { first_frame_url: firstFrameUrl } : {}),
@@ -549,27 +540,6 @@ export function VideoGenerator() {
               </div>
             </div>
 
-            <div>
-              <label
-                htmlFor="video-duration"
-                className="text-sm font-medium text-foreground mb-3 flex items-center gap-2"
-              >
-                <Clock className="w-4 h-4 text-blue-400" />
-                Duration
-              </label>
-              <Select value={selectedDuration} onValueChange={setSelectedDuration}>
-                <SelectTrigger id="video-duration" className={triggerClasses}>
-                  <SelectValue placeholder="Select duration" />
-                </SelectTrigger>
-                <SelectContent>
-                  {durationOptions.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
 
           <Button

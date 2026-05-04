@@ -7,6 +7,8 @@ import type { MotionflowGenerationPlan } from "@/lib/subscriptions";
 export interface GenerationStatus {
   used: number;
   limit: number;
+  /** Billing-period cap including manual subscription_adjustment (defaults to `limit` if omitted). */
+  effective_limit: number;
   remaining: number;
   hasSubscription: boolean;
   plan: MotionflowGenerationPlan;
@@ -42,9 +44,13 @@ export function normalizeGenerationStatus(
     data.total_generations_left ??
       subscription_generations_left + extra_generations_left,
   );
+  const limit = Number(data.limit ?? 0);
+  const effectiveRaw = data.effective_limit ?? data.limit ?? 0;
+  const effective_limit = Number(effectiveRaw);
   return {
     used: Number(data.used ?? 0),
-    limit: Number(data.limit ?? 0),
+    limit,
+    effective_limit,
     remaining,
     hasSubscription: Boolean(data.hasSubscription),
     plan: parseGenerationPlan(data.plan),

@@ -142,6 +142,84 @@ export async function listGenerationRecords(
     return rows.map(parseRow);
 }
 
+/**
+ * Completed video generations (`status = ok`) using a given Replicate model slug
+ * in `settings.replicate_model` (see video route).
+ */
+export async function countCompletedOkVideosByReplicateModel(
+    userId: number,
+    replicateModel: string,
+): Promise<number> {
+    await ensureTable();
+    type CountRow = RowDataPacket & { c: number };
+    const [rows] = await getPool().execute<CountRow[]>(
+        `SELECT COUNT(*) AS c FROM \`${TABLE}\`
+     WHERE user_id = ?
+       AND tool = 'video'
+       AND status = 'ok'
+       AND JSON_UNQUOTE(JSON_EXTRACT(settings, '$.replicate_model')) = ?`,
+        [userId, replicateModel],
+    );
+    return Number(rows[0]?.c ?? 0);
+}
+
+export type VideoGenerationFundingSource = "subscription" | "extra";
+
+/**
+ * Successful Grok videos charged to the **current billing period** subscription quota.
+ * Rows without `video_funding_source` are treated as subscription (legacy).
+ */
+export async function countCompletedOkSubscriptionGrokVideosInWindow(
+    userId: number,
+    grokReplicateModel: string,
+    window: { start: string; endExclusive: string },
+): Promise<number> {
+    await ensureTable();
+    type CountRow = RowDataPacket & { c: number };
+    const [rows] = await getPool().execute<CountRow[]>(
+        `SELECT COUNT(*) AS c FROM \`${TABLE}\`
+     WHERE user_id = ?
+       AND tool = 'video'
+       AND status = 'ok'
+       AND created_at >= ?
+       AND created_at < ?
+       AND JSON_UNQUOTE(JSON_EXTRACT(settings, '$.replicate_model')) = ?
+       AND (
+         JSON_EXTRACT(settings, '$.video_funding_source') IS NULL
+         OR JSON_UNQUOTE(JSON_EXTRACT(settings, '$.video_funding_source')) = ?
+       )`,
+        [
+            userId,
+            window.start,
+            window.endExclusive,
+            grokReplicateModel,
+            "subscription",
+        ],
+    );
+    return Number(rows[0]?.c ?? 0);
+}
+
+/**
+ * Successful Grok videos charged to **purchased extra** balance (after monthly quota is exhausted).
+ */
+export async function countCompletedOkExtraFundedGrokVideos(
+    userId: number,
+    grokReplicateModel: string,
+): Promise<number> {
+    await ensureTable();
+    type CountRow = RowDataPacket & { c: number };
+    const [rows] = await getPool().execute<CountRow[]>(
+        `SELECT COUNT(*) AS c FROM \`${TABLE}\`
+     WHERE user_id = ?
+       AND tool = 'video'
+       AND status = 'ok'
+       AND JSON_UNQUOTE(JSON_EXTRACT(settings, '$.replicate_model')) = ?
+       AND JSON_UNQUOTE(JSON_EXTRACT(settings, '$.video_funding_source')) = ?`,
+        [userId, grokReplicateModel, "extra"],
+    );
+    return Number(rows[0]?.c ?? 0);
+}
+
 export async function deleteGenerationRecord(
     userId: number,
     recordId: string,

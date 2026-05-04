@@ -2,6 +2,7 @@ import "server-only";
 import crypto from "node:crypto";
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
+import { incrementPurchasedExtraBalance } from "@/lib/user-generation-credits";
 import { EXTRA_GEN_PACKS } from "@/lib/extra-generation-packs";
 import { normalizePaddleProductNameToken } from "@/lib/paddle-product-label";
 import {
@@ -395,12 +396,7 @@ export async function applyExtraGenerationsCredit(
       await conn.commit();
       return { ok: true, reason: "extra_generations_credit_already_applied" };
     }
-    await conn.execute<ResultSetHeader>(
-      `UPDATE \`users\`
-          SET \`extra_generations_count\` = \`extra_generations_count\` + ?
-        WHERE \`id\` = ?`,
-      [generations, userId],
-    );
+    await incrementPurchasedExtraBalance(userId, generations, conn);
     await conn.commit();
     console.info(
       `[paddle] extra AI generations +${generations} for user ${userId} (txn ${paddleTransactionId})`,
@@ -416,6 +412,24 @@ export async function applyExtraGenerationsCredit(
   } finally {
     conn.release();
   }
+}
+
+/**
+ * Sum of extra generation credits successfully applied from Paddle (one row per txn).
+ * Used for product rules tied to purchased extras (e.g. video routing budgets).
+ */
+export async function getLifetimeExtraGenerationsPurchased(
+  userId: number,
+): Promise<number> {
+  await ensureExtraGenerationsSchema();
+  type SumRow = RowDataPacket & { total: number | string };
+  const [rows] = await getPool().execute<SumRow[]>(
+    `SELECT COALESCE(SUM(\`generations\`), 0) AS total
+       FROM \`${EXTRA_GEN_CREDIT_EVENTS_TABLE}\`
+      WHERE \`user_id\` = ?`,
+    [userId],
+  );
+  return Number(rows[0]?.total ?? 0);
 }
 
 function statusToInt(status: PaddleSubStatus): number {

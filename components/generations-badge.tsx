@@ -54,9 +54,10 @@ export function GenerationsBadge({
   }
 
   const isCreatorAi = status.plan === "creator_ai";
+  const cap = status.effective_limit ?? status.limit;
   const primary = isCreatorAi
     ? String(status.total_generations_left)
-    : `${status.remaining} / ${status.limit}`;
+    : `${status.remaining} / ${cap}`;
   return (
     <div className="shrink-0 flex items-center gap-2 sm:gap-2.5 px-2.5 py-2 sm:px-4 sm:py-2.5 rounded-xl border border-blue-500/30 bg-card/50">
       <div className="size-8 sm:size-9 shrink-0 rounded-sm bg-linear-to-br from-blue-600 to-indigo-500 flex items-center justify-center">

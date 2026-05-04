@@ -7,6 +7,16 @@ import {
   type MotionflowGenerationContext,
   type MotionflowGenerationPlan,
 } from "@/lib/subscriptions";
+import {
+  ensureCreditsRowForUser,
+  ensureUserGenerationCreditsSchema,
+  decrementExtraBalanceOne,
+  fetchCreditsRowLocked,
+  getExtraBalance,
+  getSubscriptionAdjustment,
+  subscriptionAdjustmentFromRow,
+  type CreditsRow,
+} from "@/lib/user-generation-credits";
 
 /** Lifetime cap for users without an active Motionflow Creator subscription. */
 export const FREE_GENERATIONS_LIMIT = 5;
@@ -28,7 +38,10 @@ export type GenerationTool = (typeof GENERATION_TOOLS)[number];
 
 export interface GenerationStatus {
   used: number;
+  /** Baseline plan cap per billing period (before manual adjustment). */
   limit: number;
+  /** Active cap = plan `limit` + `user_generation_credits.subscription_adjustment` (SSOT, no date rules). */
+  effective_limit: number;
   /** Subscription generations remaining this billing period (backward compat). */
   remaining: number;
   /** True when the user has Creator or Creator + AI (paid monthly quota). */
@@ -98,6 +111,14 @@ function resolveUsageWindow(
   return utcMonthBounds();
 }
 
+/** Same window as `countUsed` for the user's Paddle period (UTC month fallback). */
+export async function getBillingPeriodUsageWindow(
+  userId: number,
+): Promise<{ start: string; endExclusive: string }> {
+  const ctx = await getMotionflowGenerationContext(userId);
+  return resolveUsageWindow(ctx);
+}
+
 function getLimitForPlan(plan: MotionflowGenerationPlan): {
   limit: number;
   hasSubscription: boolean;
@@ -146,37 +167,30 @@ async function countUsed(
   return Number(rows[0]?.c ?? 0);
 }
 
-async function getExtraGenerationsCount(
-  userId: number,
-  conn?: PoolConnection,
-): Promise<number> {
-  type ExtraRow = RowDataPacket & { extra_generations_count: number };
-  const executor = conn ?? getPool();
-  const lock = conn ? " FOR UPDATE" : "";
-  const [rows] = await executor.execute<ExtraRow[]>(
-    `SELECT extra_generations_count FROM users WHERE id = ?${lock}`,
-    [userId],
-  );
-  return Number(rows[0]?.extra_generations_count ?? 0);
-}
-
 export async function getGenerationsStatus(
   userId: number,
 ): Promise<GenerationStatus> {
   await ensureTable();
+  await ensureUserGenerationCreditsSchema();
   const ctx = await getMotionflowGenerationContext(userId);
   const plan = ctx.plan;
   const { limit, hasSubscription } = getLimitForPlan(plan);
   const usageWindow = resolveUsageWindow(ctx);
   const used = await countUsed(userId, plan, usageWindow);
-  const subscription_generations_left = Math.max(0, limit - used);
+  const subAdj =
+    plan === "creator" || plan === "creator_ai"
+      ? await getSubscriptionAdjustment(userId)
+      : 0;
+  const effectiveLimit = limit + subAdj;
+  const subscription_generations_left = Math.max(0, effectiveLimit - used);
   const extra_generations_left =
-    plan === "creator_ai" ? await getExtraGenerationsCount(userId) : 0;
+    plan === "creator_ai" ? await getExtraBalance(userId) : 0;
   const total_generations_left =
     subscription_generations_left + extra_generations_left;
   return {
     used,
     limit,
+    effective_limit: effectiveLimit,
     remaining: subscription_generations_left,
     hasSubscription,
     plan,
@@ -200,6 +214,7 @@ export async function consumeGeneration(
   tool: GenerationTool,
 ): Promise<ConsumeResult> {
   await ensureTable();
+  await ensureUserGenerationCreditsSchema();
   const pool = getPool();
   const conn = await pool.getConnection();
   try {
@@ -209,28 +224,48 @@ export async function consumeGeneration(
     const plan = ctx.plan;
     const { limit, hasSubscription } = getLimitForPlan(plan);
     const usageWindow = resolveUsageWindow(ctx);
-    const used = await countUsed(userId, plan, usageWindow, conn);
-    const extraCount =
-      plan === "creator_ai" ? await getExtraGenerationsCount(userId, conn) : 0;
 
-    const subscriptionLeft = Math.max(0, limit - used);
+    let creditsRow: CreditsRow | null = null;
+    if (plan === "creator" || plan === "creator_ai") {
+      await ensureCreditsRowForUser(userId, conn);
+      creditsRow = await fetchCreditsRowLocked(userId, conn);
+    }
+
+    const used = await countUsed(userId, plan, usageWindow, conn);
+    const subAdj =
+      plan === "creator" || plan === "creator_ai"
+        ? subscriptionAdjustmentFromRow(creditsRow)
+        : 0;
+    const effectiveLimit = limit + subAdj;
+
+    const extraCount =
+      plan === "creator_ai"
+        ? Number(creditsRow?.extra_balance ?? 0)
+        : 0;
+
+    const subscriptionLeft = Math.max(0, effectiveLimit - used);
     const totalLeft = subscriptionLeft + extraCount;
+
+    const emptyStatus = (
+      u: number,
+    ): GenerationStatus => ({
+      used: u,
+      limit,
+      effective_limit: effectiveLimit,
+      remaining: 0,
+      hasSubscription,
+      plan,
+      subscription_generations_left: 0,
+      extra_generations_left: 0,
+      total_generations_left: 0,
+    });
 
     if (totalLeft <= 0) {
       await conn.rollback();
       return {
         ok: false,
         reason: "limit_reached",
-        status: {
-          used,
-          limit,
-          remaining: 0,
-          hasSubscription,
-          plan,
-          subscription_generations_left: 0,
-          extra_generations_left: 0,
-          total_generations_left: 0,
-        },
+        status: emptyStatus(used),
       };
     }
 
@@ -245,27 +280,13 @@ export async function consumeGeneration(
       newSubscriptionLeft = subscriptionLeft - 1;
       newExtraLeft = extraCount;
     } else {
-      const [result] = await conn.execute<ResultSetHeader>(
-        `UPDATE users
-            SET extra_generations_count = extra_generations_count - 1
-          WHERE id = ? AND extra_generations_count > 0`,
-        [userId],
-      );
-      if (result.affectedRows === 0) {
+      const dec = await decrementExtraBalanceOne(userId, conn);
+      if (!dec) {
         await conn.rollback();
         return {
           ok: false,
           reason: "limit_reached",
-          status: {
-            used,
-            limit,
-            remaining: 0,
-            hasSubscription,
-            plan,
-            subscription_generations_left: 0,
-            extra_generations_left: 0,
-            total_generations_left: 0,
-          },
+          status: emptyStatus(used),
         };
       }
       newSubscriptionLeft = 0;
@@ -281,6 +302,7 @@ export async function consumeGeneration(
       status: {
         used: newUsed,
         limit,
+        effective_limit: effectiveLimit,
         remaining: newSubscriptionLeft,
         hasSubscription,
         plan,

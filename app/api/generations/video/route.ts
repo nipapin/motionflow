@@ -3,11 +3,18 @@ import Replicate, { type FileOutput } from "replicate";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import {
     consumeGeneration,
+    getBillingPeriodUsageWindow,
     getGenerationsStatus,
 } from "@/lib/generations";
 import { GENERATION_LIMIT_REACHED_CODE } from "@/lib/ai-generation-gate";
 import { requireCreatorAiForGeneration } from "@/lib/creator-ai-generation-access";
-import { insertGenerationRecord } from "@/lib/generation-records";
+import {
+    countCompletedOkExtraFundedGrokVideos,
+    countCompletedOkSubscriptionGrokVideosInWindow,
+    type VideoGenerationFundingSource,
+    insertGenerationRecord,
+} from "@/lib/generation-records";
+import { getLifetimeExtraGenerationsPurchased } from "@/lib/paddle-server";
 import { mirrorReplicateUrlsToR2 } from "@/lib/replicate-mirror-output";
 
 export const runtime = "nodejs";
@@ -20,6 +27,82 @@ const replicate = new Replicate({
 
 /** See https://replicate.com/prunaai/p-video/api/schema */
 const P_VIDEO_MODEL = "prunaai/p-video" as const;
+/** See https://replicate.com/xai/grok-imagine-video/api */
+const PREMIUM_VIDEO_MODEL = "xai/grok-imagine-video" as const;
+
+/**
+ * While monthly subscription quota has priority (`consumeGeneration`), at most this
+ * many successful Grok videos per billing period are routed to Grok; further
+ * subscription-funded videos use P-Video.
+ */
+const DEFAULT_SUBSCRIPTION_PERIOD_VIDEO_GROK_LIMIT = 20;
+
+/**
+ * Share of **lifetime purchased extra generations** (Paddle extras sum) that become
+ * Grok video slots once the user is spending `extra_generations_count` (after the
+ * monthly 100 are exhausted).
+ */
+const DEFAULT_PREMIUM_EXTRA_PURCHASE_FRACTION = 0.2;
+
+function readSubscriptionPeriodVideoGrokLimit(): number {
+    const raw = process.env.SUBSCRIPTION_PERIOD_VIDEO_GROK_LIMIT?.trim();
+    if (!raw) return DEFAULT_SUBSCRIPTION_PERIOD_VIDEO_GROK_LIMIT;
+    const n = Number.parseInt(raw, 10);
+    if (!Number.isFinite(n) || n < 0) {
+        return DEFAULT_SUBSCRIPTION_PERIOD_VIDEO_GROK_LIMIT;
+    }
+    return n;
+}
+
+function readPremiumExtraPurchaseFraction(): number {
+    const raw = process.env.GROK_VIDEO_EXTRA_PURCHASE_FRACTION;
+    if (raw == null || raw.trim() === "") {
+        return DEFAULT_PREMIUM_EXTRA_PURCHASE_FRACTION;
+    }
+    const n = Number.parseFloat(raw.trim());
+    if (!Number.isFinite(n) || n < 0) {
+        return DEFAULT_PREMIUM_EXTRA_PURCHASE_FRACTION;
+    }
+    return Math.min(n, 1);
+}
+
+function routingTestOverridesAllowed(): boolean {
+    if (process.env.NODE_ENV === "development") return true;
+    const a = process.env.ALLOW_GROK_VIDEO_ROUTING_TEST_OVERRIDES;
+    const b = process.env.ALLOW_GROK_VIDEO_PREMIUM_COMPLETED_OVERRIDE;
+    return (
+        a === "1" ||
+        a?.toLowerCase() === "true" ||
+        b === "1" ||
+        b?.toLowerCase() === "true"
+    );
+}
+
+/**
+ * Override **subscription** Grok usage count for routing tests (dev / explicit allow).
+ * `GROK_VIDEO_PREMIUM_COMPLETED_OVERRIDE` is still honored as an alias when
+ * `GROK_VIDEO_TEST_SUB_GROK_USED` is unset.
+ */
+function readSubGrokUsedTestOverride(): number | null {
+    if (!routingTestOverridesAllowed()) return null;
+    const raw =
+        process.env.GROK_VIDEO_TEST_SUB_GROK_USED?.trim() ??
+        process.env.GROK_VIDEO_PREMIUM_COMPLETED_OVERRIDE?.trim();
+    if (!raw) return null;
+    const n = Number.parseInt(raw, 10);
+    if (!Number.isFinite(n) || n < 0) return null;
+    return n;
+}
+
+/** Override **extra-funded** Grok usage count for routing tests. */
+function readExtraGrokUsedTestOverride(): number | null {
+    if (!routingTestOverridesAllowed()) return null;
+    const raw = process.env.GROK_VIDEO_TEST_EXTRA_GROK_USED?.trim();
+    if (!raw) return null;
+    const n = Number.parseInt(raw, 10);
+    if (!Number.isFinite(n) || n < 0) return null;
+    return n;
+}
 
 const VIDEO_STYLE_HINTS: Record<string, string> = {
     cinematic:
@@ -33,7 +116,7 @@ const VIDEO_STYLE_HINTS: Record<string, string> = {
 };
 
 const ALLOWED_RATIOS = new Set(["16:9", "9:16", "1:1"]);
-const ALLOWED_DURATIONS = new Set([5, 8]);
+const VIDEO_DURATION_SEC = 5;
 const ALLOWED_TARGET_RES = new Set(["720"]);
 
 const FPS = 24;
@@ -109,7 +192,7 @@ function extractMediaUrl(output: unknown): string | null {
     return null;
 }
 
-/** Our `/api/replicate-files/{id}` proxy is for browsers; Seedance needs the Files API URL. */
+/** Our `/api/replicate-files/{id}` proxy is for browsers; Replicate needs the Files API URL. */
 function normalizeFirstFrameUrlForReplicate(raw: string): string {
     const trimmed = raw.trim();
     if (trimmed.startsWith("/api/replicate-files/")) {
@@ -184,7 +267,6 @@ export async function POST(req: NextRequest) {
             prompt?: string;
             style?: string;
             aspect_ratio?: string;
-            duration?: number;
             target_resolution?: string;
             first_frame_url?: string;
             last_frame_url?: string;
@@ -194,8 +276,7 @@ export async function POST(req: NextRequest) {
         const prompt = body.prompt?.trim();
         const style = body.style ?? "realistic";
         const aspect_ratio = body.aspect_ratio ?? "16:9";
-        const duration =
-            typeof body.duration === "number" ? body.duration : 5;
+        const duration = VIDEO_DURATION_SEC;
         const target_resolution = body.target_resolution ?? "720";
         const first_frame_url = body.first_frame_url?.trim();
         const last_frame_url = body.last_frame_url?.trim();
@@ -211,13 +292,6 @@ export async function POST(req: NextRequest) {
         if (!ALLOWED_RATIOS.has(aspect_ratio)) {
             return NextResponse.json(
                 { error: "Please choose a supported aspect ratio." },
-                { status: 400 },
-            );
-        }
-
-        if (!ALLOWED_DURATIONS.has(duration)) {
-            return NextResponse.json(
-                { error: "Please choose a supported duration (5 or 8 seconds)." },
                 { status: 400 },
             );
         }
@@ -290,33 +364,105 @@ export async function POST(req: NextRequest) {
                 normalizeFirstFrameUrlForReplicate(last_frame_url);
         }
 
+        const videoFundingSource: VideoGenerationFundingSource =
+            preStatus.subscription_generations_left > 0
+                ? "subscription"
+                : "extra";
+
+        const billingWindow = await getBillingPeriodUsageWindow(user.id);
+        const lifetimeExtrasPurchased =
+            await getLifetimeExtraGenerationsPurchased(user.id);
+        const subscriptionGrokCap = readSubscriptionPeriodVideoGrokLimit();
+        const extraGrokCap = Math.floor(
+            lifetimeExtrasPurchased * readPremiumExtraPurchaseFraction(),
+        );
+
+        const subGrokUsedDb =
+            await countCompletedOkSubscriptionGrokVideosInWindow(
+                user.id,
+                PREMIUM_VIDEO_MODEL,
+                billingWindow,
+            );
+        const extraGrokUsedDb = await countCompletedOkExtraFundedGrokVideos(
+            user.id,
+            PREMIUM_VIDEO_MODEL,
+        );
+
+        const subGrokOverride = readSubGrokUsedTestOverride();
+        const extraGrokOverride = readExtraGrokUsedTestOverride();
+        const effectiveSubGrokUsed = subGrokOverride ?? subGrokUsedDb;
+        const effectiveExtraGrokUsed = extraGrokOverride ?? extraGrokUsedDb;
+
+        if (subGrokOverride !== null || extraGrokOverride !== null) {
+            console.warn(
+                "[video generation] Grok routing test overrides — sub:",
+                subGrokOverride,
+                "extra:",
+                extraGrokOverride,
+                "(db sub/extra:",
+                subGrokUsedDb,
+                "/",
+                extraGrokUsedDb,
+                ")",
+            );
+        }
+
+        const hasLastFrame = Boolean(last_frame_url);
+        let usePremiumVideoModel = false;
+        if (!hasLastFrame) {
+            if (videoFundingSource === "subscription") {
+                usePremiumVideoModel =
+                    effectiveSubGrokUsed < subscriptionGrokCap;
+            } else {
+                usePremiumVideoModel =
+                    effectiveExtraGrokUsed < extraGrokCap;
+            }
+        }
+        const replicateModel = usePremiumVideoModel
+            ? PREMIUM_VIDEO_MODEL
+            : P_VIDEO_MODEL;
+
+        const premiumVideoInput: Record<string, string | number | boolean> = {
+            prompt: finalPrompt,
+            duration,
+            aspect_ratio,
+            resolution,
+        };
+        if (first_frame_url) {
+            premiumVideoInput.image =
+                normalizeFirstFrameUrlForReplicate(first_frame_url);
+        }
+
+        const baseRecordSettings = {
+            kind: "generate" as const,
+            prompt,
+            style,
+            aspect_ratio,
+            duration,
+            target_resolution,
+            audio_enabled,
+            video_funding_source: videoFundingSource,
+            replicate_model: replicateModel,
+            ...(first_frame_url ? { first_frame_url } : {}),
+            ...(last_frame_url ? { last_frame_url } : {}),
+        };
+
         let videoOutput: unknown;
         try {
-            videoOutput = await replicate.run(P_VIDEO_MODEL, {
-                input: pVideoInput,
+            videoOutput = await replicate.run(replicateModel, {
+                input: usePremiumVideoModel ? premiumVideoInput : pVideoInput,
             });
         } catch (err) {
-            console.error("[video generation] p-video error:", err);
+            console.error(
+                `[video generation] ${replicateModel} error:`,
+                err,
+            );
             const { status, message } = mapReplicateError(err);
             void insertGenerationRecord({
                 userId: user.id,
                 tool: "video",
                 status: "failed",
-                settings: {
-                    kind: "generate",
-                    prompt,
-                    style,
-                    aspect_ratio,
-                    duration,
-                    target_resolution,
-                    audio_enabled,
-                    ...(first_frame_url
-                        ? { first_frame_url: first_frame_url }
-                        : {}),
-                    ...(last_frame_url
-                        ? { last_frame_url: last_frame_url }
-                        : {}),
-                },
+                settings: baseRecordSettings,
                 errorMessage: message,
             });
             return NextResponse.json({ error: message }, { status });
@@ -324,26 +470,14 @@ export async function POST(req: NextRequest) {
 
         const videoUrl = extractMediaUrl(videoOutput);
         if (!videoUrl) {
-            console.error("[video generation] empty p-video output");
+            console.error(
+                `[video generation] empty output from ${replicateModel}`,
+            );
             void insertGenerationRecord({
                 userId: user.id,
                 tool: "video",
                 status: "failed",
-                settings: {
-                    kind: "generate",
-                    prompt,
-                    style,
-                    aspect_ratio,
-                    duration,
-                    target_resolution,
-                    audio_enabled,
-                    ...(first_frame_url
-                        ? { first_frame_url: first_frame_url }
-                        : {}),
-                    ...(last_frame_url
-                        ? { last_frame_url: last_frame_url }
-                        : {}),
-                },
+                settings: baseRecordSettings,
                 errorMessage: GENERIC_ERROR,
             });
             return NextResponse.json({ error: GENERIC_ERROR }, { status: 502 });
@@ -382,21 +516,7 @@ export async function POST(req: NextRequest) {
             userId: user.id,
             tool: "video",
             status: "ok",
-            settings: {
-                kind: "generate",
-                prompt,
-                style,
-                aspect_ratio,
-                duration,
-                target_resolution,
-                audio_enabled,
-                ...(first_frame_url
-                    ? { first_frame_url: first_frame_url }
-                    : {}),
-                ...(last_frame_url
-                    ? { last_frame_url: last_frame_url }
-                    : {}),
-            },
+            settings: baseRecordSettings,
             result: { video: persistedVideoUrl },
         });
 
@@ -410,6 +530,21 @@ export async function POST(req: NextRequest) {
             audio_enabled,
             generations: consumed.status,
             record_id: recordId > 0 ? String(recordId) : undefined,
+            ...(subGrokOverride !== null || extraGrokOverride !== null
+                ? {
+                      _premiumRoutingTest: {
+                          video_funding_source: videoFundingSource,
+                          replicate_model: replicateModel,
+                          subscription_grok_cap: subscriptionGrokCap,
+                          subscription_grok_used_effective:
+                              effectiveSubGrokUsed,
+                          subscription_grok_used_db: subGrokUsedDb,
+                          extra_grok_cap: extraGrokCap,
+                          extra_grok_used_effective: effectiveExtraGrokUsed,
+                          extra_grok_used_db: extraGrokUsedDb,
+                      },
+                  }
+                : {}),
         });
     } catch (error) {
         console.error("[video generation] unexpected error:", error);
