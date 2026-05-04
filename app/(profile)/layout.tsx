@@ -32,7 +32,7 @@ export default function ProfileShellLayout({
       </div>
 
       <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 lg:px-6">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 lg:px-6">
           <Link href="/" className="flex items-center gap-3 group">
             <div className="w-9 h-9 flex items-center justify-center shrink-0 smooth group-hover:scale-105">
               <Image src="/images/logo.png" alt="Motion Flow" width={36} height={36} className="w-full h-full object-contain dark:invert-0 invert" />
@@ -135,7 +135,7 @@ export default function ProfileShellLayout({
         onAuthSuccess={() => setSignInOpen(false)}
       />
 
-      <main className="relative mx-auto max-w-6xl px-6 pt-26 pb-10">{children}</main>
+      <main className="relative mx-auto max-w-7xl px-6 pt-26 pb-10">{children}</main>
     </div>
   );
 }
