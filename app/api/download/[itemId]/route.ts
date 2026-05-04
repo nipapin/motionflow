@@ -12,9 +12,19 @@ import {
   looksLikeHtmlErrorResponse,
 } from "@/lib/motionflow-upstream-download";
 import { getPresignedMarketplaceDownloadUrl } from "@/lib/marketplace-r2-presign";
+import { checkMarketplaceDownloadRateLimit } from "@/lib/marketplace-download-rate-limit";
 import { hasActiveMotionflowSubscription } from "@/lib/subscriptions";
 
 const DL_TABLE = "subscription_downloads";
+
+function redirectRelative(path: string, status: 302 | 303 = 302) {
+  return new NextResponse(null, {
+    status,
+    headers: {
+      Location: path,
+    },
+  });
+}
 
 /**
  * When `R2_BUCKET` is set (private marketplace bucket, same as Laravel `services.r2.bucket`),
@@ -37,7 +47,7 @@ export async function GET(
 
   const user = await getSessionUser();
   if (!user) {
-    return NextResponse.redirect(new URL("/?signin=1", _req.url));
+    return redirectRelative("/?signin=1");
   }
 
   const [subOk, owns] = await Promise.all([
@@ -46,13 +56,18 @@ export async function GET(
   ]);
 
   if (!subOk && !owns) {
-    return NextResponse.redirect(new URL("/pricing", _req.url));
+    return redirectRelative("/pricing");
   }
 
   const products = await getMarketItemsByIds([itemId]);
   const product = products[0];
   if (!product) {
     return NextResponse.json({ error: "item not found" }, { status: 404 });
+  }
+
+  const rate = await checkMarketplaceDownloadRateLimit(user.id);
+  if (!rate.ok) {
+    return redirectRelative("/profile/downloads/download-limit", 302);
   }
 
   const codeParam =
