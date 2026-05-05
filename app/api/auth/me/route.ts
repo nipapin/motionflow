@@ -18,23 +18,26 @@ type UserRow = RowDataPacket & {
   email: string;
   name: string;
   google_id?: string | null;
+  access?: number | null;
 };
 
 function userJson(user: UserRow) {
   const oauthPasswordOnly = oauthPasswordOnlyFromGoogleId(user);
+  const accessNum = Number(user.access ?? 0);
   return {
     id: user.id,
     email: user.email,
     name: user.name,
     oauthPasswordOnly,
     canChangePassword: !oauthPasswordOnly,
+    access: Number.isFinite(accessNum) ? accessNum : 0,
   };
 }
 
 async function findUserById(id: number): Promise<UserRow | null> {
   const pool = getPool();
   const [rows] = await pool.execute<UserRow[]>(
-    "SELECT id, email, name, google_id FROM users WHERE id = ? LIMIT 1",
+    "SELECT id, email, name, google_id, access FROM users WHERE id = ? LIMIT 1",
     [id],
   );
   return rows[0] ?? null;

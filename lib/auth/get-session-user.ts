@@ -17,6 +17,7 @@ type UserRow = RowDataPacket & {
   email: string;
   name: string;
   google_id?: string | null;
+  access?: number | null;
 };
 
 export type SessionUser = {
@@ -24,22 +25,26 @@ export type SessionUser = {
   email: string;
   name: string;
   oauthPasswordOnly: boolean;
+  /** Laravel contributor tier (see `lib/auth/access-control.ts`). */
+  access: number;
 };
 
 async function loadUserById(id: number): Promise<SessionUser | null> {
   try {
     const pool = getPool();
     const [rows] = await pool.execute<UserRow[]>(
-      "SELECT id, email, name, google_id FROM users WHERE id = ? LIMIT 1",
+      "SELECT id, email, name, google_id, access FROM users WHERE id = ? LIMIT 1",
       [id],
     );
     const u = rows[0];
     if (!u) return null;
+    const accessNum = Number(u.access ?? 0);
     return {
       id: u.id,
       email: u.email,
       name: u.name,
       oauthPasswordOnly: oauthPasswordOnlyFromGoogleId(u),
+      access: Number.isFinite(accessNum) ? accessNum : 0,
     };
   } catch (e) {
     console.error("[getSessionUser]", e);
