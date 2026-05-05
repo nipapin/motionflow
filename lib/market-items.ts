@@ -114,6 +114,14 @@ function rowToProduct(row: RowDataPacket): Product | null {
  * Table defaults to `marketplace_items`; override with `DB_MARKET_ITEMS_TABLE`.
  */
 export async function getMarketItems(): Promise<Product[]> {
+  return getMarketItemsByAuthorId(6);
+}
+
+/** Public published items for a specific author (`access = 1`). */
+export async function getMarketItemsByAuthorId(authorId: number, limit?: number): Promise<Product[]> {
+  const normalizedAuthorId = Number(authorId);
+  if (!Number.isFinite(normalizedAuthorId)) return [];
+
   const pool = getMysqlPool();
   if (!pool) return [];
 
@@ -121,19 +129,20 @@ export async function getMarketItems(): Promise<Product[]> {
   if (connection && connection !== "mysql" && connection !== "mariadb") return [];
 
   const table = sanitizedTableName();
-  const limit = Math.min(
-    Math.max(Number(process.env.DB_MARKET_ITEMS_LIMIT ?? DEFAULT_LIMIT) || DEFAULT_LIMIT, 1),
+  const envLimit = Number(process.env.DB_MARKET_ITEMS_LIMIT ?? DEFAULT_LIMIT) || DEFAULT_LIMIT;
+  const cappedLimit = Math.min(
+    Math.max(Number(limit ?? envLimit) || DEFAULT_LIMIT, 1),
     500
   );
 
   try {
     const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT * FROM \`${table}\` WHERE author_id = 6 AND access = 1 ORDER BY id DESC LIMIT ?`,
-      [limit]
+      `SELECT * FROM \`${table}\` WHERE author_id = ? AND access = 1 ORDER BY id DESC LIMIT ?`,
+      [normalizedAuthorId, cappedLimit]
     );
     return rows.map(rowToProduct).filter((p): p is Product => p != null);
   } catch (err) {
-    console.error("[getMarketItems] MySQL query failed:", err);
+    console.error("[getMarketItemsByAuthorId] MySQL query failed:", err);
     return [];
   }
 }

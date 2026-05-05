@@ -5,11 +5,13 @@ import { LARAVEL_COOKIE_NAME, SESSION_COOKIE_NAME } from "@/lib/auth/session";
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const host = request.headers.get("host")?.toLowerCase() ?? "";
+  const isSpunkramHost =
+    host === "spunkram.motionflow.pro" || host.startsWith("spunkram.motionflow.pro:");
 
   // Demo: route a specific subdomain into a dedicated Next.js page.
-  if ((host === "abc123.motionflow.pro" || host.startsWith("abc123.motionflow.pro:")) && pathname === "/") {
+  if (isSpunkramHost && (pathname === "/" || pathname.startsWith("/item/"))) {
     const url = request.nextUrl.clone();
-    url.pathname = "/subdomain-demo/abc123";
+    url.pathname = pathname === "/" ? "/spunkram" : `/spunkram${pathname}`;
     return NextResponse.rewrite(url);
   }
 
@@ -27,5 +29,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/profile/:path*"],
+  matcher: ["/", "/item/:path*", "/profile/:path*"],
 };
