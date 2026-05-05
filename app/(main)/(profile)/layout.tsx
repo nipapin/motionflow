@@ -26,13 +26,13 @@ export default function ProfileShellLayout({
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-blue-500/10 rounded-full blur-[120px]" />
-        <div className="absolute top-1/3 right-0 w-[500px] h-[500px] bg-purple-500/10 rounded-full blur-[120px]" />
+      <div className="fixed inset-0 pointer-events-none dark:opacity-100 opacity-40">
+        <div className="absolute top-0 left-1/4 h-[520px] w-[520px] rounded-full bg-primary/[0.06] blur-[100px]" />
+        <div className="absolute top-1/3 right-0 h-[420px] w-[420px] rounded-full bg-violet-500/[0.05] blur-[100px]" />
       </div>
 
       <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 lg:px-6">
+        <div className="mx-auto flex h-16 max-w-[82.5rem] items-center justify-between px-4 lg:px-6">
           <Link href="/" className="flex items-center gap-3 group">
             <div className="w-9 h-9 flex items-center justify-center shrink-0 smooth group-hover:scale-105">
               <Image src="/images/logo.png" alt="Motion Flow" width={36} height={36} className="w-full h-full object-contain dark:invert-0 invert" />
@@ -135,7 +135,7 @@ export default function ProfileShellLayout({
         onAuthSuccess={() => setSignInOpen(false)}
       />
 
-      <main className="relative mx-auto max-w-7xl px-6 pt-26 pb-10">{children}</main>
+      <main className="relative mx-auto max-w-[82.5rem] px-6 pt-26 pb-10">{children}</main>
     </div>
   );
 }

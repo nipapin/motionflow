@@ -1,3 +1,4 @@
+import type { ComponentType, ReactNode } from "react";
 import {
   CircleCheck,
   Sparkles,
@@ -8,6 +9,8 @@ import {
 } from "lucide-react";
 import type { SubscriptionListItem } from "@/lib/subscriptions";
 import { SubscriptionTokenCopy } from "@/components/subscription-token-copy";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 interface SubscriptionCardProps {
   item: SubscriptionListItem;
@@ -17,23 +20,32 @@ interface SubscriptionCardProps {
 function StatusBadge({ item }: { item: SubscriptionListItem }) {
   if (!item.active) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500 px-3 py-1 text-[0.8125rem] font-medium text-white">
-        disabled
-      </span>
+      <Badge
+        variant="outline"
+        className="rounded-full border-destructive/30 bg-destructive/10 px-2.5 py-0.5 text-[11px] font-medium normal-case text-destructive"
+      >
+        Disabled
+      </Badge>
     );
   }
   if (item.cancelled) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1 text-[0.8125rem] font-medium text-white">
-        cancelled
-      </span>
+      <Badge
+        variant="outline"
+        className="rounded-full border-amber-500/35 bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-medium normal-case text-amber-800 dark:text-amber-200"
+      >
+        Cancelled
+      </Badge>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-600 px-3 py-1 text-[0.8125rem] font-medium text-white">
-      <CircleCheck className="h-3.5 w-3.5 shrink-0" />
-      active
-    </span>
+    <Badge
+      variant="outline"
+      className="rounded-full border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium normal-case text-emerald-800 dark:text-emerald-300"
+    >
+      <CircleCheck className="h-3 w-3 shrink-0 opacity-90" aria-hidden />
+      Active
+    </Badge>
   );
 }
 
@@ -43,20 +55,21 @@ function DetailRow({
   iconVariant = "gray",
   children,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string }>;
   label: string;
   iconVariant?: "lavender" | "gray";
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
-      <div className="flex items-center justify-between gap-3 border-t border-blue-500/10 py-3 first:border-t-0">
+    <div className="flex items-center justify-between gap-3 border-t border-border/50 py-3 first:border-t-0">
       <div className="flex shrink-0 items-center gap-3">
         <span
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] ${
+          className={cn(
+            "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
             iconVariant === "lavender"
-              ? "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400"
-              : "bg-muted text-muted-foreground"
-          }`}
+              ? "bg-muted text-muted-foreground dark:bg-muted/80"
+              : "bg-muted/80 text-muted-foreground",
+          )}
         >
           <Icon className="h-[18px] w-[18px] shrink-0" />
         </span>
@@ -84,11 +97,11 @@ export function SubscriptionCard({ item, userEmail }: SubscriptionCardProps) {
   const validUntil = item.endDate ?? (item.endsAt ? formatDate(item.endsAt) : "—");
 
   return (
-    <article className="overflow-hidden rounded-2xl border border-blue-500/30 bg-card shadow-sm glow">
+    <article className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm">
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_1px_1fr]">
         {/* ── Summary (left / top) ── */}
-        <div className="flex flex-col items-center justify-center border-b border-blue-500/10 p-5 text-center sm:p-7 lg:border-b-0 lg:p-8">
-          <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-muted">
+        <div className="flex flex-col items-center justify-center border-b border-border/50 p-5 text-center sm:p-7 lg:border-b-0 lg:p-8">
+          <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-xl bg-muted/60 ring-1 ring-border/40">
             {item.icon ? (
               <img
                 src={item.icon}
@@ -101,31 +114,31 @@ export function SubscriptionCard({ item, userEmail }: SubscriptionCardProps) {
               <Sparkles className="h-8 w-8 text-muted-foreground" />
             )}
           </div>
-          <h3 className="mb-4 max-w-full wrap-break-word text-lg font-medium leading-snug">
+          <h3 className="mb-4 max-w-full wrap-break-word text-base font-semibold leading-snug tracking-tight">
             <a
               href={item.productPage}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-foreground underline decoration-border underline-offset-4 smooth hover:decoration-foreground/40"
+              className="text-foreground underline decoration-border/80 underline-offset-4 transition-colors hover:decoration-foreground/50"
             >
               {item.subsFor}
             </a>
           </h3>
-          <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1.5 text-[0.95rem] text-muted-foreground">
-            Your subscription is
+          <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-2 text-[13px] text-muted-foreground">
+            <span className="text-muted-foreground/90">Status</span>
             <StatusBadge item={item} />
           </p>
         </div>
 
         {/* Vertical divider (lg only) */}
-        <div className="hidden bg-blue-500/10 lg:block" role="presentation" />
+        <div className="hidden bg-border/60 lg:block" role="presentation" />
 
         {/* ── Detail rows (right / bottom) ── */}
         <div className="p-4 sm:p-5 lg:py-8 lg:pl-9 lg:pr-8">
           <DetailRow icon={Sparkles} label="Plan" iconVariant="lavender">
-            <span className="inline-block rounded-full bg-violet-600 px-2.5 py-1 text-[0.7rem] font-medium uppercase tracking-wider text-white">
+            <Badge variant="secondary" className="rounded-md px-2 py-0.5 font-mono text-[11px] font-medium uppercase tracking-wide">
               {planLabel}
-            </span>
+            </Badge>
           </DetailRow>
 
           <DetailRow icon={Mail} label="Email">
@@ -138,9 +151,9 @@ export function SubscriptionCard({ item, userEmail }: SubscriptionCardProps) {
 
           {isLifetime ? (
             <DetailRow icon={InfinityIcon} label="Access" iconVariant="lavender">
-              <span className="inline-flex items-center justify-center rounded-full border border-violet-200 bg-linear-to-br from-violet-50 via-violet-100/60 to-fuchsia-50 px-4 py-1.5 text-[0.8125rem] font-semibold uppercase tracking-wider text-violet-700 dark:border-violet-500/30 dark:from-violet-500/10 dark:via-violet-500/5 dark:to-fuchsia-500/10 dark:text-violet-300">
+              <Badge variant="outline" className="rounded-full border-border/70 bg-muted/40 px-3 py-0.5 text-[11px] font-medium normal-case">
                 Forever
-              </span>
+              </Badge>
             </DetailRow>
           ) : (
             <DetailRow icon={Calendar} label="Valid until">
@@ -153,9 +166,9 @@ export function SubscriptionCard({ item, userEmail }: SubscriptionCardProps) {
               href="https://login.paddle.com/login"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex w-full items-center justify-center rounded-[10px] border border-border px-5 py-2.5 text-sm font-semibold text-muted-foreground smooth hover:border-muted-foreground/40 hover:bg-muted/60 hover:text-foreground md:w-auto"
+              className="inline-flex w-full items-center justify-center rounded-lg border border-border/80 bg-background px-4 py-2 text-[13px] font-medium text-muted-foreground shadow-xs transition-colors hover:bg-muted/50 hover:text-foreground md:w-auto"
             >
-              Manage Subscription
+              Manage subscription
             </a>
           </div>
         </div>

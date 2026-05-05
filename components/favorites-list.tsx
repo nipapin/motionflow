@@ -23,15 +23,15 @@ export function FavoritesList({ initialProducts }: FavoritesListProps) {
   return (
     <>
       {templates.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {templates.map((p) => (
-            <ProductCard key={p.id} product={p} onClick={() => setSelectedProduct(p)} />
+            <ProductCard key={p.id} product={p} variant="subtle" onClick={() => setSelectedProduct(p)} />
           ))}
         </div>
       )}
 
       {audio.length > 0 && (
-        <div className="rounded-xl border border-border/60 bg-card/40 backdrop-blur-sm divide-y divide-border/40 overflow-hidden">
+        <div className="divide-y divide-border/50 overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm">
           {audio.map((p) => (
             <AudioTrack key={p.id} product={p} onClick={() => setSelectedProduct(p)} />
           ))}

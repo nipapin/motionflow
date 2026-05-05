@@ -74,7 +74,7 @@ export function TranscriptDialog({ item, onClose }: Props) {
               <Button
                 type="button"
                 variant="outline"
-                className="rounded-xl border-blue-500/30 text-foreground hover:border-blue-500/60"
+                className="rounded-xl border-primary/45 text-primary hover:bg-primary/10 dark:hover:bg-primary/15"
                 onClick={() => void handleCopy(item.text)}
               >
                 {copied ? (
@@ -84,11 +84,7 @@ export function TranscriptDialog({ item, onClose }: Props) {
                 )}
                 {copied ? "Copied" : "Copy"}
               </Button>
-              <Button
-                type="button"
-                className="rounded-xl bg-linear-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/25 hover:from-blue-500 hover:to-blue-400"
-                onClick={() => handleDownload(item)}
-              >
+              <Button type="button" className="rounded-xl shadow-md shadow-primary/20" onClick={() => handleDownload(item)}>
                 <Download className="w-4 h-4 mr-2" />
                 Download{" "}
                 {(STT_FORMAT_META[item.format] ?? STT_FORMAT_META.text).label}

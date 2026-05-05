@@ -59,7 +59,7 @@ export function ProfileSettings() {
 
   if (loading || !user) {
     return (
-      <div className="rounded-xl border border-blue-500/30 bg-card/30 p-8 text-sm text-muted-foreground glow">
+      <div className="rounded-xl border border-border/60 bg-muted/20 p-8 text-sm text-muted-foreground">
         Loading profile…
       </div>
     );
@@ -154,9 +154,9 @@ export function ProfileSettings() {
         </p>
       </div>
 
-      <Card className="border-blue-500/30 bg-card/40 backdrop-blur-sm glow">
+      <Card className="border-border/60 bg-card shadow-sm">
         <CardHeader>
-          <CardTitle>Display name</CardTitle>
+          <CardTitle className="text-base font-semibold">Display name</CardTitle>
           <CardDescription>
             This is your public login name (same rules as when you registered).
           </CardDescription>
@@ -169,23 +169,23 @@ export function ProfileSettings() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoComplete="username"
-              className="max-w-md bg-foreground/5 border-transparent"
+              className="max-w-md bg-muted/30 border-border/60"
             />
           </div>
           <Button
             type="button"
             onClick={() => void onSaveName()}
             disabled={savingName || name.trim() === user.name}
-            className="rounded-full bg-gradient-to-r from-blue-600 to-blue-500"
+            size="sm"
           >
             {savingName ? "Saving…" : "Save name"}
           </Button>
         </CardContent>
       </Card>
 
-      <Card className="border-blue-500/30 bg-card/40 backdrop-blur-sm glow">
+      <Card className="border-border/60 bg-card shadow-sm">
         <CardHeader>
-          <CardTitle>Email</CardTitle>
+          <CardTitle className="text-base font-semibold">Email</CardTitle>
           <CardDescription>
             {oauthOnly
               ? "This account uses Google sign-in. The email is tied to your Google account."
@@ -202,7 +202,7 @@ export function ProfileSettings() {
               onChange={(e) => setEmail(e.target.value)}
               disabled={oauthOnly}
               autoComplete="email"
-              className="max-w-md bg-foreground/5 border-transparent disabled:opacity-70"
+              className="max-w-md bg-muted/30 border-border/60 disabled:opacity-70"
             />
           </div>
           {!oauthOnly && (
@@ -215,7 +215,7 @@ export function ProfileSettings() {
                   value={emailPassword}
                   onChange={(e) => setEmailPassword(e.target.value)}
                   autoComplete="current-password"
-                  className="max-w-md bg-foreground/5 border-transparent"
+                  className="max-w-md bg-muted/30 border-border/60"
                 />
               </div>
               <Button
@@ -224,8 +224,7 @@ export function ProfileSettings() {
                 disabled={
                   savingEmail || email.trim().toLowerCase() === user.email.toLowerCase()
                 }
-                variant="secondary"
-                className="rounded-full"
+                size="sm"
               >
                 {savingEmail ? "Saving…" : "Save email"}
               </Button>
@@ -235,9 +234,9 @@ export function ProfileSettings() {
       </Card>
 
       {canChangePassword && (
-        <Card className="border-blue-500/30 bg-card/40 backdrop-blur-sm glow">
+        <Card className="border-border/60 bg-card shadow-sm">
           <CardHeader>
-            <CardTitle>Password</CardTitle>
+            <CardTitle className="text-base font-semibold">Password</CardTitle>
             <CardDescription>
               Only for accounts that sign in with email and password.
             </CardDescription>
@@ -251,7 +250,7 @@ export function ProfileSettings() {
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 autoComplete="current-password"
-                className="bg-foreground/5 border-transparent"
+                className="bg-muted/30 border-border/60"
               />
             </div>
             <div className="space-y-2">
@@ -262,7 +261,7 @@ export function ProfileSettings() {
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 autoComplete="new-password"
-                className="bg-foreground/5 border-transparent"
+                className="bg-muted/30 border-border/60"
               />
             </div>
             <div className="space-y-2">
@@ -273,7 +272,7 @@ export function ProfileSettings() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 autoComplete="new-password"
-                className="bg-foreground/5 border-transparent"
+                className="bg-muted/30 border-border/60"
               />
             </div>
             <Button
@@ -286,8 +285,7 @@ export function ProfileSettings() {
                 !confirmPassword ||
                 newPassword.length < 8
               }
-              variant="secondary"
-              className="rounded-full"
+              size="sm"
             >
               {savingPassword ? "Updating…" : "Update password"}
             </Button>

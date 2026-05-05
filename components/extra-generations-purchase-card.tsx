@@ -24,15 +24,15 @@ export function ExtraGenerationsPurchaseCard({
   const title = `Motionflow — ${generations} extra AI generations`;
 
   return (
-    <article className="overflow-hidden rounded-2xl border border-blue-500/30 bg-card/80 shadow-sm glow">
+    <article className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm transition-shadow hover:shadow-md">
       <div className="flex flex-col gap-5 p-4 sm:p-5 lg:flex-row lg:items-stretch lg:gap-6">
-        <div className="flex h-32 w-full shrink-0 items-center justify-center rounded-xl bg-linear-to-br from-violet-500/15 via-fuchsia-500/10 to-sky-500/10 sm:h-36 lg:h-auto lg:w-40 lg:min-h-36">
-          <Sparkles className="size-12 text-violet-500 dark:text-violet-400" aria-hidden />
+        <div className="flex h-32 w-full shrink-0 items-center justify-center rounded-lg bg-muted/50 ring-1 ring-inset ring-border/40 sm:h-36 lg:h-auto lg:w-40 lg:min-h-36">
+          <Sparkles className="size-10 text-muted-foreground" aria-hidden />
         </div>
 
         <div className="min-w-0 flex-1 space-y-2">
-          <h2 className="text-base font-semibold leading-snug sm:text-lg">{title}</h2>
-          <p className="text-sm text-sky-500 dark:text-sky-400/90">
+          <h2 className="text-base font-semibold leading-snug tracking-tight sm:text-[17px]">{title}</h2>
+          <p className="text-[13px] text-muted-foreground">
             One-time add-on for Creator + AI — credits never expire
           </p>
           <p className="text-sm text-muted-foreground">
@@ -42,12 +42,12 @@ export function ExtraGenerationsPurchaseCard({
           </p>
         </div>
 
-        <div className="flex shrink-0 flex-col justify-center border-t border-blue-500/10 pt-4 lg:border-t-0 lg:border-l lg:pl-6 lg:pt-0">
+        <div className="flex shrink-0 flex-col justify-center border-t border-border/50 pt-4 lg:border-t-0 lg:border-l lg:border-border/50 lg:pl-6 lg:pt-0">
           <a
             href="https://login.paddle.com/login"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center justify-center rounded-xl border border-border px-5 py-2.5 text-sm font-semibold text-muted-foreground smooth hover:border-muted-foreground/40 hover:bg-muted/60 hover:text-foreground"
+            className="inline-flex items-center justify-center rounded-lg border border-border/80 bg-background px-4 py-2 text-[13px] font-medium text-muted-foreground shadow-xs transition-colors hover:bg-muted/50 hover:text-foreground"
           >
             Receipts (Paddle)
           </a>

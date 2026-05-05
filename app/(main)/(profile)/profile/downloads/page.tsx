@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Download } from "lucide-react";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { DownloadsList } from "@/components/downloads-list";
+import { ProfileEmptyState } from "@/components/profile/profile-empty-state";
+import { Button } from "@/components/ui/button";
 import { getDownloadsForUser } from "@/lib/downloads";
 
 export const metadata: Metadata = {
@@ -19,9 +22,12 @@ export default async function ProfileDownloadsPage() {
 
   if (queryFailed) {
     return (
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">My downloads</h1>
-        <div className="rounded-2xl border border-destructive/30 bg-card/40 px-6 py-10 text-center">
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">My downloads</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Subscription download history</p>
+        </div>
+        <div className="rounded-xl border border-destructive/25 bg-destructive/5 px-6 py-10 text-center">
           <p className="text-sm text-muted-foreground">
             Downloads could not be loaded. Check that the database table{" "}
             <code className="rounded bg-muted px-1.5 py-0.5 text-foreground">subscription_downloads</code>{" "}
@@ -34,20 +40,20 @@ export default async function ProfileDownloadsPage() {
 
   if (list.length === 0) {
     return (
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">My downloads</h1>
-        <div className="flex flex-col items-center rounded-2xl border border-blue-500/30 bg-card/40 px-6 py-14 text-center glow">
-          <h2 className="mb-2 text-lg font-medium">No downloads yet.</h2>
-          <p className="mb-6 text-muted-foreground">
-            Subscription downloads are listed here after you download an item while your subscription is active.
-          </p>
-          <Link
-            href="/"
-            className="inline-flex items-center rounded-xl bg-linear-to-r from-blue-600 to-blue-500 px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-blue-500/25 smooth hover:from-blue-500 hover:to-blue-400"
-          >
-            Browse catalog
-          </Link>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">My downloads</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Subscription download history</p>
         </div>
+        <ProfileEmptyState
+          icon={Download}
+          title="No downloads yet"
+          description="Subscription downloads appear here after you download an item while your subscription is active."
+        >
+          <Button asChild size="sm">
+            <Link href="/">Browse catalog</Link>
+          </Button>
+        </ProfileEmptyState>
       </div>
     );
   }

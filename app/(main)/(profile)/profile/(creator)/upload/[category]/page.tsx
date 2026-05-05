@@ -5,7 +5,10 @@ import { UPLOAD_CATEGORIES } from "@/lib/author/upload-categories";
 import { Badge } from "@/components/ui/badge";
 import { UploadDraftForm } from "@/components/author/upload-draft-form";
 
-type PageProps = { params: Promise<{ category: string }> };
+type PageProps = {
+  params: Promise<{ category: string }>;
+  searchParams: Promise<{ item?: string }>;
+};
 
 export const dynamic = "force-dynamic";
 
@@ -14,12 +17,16 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return { title: `Upload — ${category}` };
 }
 
-export default async function UploadCategoryPage({ params }: PageProps) {
+export default async function UploadCategoryPage({ params, searchParams }: PageProps) {
   const user = await getSessionUser();
   if (!user) return null;
   const { category } = await params;
   const meta = UPLOAD_CATEGORIES.find((c) => c.slug === category);
   if (!meta) notFound();
+
+  const sp = await searchParams;
+  const rawItem = sp.item != null ? Number(sp.item) : NaN;
+  const editItemId = Number.isFinite(rawItem) && rawItem > 0 ? Math.floor(rawItem) : undefined;
 
   const autoApproval = user.access >= 10;
 
@@ -37,7 +44,7 @@ export default async function UploadCategoryPage({ params }: PageProps) {
           </Badge>
         )}
       </div>
-      <UploadDraftForm indexCategorySlug={meta.slug} />
+      <UploadDraftForm indexCategorySlug={meta.slug} editItemId={editItemId} />
     </div>
   );
 }

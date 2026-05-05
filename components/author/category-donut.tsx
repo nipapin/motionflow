@@ -4,7 +4,8 @@ import * as React from "react";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import type { CategoryCount } from "@/lib/author/dashboard-stats";
 
-const COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))", "hsl(var(--chart-5))"];
+/** Theme tokens are already full colors (`hsl(...)`), not bare hue/sat/light tuples — use `var()` only. */
+const COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
 
 interface CategoryDonutProps {
   data: CategoryCount[];
@@ -36,8 +37,9 @@ export function CategoryDonut({ data }: CategoryDonutProps) {
           <Tooltip
             contentStyle={{
               borderRadius: 8,
-              border: "1px solid hsl(var(--border))",
-              background: "hsl(var(--card))",
+              border: "1px solid var(--border)",
+              background: "var(--card)",
+              color: "var(--foreground)",
             }}
           />
           <Legend />

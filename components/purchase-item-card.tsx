@@ -78,9 +78,9 @@ export function PurchaseItemCard({
   };
 
   return (
-    <article className="overflow-hidden rounded-2xl border border-blue-500/30 bg-card/80 shadow-sm glow">
+    <article className="group/purchase overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm transition-shadow hover:shadow-md">
       <div className="flex flex-col gap-5 p-4 sm:p-5 lg:flex-row lg:items-stretch lg:gap-6">
-        <div className="relative h-32 w-full shrink-0 overflow-hidden rounded-xl bg-muted sm:h-36 lg:h-auto lg:w-40 lg:min-h-36">
+        <div className="relative h-32 w-full shrink-0 overflow-hidden rounded-lg bg-muted ring-1 ring-inset ring-border/35 sm:h-36 lg:h-auto lg:w-40 lg:min-h-36">
           {thumb ? (
             <img src={thumb} alt={name} className="absolute inset-0 size-full object-cover" />
           ) : (
@@ -94,23 +94,17 @@ export function PurchaseItemCard({
         </div>
 
         <div className="min-w-0 flex-1 space-y-2">
-          <h2 className="text-base font-semibold leading-snug sm:text-lg">
+          <h2 className="text-base font-semibold leading-snug tracking-tight sm:text-[17px]">
             <a
               href={itemPageUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-primary hover:underline"
+              className="text-foreground underline decoration-border/70 underline-offset-4 transition-colors hover:decoration-foreground/40"
             >
               {name}
             </a>
           </h2>
-          <p
-            className={
-              license > 1
-                ? "text-sm font-medium text-primary"
-                : "text-sm text-sky-500 dark:text-sky-400/90"
-            }
-          >
+          <p className={license > 1 ? "text-[13px] font-medium text-foreground/90" : "text-[13px] text-muted-foreground"}>
             {licenseLine}
           </p>
           <p className="text-sm text-muted-foreground">
@@ -155,25 +149,25 @@ export function PurchaseItemCard({
               )}
             </div>
           </div>
-          <label className="flex cursor-pointer items-start gap-2.5 text-sm text-primary">
+          <label className="flex cursor-pointer items-start gap-2.5 text-[13px] text-muted-foreground">
             <Checkbox
               checked={notify}
               onCheckedChange={(v) => onNotifyChange(v === true)}
-              className="mt-0.5 border-primary/60 data-[state=checked]:bg-primary"
+              className="mt-0.5 border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary"
             />
-            <span>Get notified by email if this item is updated</span>
+            <span>Email me when this item is updated</span>
           </label>
         </div>
 
-        <div className="flex shrink-0 flex-row items-center justify-end border-t border-blue-500/10 pt-4 lg:flex-col lg:items-end lg:border-t-0 lg:pt-0">
+        <div className="flex shrink-0 flex-row items-center justify-end border-t border-border/50 pt-4 lg:flex-col lg:items-end lg:border-t-0 lg:pt-0">
           <Button
             type="button"
             variant="outline"
-            size="lg"
+            size="sm"
             onClick={() => void startMarketplaceDownload(itemId)}
-            className="h-11 rounded-xl border-2 border-foreground/80 bg-background px-6 font-medium text-foreground shadow-none smooth hover:bg-muted"
+            className="h-9 px-4 font-medium opacity-90 transition-opacity group-hover/purchase:opacity-100"
           >
-            <Download className="size-5" />
+            <Download className="size-3.5" />
             Download
           </Button>
         </div>

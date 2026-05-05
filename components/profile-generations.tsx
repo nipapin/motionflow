@@ -19,7 +19,7 @@ import { VideoLightbox, ImageLightbox } from "@/components/generations/lightbox"
 import { TranscriptDialog } from "@/components/generations/transcript-dialog";
 
 const TAB_TRIGGER_CLASS =
-  "h-9 text-xs sm:text-sm px-2 sm:px-3 text-muted-foreground data-[state=active]:border-transparent data-[state=active]:bg-linear-to-r data-[state=active]:from-blue-600 data-[state=active]:to-blue-500 data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=active]:shadow-blue-500/25";
+  "h-9 rounded-md border border-transparent text-xs font-medium sm:text-sm px-2 sm:px-3 text-primary/80 transition-colors hover:text-primary data-[state=active]:border-primary/30 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-sm dark:data-[state=active]:bg-primary/15";
 
 function isValidTab(value: string): value is TabValue {
   return value === "image" || value === "video" || value === "tts" || value === "stt";
@@ -61,11 +61,11 @@ export function ProfileGenerations() {
 
   if (!user) {
     return (
-      <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-8 text-center">
-        <p className="text-muted-foreground mb-4">
+      <div className="rounded-xl border border-dashed border-border/70 bg-muted/15 px-6 py-12 text-center">
+        <p className="mb-4 text-[13px] text-muted-foreground">
           Sign in to see your image and video generations.
         </p>
-        <Button asChild className="bg-linear-to-r from-blue-600 to-blue-500 text-white rounded-xl">
+        <Button asChild size="sm">
           <Link href="/">Back to home</Link>
         </Button>
       </div>
@@ -74,11 +74,11 @@ export function ProfileGenerations() {
 
   const pageIntro = (
     <div className="space-y-1">
-      <h1 className="text-2xl sm:text-3xl font-semibold text-foreground tracking-tight">
+      <h1 className="text-2xl font-semibold tracking-tight text-foreground">
         My generations
       </h1>
-      <p className="text-sm text-muted-foreground max-w-2xl">
-        Image, video and audio from the AI tools. Open a generator from the sidebar anytime.
+      <p className="max-w-2xl text-[13px] leading-relaxed text-muted-foreground">
+        Image, video, and audio outputs from AI tools. Open any generator from the catalog sidebar.
       </p>
     </div>
   );
@@ -110,9 +110,14 @@ export function ProfileGenerations() {
       <div className="space-y-4">
         {pageIntro}
         {quotaBlock}
-        <div className="rounded-2xl border border-red-500/30 bg-card/50 p-8 text-center">
-          <p className="text-red-400 mb-4">{error}</p>
-          <Button variant="secondary" onClick={reload}>
+        <div className="rounded-xl border border-destructive/25 bg-destructive/5 px-6 py-10 text-center">
+          <p className="mb-4 text-[13px] text-destructive">{error}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-primary/45 text-primary hover:bg-primary/10 dark:hover:bg-primary/15"
+            onClick={reload}
+          >
             Retry
           </Button>
         </div>
@@ -130,7 +135,7 @@ export function ProfileGenerations() {
       ) : null}
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto gap-1 rounded-lg border border-blue-500/25 bg-muted/40 p-1">
+        <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-lg border border-primary/20 bg-primary/6 p-1 sm:grid-cols-4 dark:bg-primary/10">
           <TabsTrigger value="image" className={TAB_TRIGGER_CLASS}>
             <ImageIcon className="w-4 h-4 mr-2" />
             Images

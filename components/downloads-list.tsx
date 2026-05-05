@@ -86,7 +86,7 @@ export function DownloadsList({ items }: DownloadsListProps) {
         </p>
       </div>
 
-      <div className="flex flex-row flex-nowrap items-end gap-3 rounded-2xl border border-blue-500/20 bg-card/30 p-4">
+      <div className="flex flex-row flex-nowrap items-end gap-3 rounded-xl border border-border/60 bg-muted/15 p-4">
         <div className="min-w-0 flex-1 space-y-2">
           <Label htmlFor="dl-search-name">Search by name</Label>
           <Input
@@ -95,7 +95,7 @@ export function DownloadsList({ items }: DownloadsListProps) {
             placeholder="Name…"
             value={nameQuery}
             onChange={(e) => setNameQuery(e.target.value)}
-            className="rounded-xl border border-blue-500/35 bg-background/50 shadow-sm"
+            className="rounded-lg border-border/60 bg-background shadow-xs"
           />
         </div>
         <div className="w-40 shrink-0 space-y-2 sm:w-56">
@@ -103,7 +103,7 @@ export function DownloadsList({ items }: DownloadsListProps) {
           <Select value={period} onValueChange={(v) => setPeriod(v as Period)}>
             <SelectTrigger
               id="dl-period"
-              className="h-9 w-full rounded-xl border border-blue-500/35 bg-background/50 shadow-sm"
+              className="h-9 w-full rounded-lg border-border/60 bg-background shadow-xs"
             >
               <SelectValue />
             </SelectTrigger>
@@ -119,24 +119,24 @@ export function DownloadsList({ items }: DownloadsListProps) {
       </div>
 
       {filtered.length === 0 ? (
-        <div className="rounded-2xl border border-blue-500/30 bg-card/40 px-6 py-10 text-center glow">
-          <p className="text-sm text-muted-foreground">No downloads match your filters.</p>
+        <div className="rounded-xl border border-dashed border-border/70 bg-muted/15 px-6 py-10 text-center">
+          <p className="text-[13px] text-muted-foreground">No downloads match your filters.</p>
         </div>
       ) : (
-        <ul className="space-y-4">
+        <ul className="space-y-3">
           {filtered.map((row) => {
             const k = row.product ? productKind(row.product) : "template";
             const isAudio = k === "stock-audio" || k === "sound-fx";
             if (row.product && isAudio) {
               return (
                 <li key={row.id}>
-                  <div className="overflow-hidden rounded-2xl border border-blue-500/30 bg-card/40 glow">
+                  <div className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm">
                     <AudioTrack
                       product={row.product}
                       onDownload={() => onDownloadItem(row)}
-                      containerClassName="group flex items-center gap-4 px-4 py-3 sm:px-5 sm:py-4 hover:bg-foreground/[0.02] smooth"
+                      containerClassName="group flex items-center gap-4 px-4 py-3 sm:px-5 sm:py-4 hover:bg-muted/25 smooth"
                     />
-                    <p className="border-t border-blue-500/10 px-4 py-2.5 text-xs text-muted-foreground sm:px-5">
+                    <p className="border-t border-border/50 px-4 py-2.5 text-[11px] text-muted-foreground sm:px-5">
                       Downloaded {formatDate(row.createdAt)}
                     </p>
                   </div>

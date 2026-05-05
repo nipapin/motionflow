@@ -43,9 +43,10 @@
 .dark {
   --background: hsl(222 47% 6%);
   --foreground: hsl(210 40% 96%);
-  --card: hsl(222 47% 8%);
+  /* Slightly lifted vs page bg — same hue/chroma as the rest of the UI */
+  --card: hsl(222 47% 12%);
   --card-foreground: hsl(210 40% 96%);
-  --popover: hsl(222 47% 8%);
+  --popover: hsl(222 47% 12%);
   --popover-foreground: hsl(210 40% 96%);
   --primary: hsl(217 91% 60%);
   --primary-foreground: hsl(222 47% 6%);
@@ -62,9 +63,10 @@
   --ring: hsl(217 91% 60%);
   --chart-1: hsl(217 91% 60%);
   --chart-2: hsl(215 20% 55%);
-  --chart-3: hsl(222 47% 35%);
-  --chart-4: hsl(222 47% 20%);
-  --chart-5: hsl(222 47% 14%);
+  /* Donut / charts: enough lightness & hue spread to read on dark card bg */
+  --chart-3: hsl(199 65% 48%);
+  --chart-4: hsl(265 45% 58%);
+  --chart-5: hsl(38 78% 54%);
   --sidebar: hsl(222 47% 5%);
   --sidebar-foreground: hsl(210 40% 96%);
   --sidebar-primary: hsl(217 91% 60%);

@@ -22,6 +22,8 @@ interface ProductCardProps {
   product: Product;
   onDownload?: (product: Product) => void;
   onClick?: () => void;
+  /** Quieter chrome for account views (e.g. favorites); default keeps marketplace styling. */
+  variant?: "default" | "subtle";
 }
 
 const previewVideos: Record<string, string> = {
@@ -39,7 +41,7 @@ function templatePreviewVideoUrl(product: Product): string {
   return previewVideos[label] ?? previewVideos.default;
 }
 
-export function ProductCard({ product, onDownload, onClick }: ProductCardProps) {
+export function ProductCard({ product, onDownload, onClick, variant = "default" }: ProductCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   /** Set on first hover; kept after leave so the clip stays buffered (no reload / spinner on re-hover). */
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
@@ -135,7 +137,12 @@ export function ProductCard({ product, onDownload, onClick }: ProductCardProps) 
 
   return (
     <div
-      className="group relative rounded-2xl overflow-hidden cursor-pointer bg-card border border-blue-500/30 hover:border-2 hover:border-blue-500 smooth hover-lift glow visibility-auto"
+      className={cn(
+        "group relative overflow-hidden cursor-pointer bg-card visibility-auto smooth",
+        variant === "default"
+          ? "rounded-2xl border border-blue-500/30 hover:border-2 hover:border-blue-500 hover-lift glow"
+          : "rounded-xl border border-border/60 shadow-sm transition-[border-color,box-shadow] hover:border-border/80 hover:shadow-md",
+      )}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onClick={onClick}

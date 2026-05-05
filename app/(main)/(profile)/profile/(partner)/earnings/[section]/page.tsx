@@ -172,7 +172,17 @@ export default async function EarningsSectionPage({ params, searchParams }: Page
 
         <div className="flex flex-wrap gap-2">
           {SALES_PERIODS.map((p) => (
-            <Button key={p.key} size="sm" variant={p.key === dateKey ? "default" : "outline"} asChild>
+            <Button
+              key={p.key}
+              size="sm"
+              variant={p.key === dateKey ? "default" : "outline"}
+              className={
+                p.key === dateKey
+                  ? undefined
+                  : "border-primary/40 text-primary hover:bg-primary/10 dark:hover:bg-primary/15"
+              }
+              asChild
+            >
               <Link href={`${base}?date=${p.key}`}>{p.label}</Link>
             </Button>
           ))}
@@ -266,7 +276,17 @@ export default async function EarningsSectionPage({ params, searchParams }: Page
         <SectionTabs section={section} isAdmin />
         <div className="flex flex-wrap gap-2">
           {SUB_PERIODS.map((p) => (
-            <Button key={p.key} size="sm" variant={p.key === dateKey ? "default" : "outline"} asChild>
+            <Button
+              key={p.key}
+              size="sm"
+              variant={p.key === dateKey ? "default" : "outline"}
+              className={
+                p.key === dateKey
+                  ? undefined
+                  : "border-primary/40 text-primary hover:bg-primary/10 dark:hover:bg-primary/15"
+              }
+              asChild
+            >
               <Link href={`${base}?date=${p.key}`}>{p.label}</Link>
             </Button>
           ))}
@@ -323,7 +343,17 @@ export default async function EarningsSectionPage({ params, searchParams }: Page
       <SectionTabs section={section} isAdmin={isAdmin(user)} />
       <div className="flex flex-wrap gap-2">
         {SUB_PERIODS.map((p) => (
-          <Button key={p.key} size="sm" variant={p.key === dateKey ? "default" : "outline"} asChild>
+          <Button
+            key={p.key}
+            size="sm"
+            variant={p.key === dateKey ? "default" : "outline"}
+            className={
+              p.key === dateKey
+                ? undefined
+                : "border-primary/40 text-primary hover:bg-primary/10 dark:hover:bg-primary/15"
+            }
+            asChild
+          >
             <Link href={`${base}?date=${p.key}`}>{p.label}</Link>
           </Button>
         ))}
@@ -396,13 +426,24 @@ function SectionTabs({ section, isAdmin }: { section: Section; isAdmin: boolean 
     { href: "/profile/earnings/subscribers", label: "Subscribers", show: true },
   ];
   return (
-    <div className="inline-flex flex-wrap gap-2 rounded-lg border border-border bg-muted/30 p-1">
+    <div className="inline-flex flex-wrap gap-2 rounded-lg border border-primary/20 bg-primary/[0.06] p-1 dark:bg-primary/10">
       {tabs
         .filter((t) => t.show)
         .map((t) => {
           const tabSection = t.href.replace("/profile/earnings/", "") as Section;
+          const isActive = section === tabSection;
           return (
-            <Button key={t.href} size="sm" variant={section === tabSection ? "default" : "ghost"} asChild>
+            <Button
+              key={t.href}
+              size="sm"
+              variant={isActive ? "default" : "outline"}
+              className={
+                isActive
+                  ? undefined
+                  : "border-primary/40 text-primary hover:bg-primary/10 dark:hover:bg-primary/15"
+              }
+              asChild
+            >
               <Link href={t.href}>{t.label}</Link>
             </Button>
           );
@@ -430,12 +471,22 @@ function PaginationBar({
   return (
     <div className="mt-4 flex justify-end gap-2">
       {page > 1 ? (
-        <Button variant="outline" size="sm" asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="border-primary/45 text-primary hover:bg-primary/10 dark:hover:bg-primary/15"
+          asChild
+        >
           <Link href={q(page - 1)}>Previous</Link>
         </Button>
       ) : null}
       {page < pages ? (
-        <Button variant="outline" size="sm" asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="border-primary/45 text-primary hover:bg-primary/10 dark:hover:bg-primary/15"
+          asChild
+        >
           <Link href={q(page + 1)}>Next</Link>
         </Button>
       ) : null}

@@ -1,17 +1,21 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
-import { Download } from "lucide-react";
 import { getSessionUser } from "@/lib/auth/get-session-user";
-import { getContributorItemsPage, contributorPreviewUrl, itemAccessBadge } from "@/lib/author/items";
-import { indexCategoryLabel } from "@/lib/author/category-labels";
-import { Badge } from "@/components/ui/badge";
+import {
+  type ContributorItemRow,
+  getContributorItemsPage,
+  contributorPreviewUrl,
+  itemAccessBadge,
+} from "@/lib/author/items";
+import { UPLOAD_CATEGORIES } from "@/lib/author/upload-categories";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
-import { productSoftwareLabel } from "@/lib/product-ui";
+import { normalizeProductFiles, productSoftwareLabel, productThumbnailUrl } from "@/lib/product-ui";
 import { motionflowItemPageUrl } from "@/lib/motionflow-urls";
 import type { Product } from "@/lib/product-types";
+import { AuthorItemCard } from "@/components/dashboard/author-item-card";
+import { DashboardPageHeader } from "@/components/dashboard/dashboard-page-header";
+import { ItemsEmptyState } from "@/components/dashboard/items-empty-state";
+import { ItemsScopeToggle } from "@/components/dashboard/items-scope-toggle";
 
 export const metadata: Metadata = {
   title: "Items",
@@ -23,7 +27,7 @@ type PageProps = {
   searchParams: Promise<{ team?: string; page?: string }>;
 };
 
-function stubProduct(row: { index_category_slug: string; name: string; id: number }): Product {
+function stubProduct(row: ContributorItemRow): Product {
   return {
     id: row.id,
     author_id: 0,
@@ -43,7 +47,7 @@ function stubProduct(row: { index_category_slug: string; name: string; id: numbe
     attributes: {},
     extra: null,
     json_args: null,
-    files: {},
+    files: normalizeProductFiles(row.files),
     has_demo: null,
     demo_url: null,
     has_external: null,
@@ -67,97 +71,71 @@ export default async function AuthorItemsPage({ searchParams }: PageProps) {
   const { items, total } = await getContributorItemsPage(user.id, { team, page, perPage: 24 });
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Items</h1>
-          <p className="text-muted-foreground">
-            You have <span className="font-semibold text-foreground">{total}</span> project
-            {total === 1 ? "" : "s"}
-            {team ? " (team)" : ""}.
-          </p>
-        </div>
-        <div className="inline-flex rounded-lg border border-border bg-muted/40 p-1">
-          <Link
-            href="/profile/items"
-            className={cn(
-              "rounded-md px-4 py-2 text-sm font-medium smooth",
-              !team ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            My items
-          </Link>
-          <Link
-            href="/profile/items?team=1"
-            className={cn(
-              "rounded-md px-4 py-2 text-sm font-medium smooth",
-              team ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Team items
-          </Link>
-        </div>
-      </div>
+    <div className="space-y-8">
+      <DashboardPageHeader
+        title="Items"
+        description={
+          <>
+            <span className="tabular-nums text-foreground">{total}</span>
+            <span>
+              {" "}
+              project{total === 1 ? "" : "s"}
+              {team ? " · Team view" : ""}
+            </span>
+          </>
+        }
+        actions={<ItemsScopeToggle team={team} />}
+      />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-        {items.map((item) => {
-          const preview = contributorPreviewUrl(item);
-          const badge = itemAccessBadge(item.access);
-          const p = stubProduct(item);
-          return (
-            <Card key={item.id} className="group overflow-hidden border-border/60">
-              <div className="relative aspect-video bg-muted">
-                {preview ? (
-                  <Image
-                    src={preview}
-                    alt=""
-                    fill
-                    className="object-cover"
-                    sizes="(max-width: 768px) 100vw, 33vw"
-                    unoptimized
-                  />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-                    No preview
-                  </div>
-                )}
-                {item.access === -10 ? (
-                  <Badge className="absolute right-2 top-2 bg-muted-foreground/90 text-xs uppercase">
-                    On processing
-                  </Badge>
-                ) : null}
-              </div>
-              <CardContent className="space-y-2 p-4">
-                <h2 className="line-clamp-2 font-semibold leading-snug">{item.name}</h2>
-                <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="rounded border border-border px-1.5 py-0.5 font-medium text-foreground">
-                    {productSoftwareLabel(p)}
-                  </span>
-                  {indexCategoryLabel(item.index_category_slug)}
-                </p>
-                <div className="flex items-center justify-between pt-1">
-                  <Badge variant={badge.variant === "destructive" ? "destructive" : "secondary"}>{badge.label}</Badge>
-                  <Button size="icon" className="bg-emerald-600 hover:bg-emerald-700" asChild>
-                    <a href={motionflowItemPageUrl(p, item.id, item.name)} target="_blank" rel="noopener noreferrer">
-                      <Download className="h-4 w-4 text-white" />
-                    </a>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+      {items.length === 0 ? (
+        <ItemsEmptyState team={team} />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((item) => {
+            const p = stubProduct(item);
+            const preview = productThumbnailUrl(p) || contributorPreviewUrl(item);
+            const badge = itemAccessBadge(item.access);
+            const categoryKey = item.index_category_slug.toLowerCase();
+            const canEdit =
+              item.author_id === user.id && UPLOAD_CATEGORIES.some((c) => c.slug === categoryKey);
+            const editHref = `/profile/upload/${item.index_category_slug}?item=${item.id}`;
+            return (
+              <AuthorItemCard
+                key={item.id}
+                itemId={item.id}
+                name={item.name}
+                previewUrl={preview}
+                softwareLabel={productSoftwareLabel(p)}
+                statusLabel={badge.label}
+                access={item.access}
+                canEdit={canEdit}
+                editHref={editHref}
+                marketplaceHref={motionflowItemPageUrl(p, item.id, item.name)}
+              />
+            );
+          })}
+        </div>
+      )}
 
       {total > 24 ? (
-        <div className="flex justify-center gap-2">
+        <div className="flex justify-center gap-2 pt-2">
           {page > 1 ? (
-            <Button variant="outline" asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 rounded-lg border-primary/45 px-4 text-[13px] font-medium text-primary hover:bg-primary/10 dark:hover:bg-primary/15"
+              asChild
+            >
               <Link href={`/profile/items${team ? "?team=1&" : "?"}page=${page - 1}`}>Previous</Link>
             </Button>
           ) : null}
           {page * 24 < total ? (
-            <Button variant="outline" asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 rounded-lg border-primary/45 px-4 text-[13px] font-medium text-primary hover:bg-primary/10 dark:hover:bg-primary/15"
+              asChild
+            >
               <Link href={`/profile/items${team ? "?team=1&" : "?"}page=${page + 1}`}>Next</Link>
             </Button>
           ) : null}

@@ -13,16 +13,21 @@ interface Props {
 
 export function SttSection({ items, onViewTranscript, onRemove }: Props) {
   return (
-    <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
+    <div className="rounded-xl border border-border/60 bg-card/40 p-4 shadow-sm sm:p-5">
       {items.length === 0 ? (
-        <p className="text-sm text-muted-foreground text-center py-8">
-          No speech-to-text generations yet.{" "}
-          <Link href="/speech-to-text" className="text-blue-400 hover:underline">
-            Create one
-          </Link>
-        </p>
+        <div className="flex flex-col items-center px-4 py-12 text-center">
+          <p className="max-w-sm text-[13px] leading-relaxed text-muted-foreground">
+            No speech-to-text yet.{" "}
+            <Link
+              href="/speech-to-text"
+              className="font-medium text-foreground underline underline-offset-4 hover:opacity-90"
+            >
+              Open STT
+            </Link>
+          </p>
+        </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {items.map((item) => (
             <SttCard
               key={item.id}
@@ -45,8 +50,8 @@ interface CardProps {
 
 function SttCard({ item, onViewTranscript, onRemove }: CardProps) {
   return (
-    <div className="flex items-start gap-4 p-3 rounded-xl border border-blue-500/20 bg-background/30 hover:border-blue-500/40 smooth">
-      <div className="w-12 h-12 shrink-0 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center">
+    <div className="flex items-start gap-4 rounded-lg border border-border/50 bg-muted/15 p-3 transition-colors hover:bg-muted/25">
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground ring-1 ring-border/50">
         <Mic className="w-5 h-5" />
       </div>
 
@@ -70,7 +75,7 @@ function SttCard({ item, onViewTranscript, onRemove }: CardProps) {
         {item.sourceUrl ? (
           <WaveformPlayer
             audioUrl={item.sourceUrl}
-            className="mt-3 rounded-lg border border-blue-500/15 bg-background/40 px-3 py-2"
+            className="mt-3 rounded-lg border border-border/50 bg-background/60 px-3 py-2"
           />
         ) : null}
       </div>
@@ -82,7 +87,7 @@ function SttCard({ item, onViewTranscript, onRemove }: CardProps) {
             onClick={() => onViewTranscript(item)}
             title="View transcript"
             aria-label="View transcript"
-            className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth"
+            className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <FileText className="w-4 h-4" />
           </button>
@@ -90,7 +95,7 @@ function SttCard({ item, onViewTranscript, onRemove }: CardProps) {
         <button
           type="button"
           onClick={() => onRemove(item.id)}
-          className="p-2 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 smooth"
+          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
         >
           <Trash2 className="w-4 h-4" />
         </button>

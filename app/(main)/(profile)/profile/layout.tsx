@@ -21,11 +21,11 @@ export default async function ProfileSectionLayout({
   }
 
   return (
-    <div className="flex flex-col gap-8 lg:flex-row lg:gap-10">
+    <div className="flex flex-col gap-8 lg:flex-row lg:gap-12">
       <aside className="shrink-0 lg:w-56">
         <AccountSidebar access={sessionUser.access} />
       </aside>
-      <div className="min-w-0 flex-1">{children}</div>
+      <div className="min-w-0 flex-1 lg:pt-0">{children}</div>
     </div>
   );
 }

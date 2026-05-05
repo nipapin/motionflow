@@ -103,8 +103,8 @@ export function BuyExtraGenerationsDialog({
                 className={cn(
                   "flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors",
                   selected
-                    ? "border-blue-500/50 bg-blue-500/15 shadow-md shadow-blue-500/10"
-                    : "border-border/60 bg-background/40 hover:border-blue-500/30 hover:bg-blue-500/5",
+                    ? "border-primary/50 bg-primary/15 shadow-md shadow-primary/15"
+                    : "border-border/60 bg-background/40 hover:border-primary/35 hover:bg-primary/5",
                   unavailable && "opacity-40 cursor-not-allowed",
                 )}
               >
@@ -133,14 +133,18 @@ export function BuyExtraGenerationsDialog({
         ) : null}
 
         <DialogFooter className="gap-2 sm:gap-2">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            type="button"
+            variant="outline"
+            className="border-primary/45 text-primary hover:bg-primary/10 dark:hover:bg-primary/15"
+            onClick={() => onOpenChange(false)}
+          >
             Cancel
           </Button>
           <Button
             type="button"
             onClick={onContinue}
             disabled={continueDisabled || continueLoading}
-            className="bg-linear-to-r from-blue-600 to-blue-500 text-white"
           >
             {continueLoading ? "Opening…" : "Continue"}
           </Button>

@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CreditCard } from "lucide-react";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getSubscriptionsForUser } from "@/lib/subscriptions";
+import { ProfileEmptyState } from "@/components/profile/profile-empty-state";
 import { SubscriptionCard } from "@/components/subscription-card";
+import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = {
   title: "My subscriptions",
@@ -16,37 +19,41 @@ export default async function ProfileSubscriptionsPage() {
 
   if (list.length === 0) {
     return (
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">My subscriptions</h1>
-        <div className="flex flex-col items-center rounded-2xl border border-blue-500/30 bg-card/40 px-6 py-14 text-center glow">
-          <h2 className="mb-2 text-lg font-medium">
-            You don&apos;t have an{" "}
-            <span className="text-primary">unlimited download</span> subscription.
-          </h2>
-          <p className="mb-6 text-muted-foreground">
-            Explore and use the full power of an unlimited subscription!
-          </p>
-          <Link
-            href="/pricing"
-            className="inline-flex items-center rounded-xl bg-linear-to-r from-blue-600 to-blue-500 px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-blue-500/25 smooth hover:from-blue-500 hover:to-blue-400"
-          >
-            Explore the subscription
-          </Link>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">My subscriptions</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Unlimited download plans and billing</p>
         </div>
+        <ProfileEmptyState
+          icon={CreditCard}
+          title="No active subscriptions"
+          description="An unlimited download subscription unlocks the full catalog. Compare plans and billing intervals on the pricing page."
+        >
+          <Button asChild size="sm">
+            <Link href="/pricing">View pricing</Link>
+          </Button>
+        </ProfileEmptyState>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-semibold tracking-tight">My subscriptions</h1>
-      {list.map((item) => (
-        <SubscriptionCard
-          key={item.subscriptionId}
-          item={item}
-          userEmail={user.email}
-        />
-      ))}
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">My subscriptions</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {list.length} subscription{list.length === 1 ? "" : "s"}
+        </p>
+      </div>
+      <div className="flex flex-col gap-4">
+        {list.map((item) => (
+          <SubscriptionCard
+            key={item.subscriptionId}
+            item={item}
+            userEmail={user.email}
+          />
+        ))}
+      </div>
     </div>
   );
 }

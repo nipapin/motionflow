@@ -9,6 +9,7 @@ import { CategoryDonut } from "@/components/author/category-donut";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DashboardPageHeader } from "@/components/dashboard/dashboard-page-header";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -20,6 +21,10 @@ function money(n: number): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
 }
 
+function looksLikeHtmlMarkup(s: string): boolean {
+  return /<\/?[a-z][\s\S]*>/i.test(s);
+}
+
 export default async function AuthorDashboardPage() {
   const user = await getSessionUser();
   if (!user) return null;
@@ -29,17 +34,26 @@ export default async function AuthorDashboardPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">Contributor overview — same data as the legacy Laravel panel.</p>
-      </div>
+      <DashboardPageHeader
+        title="Dashboard"
+        description="Contributor overview — sales, bookmarks, and announcements."
+      />
 
       {announce?.title ? (
-        <Alert className="border-blue-500/40 bg-blue-500/5">
-          <Infinity className="h-4 w-4 text-pink-500" />
-          <AlertTitle>{announce.title}</AlertTitle>
+        <Alert className="border-border/60 bg-muted/25">
+          <Infinity className="h-4 w-4 text-muted-foreground" />
+          <AlertTitle
+            {...(looksLikeHtmlMarkup(announce.title)
+              ? { dangerouslySetInnerHTML: { __html: announce.title } }
+              : { children: announce.title })}
+          />
           <AlertDescription className="space-y-1">
-            {typeof announce.body === "string" ? <p>{announce.body}</p> : null}
+            {typeof announce.body === "string" && announce.body.trim() ? (
+              <div
+                className="max-w-none leading-relaxed [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-4 [&_p]:mb-2 [&_p:last-child]:mb-0"
+                dangerouslySetInnerHTML={{ __html: announce.body }}
+              />
+            ) : null}
             {announce.link ? (
               <Link href={announce.link} className="text-primary underline-offset-4 hover:underline">
                 See more

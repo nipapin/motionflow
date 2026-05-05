@@ -1,9 +1,10 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { normalizeProductFiles } from "@/lib/product-ui";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -58,9 +59,26 @@ function sectionHeader(title: string, action?: ReactNode) {
   );
 }
 
-export function UploadDraftForm({ indexCategorySlug }: { indexCategorySlug: UploadCategorySlug }) {
+function tagsFromDb(raw: string): string[] {
+  return raw
+    .split(/[,;\n]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, MAX_TAGS)
+    .map((t) => t.slice(0, TAG_MAX_LEN));
+}
+
+export function UploadDraftForm({
+  indexCategorySlug,
+  editItemId,
+}: {
+  indexCategorySlug: UploadCategorySlug;
+  /** Open form for an existing row (`/profile/upload/...?item=`). */
+  editItemId?: number;
+}) {
   const router = useRouter();
   const [draftId, setDraftId] = useState<number | null>(null);
+  const [initializing, setInitializing] = useState(!!editItemId);
   const [files, setFiles] = useState<ProductFiles>({});
   const [descMode, setDescMode] = useState<"visual" | "html">("visual");
   const [subSlugs, setSubSlugs] = useState<string[]>([]);
@@ -93,6 +111,62 @@ export function UploadDraftForm({ indexCategorySlug }: { indexCategorySlug: Uplo
     () => (draftId && files.image ? contributorPreviewSrc(draftId, files.image) : null),
     [draftId, files.image],
   );
+
+  useEffect(() => {
+    if (!editItemId) return;
+    let cancelled = false;
+    (async () => {
+      setInitializing(true);
+      const res = await fetch(`/api/profile/upload/${editItemId}`, { credentials: "include" });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        id?: number;
+        name?: string;
+        description?: string;
+        extraSlug?: string | null;
+        tags?: string;
+        subCategorySlugs?: string[];
+        price?: number;
+        exclusive?: boolean;
+        subscription?: boolean;
+        files?: ProductFiles;
+        attributes?: { os_compatibles?: string; file_size?: string };
+        index_category_slug?: string;
+      };
+      if (cancelled) return;
+      if (!res.ok || !data.id) {
+        toast.error(data.error ?? "Could not load this project");
+        setInitializing(false);
+        return;
+      }
+      if (data.index_category_slug && data.index_category_slug !== indexCategorySlug) {
+        router.replace(`/profile/upload/${data.index_category_slug}?item=${data.id}`);
+        return;
+      }
+      setDraftId(data.id);
+      setFiles(normalizeProductFiles(data.files));
+      setSubSlugs((data.subCategorySlugs ?? []).slice(0, MAX_SUB_CATEGORIES));
+      setTags(data.tags ? tagsFromDb(data.tags) : []);
+      setFileSizeAttr(data.attributes?.file_size ?? "");
+      setDescMode(
+        (data.description ?? "").includes("<") && (data.description ?? "").includes(">") ? "html" : "visual",
+      );
+      form.reset({
+        name: data.name ?? "",
+        extraSlug: data.extraSlug ?? "",
+        description: data.description ?? "",
+        osCompatibles: (data.attributes?.os_compatibles ?? "Windows & Mac OS").trim() || "Windows & Mac OS",
+        price: data.price ?? 0,
+        exclusive: !!data.exclusive,
+        subscription: !!data.subscription,
+      });
+      setInitializing(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- form.reset is stable from useForm
+  }, [editItemId, indexCategorySlug, router]);
 
   const tagsPayload = useCallback(() => tags.join(", ").slice(0, 4000), [tags]);
   const worksWith = indexCategorySlug;
@@ -209,6 +283,16 @@ export function UploadDraftForm({ indexCategorySlug }: { indexCategorySlug: Uplo
 
   const uploadsLocked = !draftId;
 
+  if (initializing) {
+    return (
+      <div className="flex min-h-[280px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/20 px-6 py-12 text-center">
+        <Package className="h-10 w-10 text-muted-foreground" aria-hidden />
+        <p className="text-sm font-medium text-foreground">Loading project…</p>
+        <p className="text-xs text-muted-foreground">Fetching details and uploaded files.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-8 xl:flex-row xl:items-start">
@@ -311,7 +395,7 @@ export function UploadDraftForm({ indexCategorySlug }: { indexCategorySlug: Uplo
                         }}
                         variant="outline"
                         size="sm"
-                        className="shrink-0"
+                        className="shrink-0 rounded-lg border border-primary/25 bg-primary/5 p-[3px] shadow-none dark:bg-primary/10 **:data-[slot=toggle-group-item]:border-primary/35 **:data-[slot=toggle-group-item]:text-primary/85 **:data-[slot=toggle-group-item]:hover:bg-primary/10 **:data-[slot=toggle-group-item]:data-[state=on]:bg-primary/15 **:data-[slot=toggle-group-item]:data-[state=on]:text-primary"
                       >
                         <ToggleGroupItem value="visual" className="text-xs">
                           Visual editor
@@ -540,7 +624,7 @@ export function UploadDraftForm({ indexCategorySlug }: { indexCategorySlug: Uplo
                 </p>
               ) : null}
 
-              <Button variant="link" className="h-auto px-0 text-xs" asChild>
+              <Button variant="link" className="h-auto px-0 text-xs text-primary" asChild>
                 <Link href="https://developers.cloudflare.com/r2/buckets/cors/" target="_blank" rel="noreferrer">
                   R2 bucket CORS (browser PUT) <ExternalLink className="ml-1 inline h-3 w-3" />
                 </Link>
@@ -564,7 +648,12 @@ export function UploadDraftForm({ indexCategorySlug }: { indexCategorySlug: Uplo
           </Button>
           {draftId ? (
             <>
-              <Button type="button" variant="outline" asChild>
+              <Button
+                type="button"
+                variant="outline"
+                className="border-primary/45 text-primary hover:bg-primary/10 dark:hover:bg-primary/15"
+                asChild
+              >
                 <Link href="/profile/items">
                   <Package className="mr-2 h-4 w-4" />
                   My items
@@ -573,6 +662,7 @@ export function UploadDraftForm({ indexCategorySlug }: { indexCategorySlug: Uplo
               <Button
                 type="button"
                 variant="ghost"
+                className="text-primary hover:bg-primary/10 hover:text-primary dark:hover:bg-primary/15"
                 onClick={() => {
                   setDraftId(null);
                   setFiles({});

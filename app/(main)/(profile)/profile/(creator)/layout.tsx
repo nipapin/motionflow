@@ -6,5 +6,5 @@ export default async function CreatorShellLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const user = await getSessionUser();
   ensureAuthor(user);
-  return <div className="space-y-8">{children}</div>;
+  return <div className="space-y-8 pb-2">{children}</div>;
 }

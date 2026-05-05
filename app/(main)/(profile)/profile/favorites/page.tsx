@@ -1,8 +1,12 @@
+import Link from "next/link";
+import { Bookmark } from "lucide-react";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getFavoriteItemIds } from "@/lib/favorites";
 import { getMarketItemsByIds } from "@/lib/market-items";
 import { FavoritesList } from "@/components/favorites-list";
+import { ProfileEmptyState } from "@/components/profile/profile-empty-state";
+import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 
@@ -20,10 +24,22 @@ export default async function ProfileFavoritesPage() {
         <p className="mt-1 text-sm text-muted-foreground">
           {products.length > 0
             ? `${products.length} saved item${products.length === 1 ? "" : "s"}`
-            : "You haven\u2019t saved anything yet."}
+            : "Saved templates and audio packs"}
         </p>
       </div>
-      {products.length > 0 && <FavoritesList initialProducts={products} />}
+      {products.length > 0 ? (
+        <FavoritesList initialProducts={products} />
+      ) : (
+        <ProfileEmptyState
+          icon={Bookmark}
+          title="No favorites yet"
+          description="Save items from the catalog to build a shortlist you can return to anytime."
+        >
+          <Button asChild size="sm">
+            <Link href="/">Browse catalog</Link>
+          </Button>
+        </ProfileEmptyState>
+      )}
     </div>
   );
 }

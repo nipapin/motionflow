@@ -33,8 +33,8 @@ export function OwnedItemCard({
   const category = product ? productSoftwareLabel(product) : "";
 
   return (
-    <article className="flex flex-col gap-4 rounded-2xl border border-blue-500/30 bg-card/40 p-4 glow sm:flex-row sm:items-center">
-      <div className="relative h-28 w-full shrink-0 overflow-hidden rounded-xl bg-muted sm:h-24 sm:w-40">
+    <article className="group/owned flex flex-col gap-4 rounded-xl border border-border/60 bg-card p-4 shadow-sm transition-shadow hover:shadow-md sm:flex-row sm:items-center">
+      <div className="relative h-28 w-full shrink-0 overflow-hidden rounded-lg bg-muted ring-1 ring-inset ring-border/30 sm:h-24 sm:w-40">
         {thumb ? (
           <img src={thumb} alt={name} className="absolute inset-0 size-full object-cover" />
         ) : (
@@ -42,20 +42,22 @@ export function OwnedItemCard({
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <h2 className="font-semibold leading-snug text-foreground">{name}</h2>
+        <h2 className="text-[15px] font-semibold leading-snug tracking-tight text-foreground">{name}</h2>
         {category ? (
-          <p className="mt-1 text-xs text-muted-foreground">{category}</p>
+          <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{category}</p>
         ) : null}
         {metaLine ? <p className="mt-1 text-sm text-muted-foreground">{metaLine}</p> : null}
-        <p className="mt-1 text-xs text-muted-foreground/80">{dateLabel}</p>
+        <p className="mt-1 text-[11px] text-muted-foreground">{dateLabel}</p>
       </div>
       <div className="flex shrink-0 flex-col gap-2 sm:items-end">
         <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={() => void startMarketplaceDownload(itemId)}
-          className="w-full bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 sm:w-auto"
+          className="w-full opacity-90 transition-opacity group-hover/owned:opacity-100 sm:w-auto"
         >
-          <Download className="mr-2 h-4 w-4" />
+          <Download className="mr-1.5 h-3.5 w-3.5" />
           Download
         </Button>
       </div>

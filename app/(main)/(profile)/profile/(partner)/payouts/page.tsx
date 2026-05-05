@@ -83,7 +83,12 @@ export default async function PayoutsPage() {
         <Card className="border-border/60 lg:col-span-1">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Payment method</CardTitle>
-            <Button size="sm" variant="outline" asChild>
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-primary/45 text-primary hover:bg-primary/10 dark:hover:bg-primary/15"
+              asChild
+            >
               <Link href="/profile/payouts/setup">
                 <Settings className="mr-1 h-4 w-4" />
                 Change method

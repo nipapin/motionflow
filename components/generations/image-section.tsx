@@ -17,16 +17,21 @@ interface Props {
 
 export function ImageSection({ items, onPreview, onRemove }: Props) {
   return (
-    <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
+    <div className="rounded-xl border border-border/60 bg-card/40 p-4 shadow-sm sm:p-5">
       {items.length === 0 ? (
-        <p className="text-sm text-muted-foreground text-center py-8">
-          No image generations yet.{" "}
-          <Link href="/image-generation" className="text-blue-400 hover:underline">
-            Create one
-          </Link>
-        </p>
+        <div className="flex flex-col items-center px-4 py-12 text-center">
+          <p className="max-w-sm text-[13px] leading-relaxed text-muted-foreground">
+            No image generations yet.{" "}
+            <Link
+              href="/image-generation"
+              className="font-medium text-foreground underline underline-offset-4 hover:opacity-90"
+            >
+              Open image generator
+            </Link>
+          </p>
+        </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {items.map((item) => (
             <ImageCard
               key={item.id}
@@ -64,7 +69,7 @@ function ImageCard({ item, onPreview, onRemove }: CardProps) {
   }, [displaySrc, downloading, item.id]);
 
   return (
-    <div className="flex items-center gap-4 p-3 rounded-xl border border-blue-500/20 bg-background/30 hover:border-blue-500/40 smooth">
+    <div className="flex items-center gap-4 rounded-lg border border-border/50 bg-muted/15 p-3 transition-colors hover:bg-muted/25">
       {displaySrc ? (
         <button
           type="button"
@@ -105,7 +110,7 @@ function ImageCard({ item, onPreview, onRemove }: CardProps) {
             onClick={() => void onDownload()}
             disabled={downloading}
             title="Download"
-            className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth disabled:opacity-50"
+            className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
           >
             {downloading ? (
               <CircularLoader className="w-4 h-4 text-muted-foreground" />
@@ -117,7 +122,7 @@ function ImageCard({ item, onPreview, onRemove }: CardProps) {
         <button
           type="button"
           onClick={() => onRemove(item.id)}
-          className="p-2 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 smooth"
+          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
         >
           <Trash2 className="w-4 h-4" />
         </button>

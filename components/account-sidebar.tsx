@@ -16,7 +16,8 @@ import {
   DollarSign,
   Wallet,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { SidebarNavLink } from "@/components/dashboard/sidebar-nav-link";
+import { SidebarNavSection } from "@/components/dashboard/sidebar-nav-section";
 
 const accountNav = [
   { href: "/profile", label: "Profile", icon: User },
@@ -59,61 +60,32 @@ export function AccountSidebar({ access }: AccountSidebarProps) {
   const normalized = pathname.replace(/\/$/, "") || "/";
 
   return (
-    <nav className="flex flex-col gap-4">
-      <div className="rounded-xl border border-blue-500/30 bg-card/40 backdrop-blur-sm p-2 glow">
-        <p className="px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Account
-        </p>
-        <ul className="flex flex-col gap-0.5">
-          {accountNav.map(({ href, label, icon: Icon }) => {
-            const active = isActive(normalized, href);
-            return (
-              <li key={href}>
-                <Link
-                  href={href}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium smooth",
-                    active
-                      ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-md shadow-blue-500/20"
-                      : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-                  )}
-                >
-                  <Icon className={cn("h-5 w-5 shrink-0", active ? "text-white" : "text-blue-400")} />
-                  {label}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
+    <nav className="flex flex-col lg:sticky lg:top-28 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto lg:pb-8 lg:border-r lg:border-border/40 lg:pr-6">
+      <SidebarNavSection title="Account">
+        {accountNav.map(({ href, label, icon }) => (
+          <SidebarNavLink key={href} href={href} label={label} icon={icon} active={isActive(normalized, href)} />
+        ))}
+      </SidebarNavSection>
 
       {access >= 1 ? (
-        <div className="rounded-xl border border-blue-500/20 bg-card/30 p-2">
-          <p className="px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Author area
-          </p>
-          <ul className="flex flex-col gap-0.5">
-            {partnerNav.map(({ href, label, icon: Icon, minAccess }) => {
-              if (access < minAccess) return null;
-              const active = isActive(normalized, href);
-              return (
-                <li key={href}>
-                  <Link
-                    href={href}
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium smooth",
-                      active
-                        ? "bg-foreground/90 text-background shadow-sm"
-                        : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-                    )}
-                  >
-                    <Icon className={cn("h-5 w-5 shrink-0", active ? "text-background" : "text-blue-400")} />
-                    <span className="truncate">{label}</span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+        <SidebarNavSection title="Creator" className="mt-6">
+          {partnerNav.map(({ href, label, icon, minAccess }) => {
+            if (access < minAccess) return null;
+            return (
+              <SidebarNavLink key={href} href={href} label={label} icon={icon} active={isActive(normalized, href)} />
+            );
+          })}
+        </SidebarNavSection>
+      ) : null}
+
+      {access >= 2 ? (
+        <div className="mt-5 px-2">
+          <Link
+            href="/profile/upload"
+            className="flex items-center justify-center rounded-lg border border-primary/45 bg-primary/10 px-3 py-2 text-[13px] font-semibold text-primary shadow-xs transition-colors hover:bg-primary/15"
+          >
+            New upload
+          </Link>
         </div>
       ) : null}
     </nav>

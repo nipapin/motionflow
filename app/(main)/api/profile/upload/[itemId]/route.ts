@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { RowDataPacket } from "mysql2";
+import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { z } from "zod";
 import { getPool } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth/get-session-user";
@@ -70,6 +70,95 @@ const patchSchema = z
   .refine((b) => Object.values(b).some((v) => v !== undefined), { message: "No changes" });
 
 type RouteCtx = { params: Promise<{ itemId: string }> };
+
+export async function GET(_req: Request, ctx: RouteCtx) {
+  const user = await getSessionUser();
+  if (!user || !isAuthor(user)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { itemId: rawId } = await ctx.params;
+  const itemId = Number(rawId);
+  if (!Number.isFinite(itemId) || itemId < 1) {
+    return NextResponse.json({ error: "Invalid item" }, { status: 400 });
+  }
+
+  const table = marketplaceItemsTable();
+  const pool = getPool();
+  const [rows] = await pool.execute<RowDataPacket[]>(
+    `SELECT id, name, description, extra, tags, sub_category_slug, price, exclusive, subscription, files, attributes, index_category_slug
+     FROM \`${table}\` WHERE id = ? AND author_id = ? LIMIT 1`,
+    [itemId, user.id],
+  );
+  if (!rows.length) {
+    return NextResponse.json({ error: "Item not found" }, { status: 404 });
+  }
+
+  const row = rows[0]!;
+  const subRaw = String(row.sub_category_slug ?? "").trim();
+  const subCategorySlugs = subRaw
+    ? subRaw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
+
+  return NextResponse.json({
+    id: Number(row.id),
+    name: String(row.name ?? ""),
+    description: String(row.description ?? ""),
+    extraSlug: row.extra == null || row.extra === "" ? null : String(row.extra),
+    tags: String(row.tags ?? ""),
+    subCategorySlugs,
+    price: Number(row.price ?? 0),
+    exclusive: Number(row.exclusive ?? 0) === 1,
+    subscription: Number(row.subscription ?? 0) === 1,
+    files: normalizeProductFiles(row.files as ProductFiles | string | null),
+    attributes: normalizeAttributes(row.attributes),
+    index_category_slug: String(row.index_category_slug ?? ""),
+  });
+}
+
+export async function DELETE(_req: Request, ctx: RouteCtx) {
+  const user = await getSessionUser();
+  if (!user || !isAuthor(user)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { itemId: rawId } = await ctx.params;
+  const itemId = Number(rawId);
+  if (!Number.isFinite(itemId) || itemId < 1) {
+    return NextResponse.json({ error: "Invalid item" }, { status: 400 });
+  }
+
+  const table = marketplaceItemsTable();
+  const pool = getPool();
+  const [rows] = await pool.execute<RowDataPacket[]>(
+    `SELECT id, access FROM \`${table}\` WHERE id = ? AND author_id = ? LIMIT 1`,
+    [itemId, user.id],
+  );
+  if (!rows.length) {
+    return NextResponse.json({ error: "Item not found" }, { status: 404 });
+  }
+
+  const access = Number(rows[0]!.access ?? 0);
+  if (access === 1) {
+    return NextResponse.json(
+      { error: "Published items cannot be deleted from the dashboard." },
+      { status: 409 },
+    );
+  }
+
+  const [result] = await pool.execute<ResultSetHeader>(
+    `DELETE FROM \`${table}\` WHERE id = ? AND author_id = ?`,
+    [itemId, user.id],
+  );
+  if (!result.affectedRows) {
+    return NextResponse.json({ error: "Item not found" }, { status: 404 });
+  }
+
+  return NextResponse.json({ ok: true, id: itemId });
+}
 
 export async function PATCH(req: Request, ctx: RouteCtx) {
   const user = await getSessionUser();
