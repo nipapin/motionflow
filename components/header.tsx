@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { SEARCH_CATEGORY_OPTIONS, searchCategoryHref, type SearchCategory } from "@/lib/search-categories";
 import Image from "next/image";
 import { AuthorHeaderNavPopovers } from "@/components/author-header-nav-popovers";
+import { MainHeaderAuthorsPopover } from "@/components/main-header-authors-popover";
 
 interface HeaderProps {
   showSearch: boolean;
@@ -82,6 +83,8 @@ export function Header({
   };
 
   const isLoggedIn = !!user;
+  const normalizedPath = (pathname.replace(/\/$/, "") || "/") as string;
+  const isMainHome = normalizedPath === "/";
   const desktopLeftClass = typeof sidebarCollapsed === "boolean" ? (sidebarCollapsed ? "lg:left-[72px]" : "lg:left-72") : "lg:left-0";
   const positionClass = fixed ? `fixed top-0 right-0 left-0 ${desktopLeftClass}` : "relative";
 
@@ -258,13 +261,16 @@ export function Header({
 
           <div className="flex items-center gap-2">
             {!showBrand && (
-              <Button
-                variant="ghost"
-                className="text-muted-foreground hover:text-foreground hover:bg-foreground/5 rounded-full h-9 px-4 text-sm font-medium smooth"
-                asChild
-              >
-                <Link href="/pricing">Pricing</Link>
-              </Button>
+              <>
+                {isMainHome ? <MainHeaderAuthorsPopover /> : null}
+                <Button
+                  variant="ghost"
+                  className="text-muted-foreground hover:text-foreground hover:bg-foreground/5 rounded-full h-9 px-4 text-sm font-medium smooth"
+                  asChild
+                >
+                  <Link href="/pricing">Pricing</Link>
+                </Button>
+              </>
             )}
 
             {isLoggedIn ? (
