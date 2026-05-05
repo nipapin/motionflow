@@ -13,8 +13,8 @@ import { getR2Bucket, getR2Client, r2PublicUrlForKey } from "@/lib/r2-storage";
 const schema = z
   .object({
     itemId: z.coerce.number().int().positive(),
-    contentType: z.string().min(3).max(120),
-    extension: z.enum(["jpg", "jpeg", "png", "webp", "mp4", "zip"]),
+    contentType: z.string().min(1).max(120),
+    extension: z.enum(["jpg", "jpeg", "png", "webp", "gif", "mp4", "webm", "mov", "zip"]),
   })
   .strict();
 

@@ -28,7 +28,6 @@ export default async function UploadCategoryPage({ params }: PageProps) {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Upload — {meta.label}</h1>
-          <p className="text-muted-foreground">Creates a draft row in `marketplace_items` (files pipeline comes next).</p>
         </div>
         {autoApproval ? (
           <Badge className="w-fit bg-emerald-600 text-white">Auto-approval enabled</Badge>

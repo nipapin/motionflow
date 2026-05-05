@@ -167,8 +167,8 @@ export async function getDirectSalesRows(
      INNER JOIN \`${table}\` mi ON mi.id = si.item_id
      WHERE ${where}
      ORDER BY si.created_at DESC
-     LIMIT ? OFFSET ?`,
-    [...params, limit, offset],
+     LIMIT ${limit} OFFSET ${offset}`,
+    params,
   );
 
   const rows: DirectSaleRow[] = dataRows.map((raw) => {
@@ -353,8 +353,8 @@ export async function getSubscriptionDownloadAggregates(
      WHERE ${where}
      GROUP BY mi.id, mi.name
      ORDER BY cnt DESC
-     LIMIT ? OFFSET ?`,
-    [...params, limit, offset],
+     LIMIT ${limit} OFFSET ${offset}`,
+    params,
   );
 
   return {
@@ -405,8 +405,8 @@ export async function getSubscriberRows(
      INNER JOIN users u ON u.id = ss.buyer_id
      WHERE ${where}
      ORDER BY ss.created_at DESC
-     LIMIT ? OFFSET ?`,
-    [...params, limit, offset],
+     LIMIT ${limit} OFFSET ${offset}`,
+    params,
   );
 
   return {

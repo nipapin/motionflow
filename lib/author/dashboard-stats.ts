@@ -11,19 +11,10 @@ function toMysql(d: Date): string {
 }
 
 export type DirectSalesSlice = { earned: number; count: number };
-export type AffiliateSlice = { earned: number; count: number };
 export type SubscriptionSlice = {
   earned: number;
   count: number;
   average: number;
-};
-
-export type SearchQueryRow = {
-  query: string;
-  section: string;
-  slug: string;
-  found: number;
-  views: number;
 };
 
 export type CategoryCount = { slug: string; label: string; count: number };
@@ -35,12 +26,10 @@ export type DashboardStats = {
   itemsTotalPublished: number;
   newItemsThisMonth: number;
   earnSales: { today: DirectSalesSlice; month: DirectSalesSlice };
-  earnAffiliate: { today: AffiliateSlice; month: AffiliateSlice };
   earnSubscription: {
     todayCount: number;
     month: SubscriptionSlice;
   };
-  popularSearchQueries: SearchQueryRow[];
   categoryChart: CategoryCount[];
   announces: unknown | null;
 };
@@ -67,31 +56,6 @@ async function getAuthorProfitForPeriod(
   return {
     earned: Number(r?.earned ?? 0),
     count: Number(r?.purchased_count ?? 0),
-  };
-}
-
-async function getAffiliateProfitForPeriod(
-  authorId: number,
-  from: Date | null,
-  to: Date | null,
-): Promise<AffiliateSlice> {
-  const pool = getPool();
-  let sql = `SELECT
-    COALESCE(SUM(sold_items.ref_earn), 0) AS earned,
-    COUNT(sold_items.id) AS sold_count
-    FROM short_links
-    LEFT JOIN sold_items ON sold_items.ref_link_id = short_links.id AND sold_items.status = 1
-    WHERE short_links.bind_id = ?`;
-  const params: SqlParams = [authorId];
-  if (from && to) {
-    sql += ` AND sold_items.created_at BETWEEN ? AND ?`;
-    params.push(toMysql(from), toMysql(to));
-  }
-  const [rows] = await pool.execute<RowDataPacket[]>(sql, params);
-  const r = rows[0];
-  return {
-    earned: Number(r?.earned ?? 0),
-    count: Number(r?.sold_count ?? 0),
   };
 }
 
@@ -159,22 +123,17 @@ export async function getDashboardStats(authorId: number): Promise<DashboardStat
     userRes,
     earnSalesToday,
     earnSalesMonth,
-    earnAffToday,
-    earnAffMonth,
     subTodayCount,
     subMonth,
     favoritesRes,
     badgesRes,
     catRes,
     newMonthRes,
-    searchRes,
     announceRes,
   ] = await Promise.all([
     pool.execute<RowDataPacket[]>("SELECT balance FROM users WHERE id = ? LIMIT 1", [authorId]),
     getAuthorProfitForPeriod(authorId, dayStart, dayEnd),
     getAuthorProfitForPeriod(authorId, monthStart, monthEnd),
-    getAffiliateProfitForPeriod(authorId, dayStart, dayEnd),
-    getAffiliateProfitForPeriod(authorId, monthStart, monthEnd),
     (async () => {
       const [r] = await pool.execute<RowDataPacket[]>(
         `SELECT COUNT(id) AS c FROM subscription_downloads
@@ -211,12 +170,6 @@ export async function getDashboardStats(authorId: number): Promise<DashboardStat
       [authorId, toMysql(monthStart), toMysql(monthEnd)],
     ),
     pool.execute<RowDataPacket[]>(
-      `SELECT query, section, slug, found, views
-       FROM search_query_stats
-       ORDER BY updated_at DESC
-       LIMIT 5`,
-    ),
-    pool.execute<RowDataPacket[]>(
       `SELECT content FROM page_settings WHERE page = ? AND \`key\` = ? LIMIT 1`,
       ["contibutor", "announces"],
     ),
@@ -246,14 +199,6 @@ export async function getDashboardStats(authorId: number): Promise<DashboardStat
     }
   }
 
-  const popularSearchQueries: SearchQueryRow[] = searchRes[0].map((r) => ({
-    query: String(r.query ?? ""),
-    section: String(r.section ?? ""),
-    slug: String(r.slug ?? ""),
-    found: Number(r.found ?? 0),
-    views: Number(r.views ?? 0),
-  }));
-
   return {
     balance,
     inFavorites,
@@ -261,12 +206,10 @@ export async function getDashboardStats(authorId: number): Promise<DashboardStat
     itemsTotalPublished,
     newItemsThisMonth,
     earnSales: { today: earnSalesToday, month: earnSalesMonth },
-    earnAffiliate: { today: earnAffToday, month: earnAffMonth },
     earnSubscription: {
       todayCount: subTodayCount,
       month: subMonth,
     },
-    popularSearchQueries,
     categoryChart,
     announces,
   };

@@ -60,8 +60,8 @@ export async function getPayoutsPage(
       `SELECT id, status, amount, sold_amount, subs_amount, subs_bonus, method, extra_json, created_at, updated_at
        FROM payouts WHERE recipient_id = ?
        ORDER BY created_at DESC
-       LIMIT ? OFFSET ?`,
-      [recipientId, limit, offset],
+       LIMIT ${limit} OFFSET ${offset}`,
+      [recipientId],
     ),
   ]);
 

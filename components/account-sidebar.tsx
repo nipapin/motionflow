@@ -13,13 +13,10 @@ import {
   LayoutDashboard,
   CloudUpload,
   Briefcase,
-  UserPlus,
-  Megaphone,
   DollarSign,
   Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
 
 const accountNav = [
   { href: "/profile", label: "Profile", icon: User },
@@ -35,30 +32,18 @@ type PartnerNavItem = {
   label: string;
   icon: LucideIcon;
   minAccess: number;
-  badge?: string;
 };
 
 const partnerNav: PartnerNavItem[] = [
   { href: "/profile/dashboard", label: "Dashboard", icon: LayoutDashboard, minAccess: 2 },
   { href: "/profile/upload", label: "Upload", icon: CloudUpload, minAccess: 2 },
   { href: "/profile/items", label: "Items", icon: Briefcase, minAccess: 2 },
-  { href: "/profile/affiliate", label: "Affiliate", icon: UserPlus, minAccess: 1 },
-  {
-    href: "/profile/marketing/coupons",
-    label: "Marketing",
-    icon: Megaphone,
-    minAccess: 2,
-    badge: "NEW",
-  },
   { href: "/profile/earnings/sales", label: "Earnings", icon: DollarSign, minAccess: 1 },
   { href: "/profile/payouts", label: "Payouts", icon: Wallet, minAccess: 1 },
 ];
 
 function isActive(normalized: string, href: string): boolean {
   if (href === "/profile") return normalized === "/profile";
-  if (href === "/profile/marketing/coupons") {
-    return normalized.startsWith("/profile/marketing");
-  }
   if (href === "/profile/earnings/sales") {
     return normalized.startsWith("/profile/earnings");
   }
@@ -108,7 +93,7 @@ export function AccountSidebar({ access }: AccountSidebarProps) {
             Author area
           </p>
           <ul className="flex flex-col gap-0.5">
-            {partnerNav.map(({ href, label, icon: Icon, minAccess, badge }) => {
+            {partnerNav.map(({ href, label, icon: Icon, minAccess }) => {
               if (access < minAccess) return null;
               const active = isActive(normalized, href);
               return (
@@ -123,14 +108,7 @@ export function AccountSidebar({ access }: AccountSidebarProps) {
                     )}
                   >
                     <Icon className={cn("h-5 w-5 shrink-0", active ? "text-background" : "text-blue-400")} />
-                    <span className="flex min-w-0 flex-1 items-center gap-2">
-                      <span className="truncate">{label}</span>
-                      {badge ? (
-                        <Badge variant="secondary" className="shrink-0 text-[10px] uppercase">
-                          {badge}
-                        </Badge>
-                      ) : null}
-                    </span>
+                    <span className="truncate">{label}</span>
                   </Link>
                 </li>
               );

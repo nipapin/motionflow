@@ -62,12 +62,13 @@ export async function getContributorItemsPage(
   const [countRows] = await pool.execute<RowDataPacket[]>(countSql, params);
   const total = Number(countRows[0]?.c ?? 0);
 
+  // LIMIT/OFFSET must be literal — bound `LIMIT ?` breaks mysqld_stmt_execute on some MySQL builds.
   const listSql = `SELECT mi.id, mi.name, mi.index_category_slug, mi.access, mi.files, mi.team, mi.author_id
     FROM \`${table}\` AS mi
     WHERE ${whereSql}
     ORDER BY mi.id DESC
-    LIMIT ? OFFSET ?`;
-  const [rows] = await pool.execute<RowDataPacket[]>(listSql, [...params, limit, offset]);
+    LIMIT ${limit} OFFSET ${offset}`;
+  const [rows] = await pool.execute<RowDataPacket[]>(listSql, params);
 
   const items: ContributorItemRow[] = rows.map((r) => ({
     id: Number(r.id),
