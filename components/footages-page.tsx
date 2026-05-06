@@ -110,7 +110,7 @@ export function FootagesPage() {
   const [tab, setTab] = useState<TabValue>("images");
   const [searchInput, setSearchInput] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
-  const [orientation, setOrientation] = useState<OrientationValue>("landscape");
+  const [orientation, setOrientation] = useState<OrientationValue>("any");
 
   const [photosFeed, setPhotosFeed] = useState<FeedState<FootagePhoto>>(
     INITIAL_FEED_STATE as FeedState<FootagePhoto>,
