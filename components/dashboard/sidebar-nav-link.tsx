@@ -7,13 +7,15 @@ interface SidebarNavLinkProps {
   label: string;
   icon: LucideIcon;
   active?: boolean;
+  onNavigate?: () => void;
 }
 
 /** Account sidebar: muted by default; primary when active or hovered. */
-export function SidebarNavLink({ href, label, icon: Icon, active }: SidebarNavLinkProps) {
+export function SidebarNavLink({ href, label, icon: Icon, active, onNavigate }: SidebarNavLinkProps) {
   return (
     <Link
       href={href}
+      onClick={onNavigate}
       className={cn(
         "group flex items-center gap-2 rounded-lg px-2 py-2 text-[13px] font-medium leading-none tracking-tight transition-colors",
         active

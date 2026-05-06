@@ -51,27 +51,27 @@ export default async function RootLayout({
   const sessionUser = await getSessionUser();
   const initialUser = sessionUser ? { ...sessionUser, canChangePassword: !sessionUser.oauthPasswordOnly } : null;
   return (
-    <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body className="font-sans antialiased">
-        <div className="relative w-full h-full paddle-container"></div>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="dark"
-          enableSystem={false}
-          disableTransitionOnChange
-          storageKey="motionflow-theme"
-        >
-          <VideoMuteProvider>
-            <AuthProvider initialUser={initialUser}>
-              <PaddleProvider>
-                <FavoritesProvider>{children}</FavoritesProvider>
-              </PaddleProvider>
-            </AuthProvider>
-          </VideoMuteProvider>
-          <Toaster />
-        </ThemeProvider>
-        <Analytics />
-      </body>
-    </html>
+    <div
+      className={`relative min-h-full ${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
+    >
+      <div className="relative h-full w-full paddle-container" />
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="dark"
+        enableSystem={false}
+        disableTransitionOnChange
+        storageKey="motionflow-theme"
+      >
+        <VideoMuteProvider>
+          <AuthProvider initialUser={initialUser}>
+            <PaddleProvider>
+              <FavoritesProvider>{children}</FavoritesProvider>
+            </PaddleProvider>
+          </AuthProvider>
+        </VideoMuteProvider>
+        <Toaster />
+      </ThemeProvider>
+      <Analytics />
+    </div>
   );
 }

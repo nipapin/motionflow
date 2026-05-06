@@ -47,8 +47,36 @@ This document tracks porting the **7 contributor tabs** from `aniomLaravelSite` 
 | Marketing | `Contributor\Marketing`, `coupon_services`, `search_query_stats`, `mailing_updates_notifies` |
 | Upload | `Contributor\ItemManager`, `Contributor::ajaxUploading` |
 
+## Staff admin zone (`/adminzone`)
+
+Back-office from Laravel `routes/web.php` (`adminzone.*`, `investor` middleware `access >= 50`, nested `admin` middleware `access === 100`). **MySQL schema unchanged.**
+
+### URL map (Next.js)
+
+| Legacy Laravel | Next.js |
+|----------------|---------|
+| `/adminzone`, `/adminzone/dashboard` | `/adminzone/dashboard` |
+| `/adminzone/items_access/{wait\|soft\|reject\|blocked}` | `/adminzone/items_access/[[...segments]]` |
+| `/adminzone/requests` (+ filters) | `/adminzone/requests/[[...segments]]`, `?sort=` |
+| `/adminzone/requests/view?id=` | `/adminzone/requests/view?id=` |
+| `/adminzone/affiliate`, `coupons`, `offers`, `mailing_marketing` | Same paths (marketing stubs + admin-only layouts where Laravel gated) |
+| `/adminzone/search`, `help_center`, `tutorials`, `control`, `analytics` | Same paths (stubs → port controllers) |
+| `/adminzone/payouts`, `page_settings` | Same paths (`ensureAdmin` layouts) |
+| `/adminzone/investment` | `/adminzone/investment` (charts + `invest_analyses` table) |
+
+### Key files
+
+- **RBAC:** [`lib/auth/access-control.ts`](lib/auth/access-control.ts) — `ensureInvestor`, `ensureAdmin`
+- **Shell:** [`app/(adminzone)/adminzone/layout.tsx`](app/(adminzone)/adminzone/layout.tsx), [`components/admin/admin-shell.tsx`](components/admin/admin-shell.tsx)
+- **Dashboard / charts:** [`lib/admin/dashboard-stats.ts`](lib/admin/dashboard-stats.ts), [`components/admin/charts/`](components/admin/charts/)
+- **Items moderation:** [`lib/admin/items-moderation.ts`](lib/admin/items-moderation.ts), [`app/(adminzone)/_actions/items.ts`](app/(adminzone)/_actions/items.ts)
+- **Requests:** [`lib/admin/requests.ts`](lib/admin/requests.ts), [`app/(adminzone)/_actions/requests.ts`](app/(adminzone)/_actions/requests.ts)
+- **Command palette API:** [`app/api/admin/command-search/route.ts`](app/api/admin/command-search/route.ts), [`lib/admin/command-search.ts`](lib/admin/command-search.ts)
+- **Edge auth gate:** [`proxy.ts`](proxy.ts) — `/adminzone/*` requires session cookie (same as `/profile`)
+
 ## Changelog
 
+- **2026-05-06** — Admin zone MVP: dashboard, items moderation (approve / soft / hard / block / unblock), requests inbox + detail, investment charts + ledger, Cmd+K search API, mobile sidebar sheet; marketing/management/payouts CMS stubs + `ensureAdmin` on Laravel-gated routes.
 - **2026-05-04** — Phases 0–7 MVP in repo (`/api/profile/upload/draft`, `/api/profile/upload/sign`). Upload presign uses Laravel-aligned R2 keys `preview/{itemId}/…` (`itemId` + author ownership check). Document created.
 
 ## Definition of done (per phase)

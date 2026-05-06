@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Script from "next/script";
+import { Inter } from "next/font/google";
 import { EditorialBackdrop } from "@/components/EditorialBackdrop";
 import "@/app/(authors)/spunkram/globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -7,6 +9,12 @@ import { getSessionUser } from "@/lib/auth/get-session-user";
 import { SpunkramMainHeader } from "@/components/spunkram-main-header";
 import { PaddleProvider } from "@/lib/paddle";
 import { SiteFooter } from "@/components/site-footer";
+
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800", "900"],
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Spunkram — projects for Premiere Pro and After Effects",
@@ -29,7 +37,6 @@ export const metadata: Metadata = {
   },
 };
 
-// Inline script to apply theme before first paint (prevents flash)
 const themeScript = `(function(){try{var t=localStorage.getItem('theme');var m=window.matchMedia('(prefers-color-scheme: light)').matches;var light=t==='light'||(!t&&m);if(light){document.documentElement.classList.add('light');}}catch(e){}})();`;
 
 export default async function RootLayout({
@@ -43,22 +50,12 @@ export default async function RootLayout({
     : null;
 
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
-          rel="stylesheet"
-        />
-      </head>
-      <body
-        className="min-h-screen overflow-x-clip bg-page text-foreground antialiased"
+    <>
+      <Script id="spunkram-theme-init" strategy="beforeInteractive">
+        {themeScript}
+      </Script>
+      <div
+        className={`${inter.className} min-h-screen overflow-x-clip bg-page text-foreground antialiased`}
         suppressHydrationWarning
       >
         <div className="relative h-full w-full paddle-container" />
@@ -72,18 +69,15 @@ export default async function RootLayout({
           <AuthProvider initialUser={initialUser}>
             <PaddleProvider>
               <div className="relative min-h-screen overflow-x-clip">
-                {/* Decorative layer first so it never stacks above app content in edge cases */}
                 <EditorialBackdrop />
                 <SpunkramMainHeader />
-                <div className="relative z-1 min-h-screen min-w-0 overflow-x-clip">
-                  {children}
-                </div>
+                <div className="relative z-1 min-h-screen min-w-0 overflow-x-clip">{children}</div>
                 <SiteFooter className="left-0!" sidebarCollapsed />
               </div>
             </PaddleProvider>
           </AuthProvider>
         </ThemeProvider>
-      </body>
-    </html>
+      </div>
+    </>
   );
 }

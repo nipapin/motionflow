@@ -15,6 +15,23 @@ export function isAdmin(user: SessionUser | null): boolean {
   return user != null && user.access === 100;
 }
 
+/** Laravel `investor` middleware — staff / investor dashboard (`/adminzone`). */
+export function isInvestor(user: SessionUser | null): boolean {
+  return user != null && user.access >= 50;
+}
+
+/** Use from Server Components / layouts only. */
+export function ensureInvestor(user: SessionUser | null): SessionUser {
+  if (!user || user.access < 50) redirect("/");
+  return user;
+}
+
+/** Admin-only sections inside admin zone (Laravel `admin` middleware). */
+export function ensureAdmin(user: SessionUser | null): SessionUser {
+  if (!user || user.access !== 100) redirect("/adminzone/dashboard");
+  return user;
+}
+
 /** Use from Server Components / layouts only. */
 export function ensurePartner(user: SessionUser | null): SessionUser {
   if (!user || user.access < 1) redirect("/profile");

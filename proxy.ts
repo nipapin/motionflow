@@ -15,7 +15,10 @@ export function proxy(request: NextRequest) {
     return NextResponse.rewrite(url);
   }
 
-  if (!pathname.startsWith("/profile")) {
+  const gate =
+    pathname.startsWith("/profile") || pathname.startsWith("/adminzone");
+
+  if (!gate) {
     return NextResponse.next();
   }
 
@@ -29,5 +32,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/item/:path*", "/profile/:path*"],
+  matcher: ["/", "/item/:path*", "/profile/:path*", "/adminzone/:path*"],
 };

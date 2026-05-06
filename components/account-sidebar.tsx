@@ -15,6 +15,7 @@ import {
   Briefcase,
   DollarSign,
   Wallet,
+  Shield,
 } from "lucide-react";
 import { SidebarNavLink } from "@/components/dashboard/sidebar-nav-link";
 import { SidebarNavSection } from "@/components/dashboard/sidebar-nav-section";
@@ -75,6 +76,17 @@ export function AccountSidebar({ access }: AccountSidebarProps) {
               <SidebarNavLink key={href} href={href} label={label} icon={icon} active={isActive(normalized, href)} />
             );
           })}
+        </SidebarNavSection>
+      ) : null}
+
+      {access >= 50 ? (
+        <SidebarNavSection title="Staff" className="mt-6">
+          <SidebarNavLink
+            href="/adminzone/dashboard"
+            label="Admin zone"
+            icon={Shield}
+            active={normalized.startsWith("/adminzone")}
+          />
         </SidebarNavSection>
       ) : null}
 
