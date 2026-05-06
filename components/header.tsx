@@ -21,6 +21,7 @@ import { SEARCH_CATEGORY_OPTIONS, searchCategoryHref, type SearchCategory } from
 import Image from "next/image";
 import { AuthorHeaderNavPopovers } from "@/components/author-header-nav-popovers";
 import { MainHeaderAuthorsPopover } from "@/components/main-header-authors-popover";
+import { motionflowMainSiteUrl, motionflowSiteOrigin } from "@/lib/motionflow-urls";
 
 interface HeaderProps {
   showSearch: boolean;
@@ -85,6 +86,9 @@ export function Header({
   const isLoggedIn = !!user;
   const normalizedPath = (pathname.replace(/\/$/, "") || "/") as string;
   const isMainHome = normalizedPath === "/";
+  /** Author storefront (e.g. spunkram.*): account and home must target the main site, not the subdomain. */
+  const accountMenuHref = (href: string) =>
+    authorNavPopovers ? motionflowMainSiteUrl(href) : href;
   const desktopLeftClass = typeof sidebarCollapsed === "boolean" ? (sidebarCollapsed ? "lg:left-[72px]" : "lg:left-72") : "lg:left-0";
   const positionClass = fixed ? `fixed top-0 right-0 left-0 ${desktopLeftClass}` : "relative";
 
@@ -223,7 +227,7 @@ export function Header({
 
         {showBrand && (
           <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
-            <Link href="https://motionflow.pro" className="group flex min-w-0 items-center gap-3">
+            <Link href={motionflowSiteOrigin()} className="group flex min-w-0 items-center gap-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center smooth group-hover:scale-105">
                 <Image
                   src="/images/logo.png"
@@ -327,7 +331,7 @@ export function Header({
                         "data-highlighted:[&_svg]:text-white",
                       )}
                     >
-                      <Link href={href} className="flex items-center gap-3">
+                      <Link href={accountMenuHref(href)} className="flex items-center gap-3">
                         <Icon className="h-5 w-5 shrink-0" />
                         <span className="min-w-0">{label}</span>
                       </Link>

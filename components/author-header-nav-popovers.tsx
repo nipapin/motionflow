@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
-import { motionflowSiteOrigin } from "@/lib/motionflow-urls";
+import { motionflowMainSiteUrl } from "@/lib/motionflow-urls";
 import { cn } from "@/lib/utils";
 
 type HeaderNavItem =
@@ -38,10 +38,6 @@ const AI_TOOLS_ITEMS: HeaderNavItem[] = [
   { label: "Text to Speech", href: "/text-to-speech", icon: MessageSquare },
   { label: "Speech to Text", href: "/speech-to-text", icon: Mic },
 ];
-
-function mainSiteUrl(path: string): string {
-  return `${motionflowSiteOrigin()}${path}`;
-}
 
 function ItemGlyph({ item }: { item: HeaderNavItem }) {
   if ("text" in item) {
@@ -91,7 +87,7 @@ function NavHoverMenu({
           {items.map((item) => (
             <li key={item.href}>
               <a
-                href={mainSiteUrl(item.href)}
+                href={motionflowMainSiteUrl(item.href)}
                 className={cn(
                   "group/item flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-150",
                   "text-foreground/90 hover:text-white",

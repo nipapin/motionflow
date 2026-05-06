@@ -20,6 +20,13 @@ export function motionflowSiteOrigin(): string {
   return "https://motionflow.pro";
 }
 
+/** Absolute URL on the main Motion Flow site (e.g. author subdomains linking to account/home). */
+export function motionflowMainSiteUrl(path: string): string {
+  const base = motionflowSiteOrigin();
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  return `${base}${normalized}`;
+}
+
 /**
  * `https://motionflow.pro/item/{package-name}/{item-id}/download`
  * When the product row is missing, falls back to `item-{itemId}` as the package segment.
