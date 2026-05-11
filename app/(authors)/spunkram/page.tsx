@@ -10,8 +10,7 @@ import type { Project, ProjectApp } from "@/lib/data";
 import type { Product } from "@/lib/product-types";
 import { getMarketItemsByAuthorId } from "@/lib/market-items";
 import { productSoftwareLabel, productThumbnailUrl } from "@/lib/product-ui";
-
-const SPUNKRAM_AUTHOR_ID = 1691;
+import { SPUNKRAM_AUTHOR_ID } from "@/lib/spunkram-paddle-config";
 
 function toProjectApp(product: Product): ProjectApp | null {
   const label = productSoftwareLabel(product);

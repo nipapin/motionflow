@@ -1,12 +1,96 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { useAuth } from "@/components/auth-provider";
 import { plans, projects } from "@/lib/data";
+import { usePaddle } from "@/lib/paddle";
+import {
+  SPUNKRAM_AUTHOR_ID,
+  SPUNKRAM_LIBRARY_SUBSCRIPTION_PRICE_IDS,
+} from "@/lib/spunkram-paddle-config";
 
 export function Pricing() {
+  const router = useRouter();
+  const { paddle, ready, subscribe } = usePaddle();
+  const { user, openSignIn } = useAuth();
   const [active, setActive] = useState<"monthly" | "yearly">("yearly");
+  const [isOpening, setIsOpening] = useState(false);
+  const awaitingCheckout = useRef(false);
+
   const activePlan = plans.find((p) => p.id === active) ?? plans[0];
   const yearlyPlan = plans.find((p) => p.id === "yearly");
+
+  useEffect(() => {
+    return subscribe((event) => {
+      if (!awaitingCheckout.current) return;
+      if (event.name === "checkout.completed") {
+        awaitingCheckout.current = false;
+        setIsOpening(false);
+        toast.success("Payment successful! Your subscription is activating…");
+        router.push("/account?checkout=success");
+      }
+      if (event.name === "checkout.error") {
+        awaitingCheckout.current = false;
+        setIsOpening(false);
+        toast.error("Checkout error. Please try again.");
+      }
+      if (event.name === "checkout.closed") {
+        awaitingCheckout.current = false;
+        setIsOpening(false);
+      }
+    });
+  }, [subscribe, router]);
+
+  const openSubscribeCheckout = () => {
+    console.log("openSubscribeCheckout");
+    if (!user) {
+      openSignIn("signin");
+      return;
+    }
+
+    const billingPeriod = active === "monthly" ? "monthly" : "yearly";
+    const priceId = SPUNKRAM_LIBRARY_SUBSCRIPTION_PRICE_IDS[billingPeriod];
+
+    if (!priceId?.startsWith("pri_")) {
+      toast.error("Subscription checkout is not configured.");
+      return;
+    }
+
+    if (!paddle) {
+      toast.error(
+        ready ? "Checkout is not ready yet. Please try again." : "Checkout is still loading…",
+      );
+      return;
+    }
+
+    setIsOpening(true);
+    awaitingCheckout.current = true;
+
+    try {
+      paddle.Checkout.open({
+        settings: {
+          displayMode: "overlay",
+          theme: "light",
+          allowLogout: false,
+        },
+        items: [{ priceId, quantity: 1 }],
+        customer: { email: user.email ?? undefined },
+        customData: {
+          buyer_id: Number(user.id),
+          kind: "spunkram_subscription",
+          author_id: Number(SPUNKRAM_AUTHOR_ID),
+          billingPeriod,
+        },
+      });
+    } catch (err) {
+      awaitingCheckout.current = false;
+      setIsOpening(false);
+      console.error("[spunkram-pricing] paddle checkout open failed:", err);
+      toast.error("Could not open checkout. Please try again.");
+    }
+  };
 
   return (
     <section
@@ -18,14 +102,14 @@ export function Pricing() {
         aria-hidden="true"
       >
         <div
-          className="pointer-events-none h-full w-full blur-[64px] sm:blur-[88px]"
+          className="pointer-events-none h-full w-full blur-3xl sm:blur-[88px]"
           style={{
             background:
               "radial-gradient(ellipse 62% 54% at 50% 50%, rgb(124 77 255 / 0.34) 0%, rgb(167 139 250 / 0.14) 44%, rgb(124 77 255 / 0.05) 58%, transparent 72%)",
           }}
         />
       </div>
-      <div className="relative z-[1] max-w-6xl mx-auto px-5 sm:px-8 pointer-events-auto">
+      <div className="relative z-1 max-w-6xl mx-auto px-5 sm:px-8 pointer-events-auto">
         <div className="text-center max-w-xl mx-auto">
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-brand-500/10 text-brand-500 border border-brand-500/25">
             All projects · one subscription
@@ -143,9 +227,11 @@ export function Pricing() {
               <div className="mt-8">
                 <button
                   type="button"
-                  className="w-full rounded-full px-6 py-3 text-sm font-semibold bg-brand-violet hover:bg-brand-violet-hover text-white shadow-[inset_0_1px_0_0_rgb(255_255_255/0.22),0_14px_40px_-22px_rgb(110_60_255/0.65)] transition-[background-image,box-shadow] duration-200"
+                  onClick={openSubscribeCheckout}
+                  disabled={isOpening}
+                  className="w-full rounded-full px-6 py-3 text-sm font-semibold bg-brand-violet hover:bg-brand-violet-hover text-white shadow-[inset_0_1px_0_0_rgb(255_255_255/0.22),0_14px_40px_-22px_rgb(110_60_255/0.65)] transition-[background-image,box-shadow] duration-200 disabled:pointer-events-none disabled:opacity-60"
                 >
-                  Subscribe now
+                  {isOpening ? "Opening checkout…" : "Subscribe now"}
                 </button>
               </div>
             </div>

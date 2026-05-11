@@ -259,8 +259,8 @@ export default async function SpunkramItemPage({
               itemId={item.id}
               itemName={item.name}
               basePrice={item.price}
-              // jsonArgs={item.json_args}
-              jsonArgs={`{"paddle_price_ids": ["pri_01kqyy24624agjp3hwq4n4xh0w", "pri_01kqyy3arwj0w5dk3rwk8zx305"]}`}
+              jsonArgs={item.json_args}
+              // jsonArgs={`{"paddle_price_ids": ["pri_01kqyy24624agjp3hwq4n4xh0w", "pri_01kqyy3arwj0w5dk3rwk8zx305"]}`}
             />
 
             <dl className="mt-4 space-y-2 text-sm">

@@ -1,5 +1,14 @@
 export type SpunkramLicenseType = "personal" | "commercial";
 
+/** Spunkram storefront author id in the marketplace DB (see `app/(authors)/spunkram/page.tsx`). */
+export const SPUNKRAM_AUTHOR_ID = 1691;
+
+/** Paddle price IDs for the full-library subscription checkout on the Spunkram landing page. */
+export const SPUNKRAM_LIBRARY_SUBSCRIPTION_PRICE_IDS = {
+  monthly: "pri_01kqz18mj2jvpv5ykk6xmnr3y0",
+  yearly: "pri_01kqz19fpqxx0brjmhmwsrhxjv",
+} as const;
+
 export const SPUNKRAM_LICENSE_OPTIONS: Array<{
   value: SpunkramLicenseType;
   label: string;

@@ -84,11 +84,11 @@ export function ItemCheckoutCard({
         items: [{ priceId: selectedPriceId, quantity: selectedQuantity }],
         customer: { email: user.email ?? undefined },
         customData: {
-          userId: String(user.id),
+          buyer_id: Number(user.id),
           kind: "spunkram_item",
-          itemId: String(itemId),
+          item_id: Number(itemId),
           itemName,
-          licenseType,
+          license: licenseType,
           pricingSource: pricing.commercial && licenseType === "commercial" ? "json_args_commercial_price" : "json_args_personal_price",
         },
       });

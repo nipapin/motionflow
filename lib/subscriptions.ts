@@ -11,6 +11,8 @@ import { isExtraGenerationsPackPriceId } from "@/lib/extra-generation-packs";
 export type MotionflowGenerationPlan = "none" | "creator" | "creator_ai";
 
 export interface SubscriptionListItem {
+  /** Primary key in `subscription_systems` (stable list key). */
+  subscriptionSystemsRowId: number;
   subsFor: string;
   plan: string | null;
   subscriptionId: string;
@@ -92,6 +94,11 @@ function rowIsBillableMotionflowSubscription(r: SubRow): boolean {
     rowIsMotionflowCatalogSubscription(r) &&
     !isExtraGenerationsPackPriceId(r.paddle_price_id?.trim())
   );
+}
+
+/** Rows shown on Profile → My subscriptions: every real subscription row except one-time extra-gen pack stubs. */
+function rowIsProfileSubscriptionListing(r: SubRow): boolean {
+  return !isExtraGenerationsPackPriceId(r.paddle_price_id?.trim());
 }
 
 const PRODUCT_PAGES: Record<number | string, string> = {
@@ -199,7 +206,7 @@ function formatDateDMY(raw: string | null): string | null {
 
 const TABLE = "subscription_systems";
 
-const LIST_SUBSCRIPTION_SQL = `SELECT author_id, status, subscription_id, plan, ends_at, created_at,
+const LIST_SUBSCRIPTION_SQL = `SELECT id, author_id, status, subscription_id, plan, ends_at, created_at,
             paddle_product_id, paddle_price_id, paddle_product_name
      FROM \`${TABLE}\`
      WHERE buyer_id = ?
@@ -233,13 +240,14 @@ export async function getSubscriptionsForUser(
   const pool = getPool();
   const [rows] = await pool.execute<SubRow[]>(LIST_SUBSCRIPTION_SQL, [userId]);
 
-  return rows.filter((r) => rowIsBillableMotionflowSubscription(r)).map((r) => {
+  return rows.filter((r) => rowIsProfileSubscriptionListing(r)).map((r) => {
     const pres = resolveSubscriptionPresentation(r);
 
     const { active, cancelled } = computeRowActiveState(r);
     const endDate: string | null = formatDateDMY(r.ends_at);
 
     return {
+      subscriptionSystemsRowId: Number(r.id),
       ...pres,
       plan: r.plan ?? null,
       subscriptionId: String(r.subscription_id ?? ""),

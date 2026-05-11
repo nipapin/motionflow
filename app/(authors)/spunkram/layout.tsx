@@ -7,6 +7,7 @@ import { getSessionUser } from "@/lib/auth/get-session-user";
 import { SpunkramMainHeader } from "@/components/spunkram-main-header";
 import { PaddleProvider } from "@/lib/paddle";
 import { SiteFooter } from "@/components/site-footer";
+import { Toaster } from "@/components/ui/sonner";
 
 export const metadata: Metadata = {
   title: "Spunkram — projects for Premiere Pro and After Effects",
@@ -79,6 +80,7 @@ export default async function RootLayout({
                   {children}
                 </div>
                 <SiteFooter className="left-0!" sidebarCollapsed />
+                <Toaster />
               </div>
             </PaddleProvider>
           </AuthProvider>
