@@ -65,22 +65,19 @@ function renderWrapper(embedUrl: string, id: string): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>YouTube · ${safeId}</title>
 <style>
-  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; }
-  .wrap { position: fixed; inset: 0; }
-  .wrap iframe { width: 100%; height: 100%; border: 0; display: block; }
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+  iframe { width: 100%; height: 100%; border: 0; display: block; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <iframe
-    src="${safeUrl}"
-    title="YouTube video player"
-    frameborder="0"
-    allow="${IFRAME_ALLOW}"
-    allowfullscreen
-    referrerpolicy="strict-origin-when-cross-origin"
-  ></iframe>
-</div>
+<iframe
+  src="${safeUrl}"
+  title="YouTube video player"
+  frameborder="0"
+  allow="${IFRAME_ALLOW}"
+  allowfullscreen
+  referrerpolicy="strict-origin-when-cross-origin"
+></iframe>
 </body>
 </html>`;
 }
@@ -103,8 +100,8 @@ export async function GET(req: NextRequest) {
     "Content-Type": "text/html; charset=utf-8",
     // Allow this wrapper to be framed from any origin (CEP panels, etc.).
     "Content-Security-Policy": "frame-ancestors *",
-    "Cache-Control": "public, max-age=300, s-maxage=300",
-    "X-Content-Type-Options": "nosniff",
+    // No caching while we iterate; flip to e.g. `public, max-age=300` once stable.
+    "Cache-Control": "no-store, must-revalidate",
     "Referrer-Policy": "strict-origin-when-cross-origin",
   });
 
