@@ -82,6 +82,23 @@ function renderWrapper(embedUrl: string, id: string): string {
 </html>`;
 }
 
+function renderTestPage(id: string): string {
+  const safeId = escapeHtmlAttr(id);
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>yt-embed test</title>
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #2563eb; color: #fff;
+    font: 700 32px/1.2 system-ui, sans-serif; display: flex; align-items: center; justify-content: center;
+    text-align: center; }
+</style>
+</head>
+<body>HELLO from /api/youtube-embedding<br>id=${safeId}</body>
+</html>`;
+}
+
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const id = params.get("id");
@@ -93,8 +110,10 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const embedUrl = buildEmbedUrl(id, params);
-  const html = renderWrapper(embedUrl, id);
+  const isTest = params.get("test") === "1";
+  const html = isTest
+    ? renderTestPage(id)
+    : renderWrapper(buildEmbedUrl(id, params), id);
 
   const headers = new Headers({
     "Content-Type": "text/html; charset=utf-8",
