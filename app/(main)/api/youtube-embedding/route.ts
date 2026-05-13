@@ -6,16 +6,8 @@ export const dynamic = "force-dynamic";
 // YouTube video IDs are 11 chars from [A-Za-z0-9_-].
 const YT_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 
-// Modern desktop Chrome on Windows. CEP panels run on an old CEF build whose
-// default UA gets the "browser not supported" page from YouTube; spoofing a
-// recent UA on the server side returns the modern HTML5 embed player instead.
-const MODERN_USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-  "AppleWebKit/537.36 (KHTML, like Gecko) " +
-  "Chrome/127.0.0.0 Safari/537.36";
-
-// Query params we forward to https://www.youtube.com/embed/{id}?...
-// `id` is path-only and stripped out.
+// Whitelist of YouTube player params we forward into the inner iframe URL.
+// Anything else is dropped to keep the surface small and predictable.
 const FORWARDED_PARAMS = new Set([
   "autoplay",
   "mute",
@@ -41,7 +33,20 @@ const FORWARDED_PARAMS = new Set([
   "listType",
 ]);
 
-function buildUpstreamUrl(id: string, params: URLSearchParams): string {
+// Default allow-list for the inner <iframe>; matches what YouTube ships in
+// their canonical embed snippet.
+const IFRAME_ALLOW =
+  "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+
+function escapeHtmlAttr(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function buildEmbedUrl(id: string, params: URLSearchParams): string {
   const fwd = new URLSearchParams();
   for (const [k, v] of params.entries()) {
     if (FORWARDED_PARAMS.has(k)) fwd.append(k, v);
@@ -50,22 +55,34 @@ function buildUpstreamUrl(id: string, params: URLSearchParams): string {
   return `https://www.youtube.com/embed/${id}${qs ? `?${qs}` : ""}`;
 }
 
-function injectBaseTag(html: string): string {
-  // Inject <base href="https://www.youtube.com/"> so relative URLs inside the
-  // proxied page (scripts, styles, XHR endpoints) resolve back to YouTube
-  // instead of motionflow.pro.
-  const baseTag = '<base href="https://www.youtube.com/">';
-
-  // Drop any pre-existing <base> the upstream might have set.
-  html = html.replace(/<base\b[^>]*>/gi, "");
-
-  if (/<head[^>]*>/i.test(html)) {
-    return html.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`);
-  }
-  if (/<html[^>]*>/i.test(html)) {
-    return html.replace(/<html([^>]*)>/i, `<html$1><head>${baseTag}</head>`);
-  }
-  return baseTag + html;
+function renderWrapper(embedUrl: string, id: string): string {
+  const safeUrl = escapeHtmlAttr(embedUrl);
+  const safeId = escapeHtmlAttr(id);
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YouTube · ${safeId}</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; }
+  .wrap { position: fixed; inset: 0; }
+  .wrap iframe { width: 100%; height: 100%; border: 0; display: block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <iframe
+    src="${safeUrl}"
+    title="YouTube video player"
+    frameborder="0"
+    allow="${IFRAME_ALLOW}"
+    allowfullscreen
+    referrerpolicy="strict-origin-when-cross-origin"
+  ></iframe>
+</div>
+</body>
+</html>`;
 }
 
 export async function GET(req: NextRequest) {
@@ -79,62 +96,16 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const upstreamUrl = buildUpstreamUrl(id, params);
-
-  let upstream: Response;
-  try {
-    upstream = await fetch(upstreamUrl, {
-      method: "GET",
-      redirect: "follow",
-      cache: "no-store",
-      headers: {
-        "User-Agent": MODERN_USER_AGENT,
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Sec-Ch-Ua":
-          '"Chromium";v="127", "Not)A;Brand";v="99", "Google Chrome";v="127"',
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": '"Windows"',
-        "Sec-Fetch-Dest": "iframe",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "cross-site",
-        "Upgrade-Insecure-Requests": "1",
-      },
-    });
-  } catch {
-    return NextResponse.json(
-      { error: "failed to reach youtube.com" },
-      { status: 502 },
-    );
-  }
-
-  if (!upstream.ok) {
-    return NextResponse.json(
-      { error: `youtube returned ${upstream.status}` },
-      { status: upstream.status === 404 ? 404 : 502 },
-    );
-  }
-
-  const upstreamCt = upstream.headers.get("content-type") ?? "";
-  if (!upstreamCt.toLowerCase().includes("html")) {
-    return NextResponse.json(
-      { error: "unexpected upstream content-type" },
-      { status: 502 },
-    );
-  }
-
-  const rawHtml = await upstream.text();
-  const html = injectBaseTag(rawHtml);
+  const embedUrl = buildEmbedUrl(id, params);
+  const html = renderWrapper(embedUrl, id);
 
   const headers = new Headers({
     "Content-Type": "text/html; charset=utf-8",
-    // Allow any origin (CEP panels, etc.) to host this in an <iframe>.
+    // Allow this wrapper to be framed from any origin (CEP panels, etc.).
     "Content-Security-Policy": "frame-ancestors *",
-    // Short cache: YouTube ships frequent player updates.
     "Cache-Control": "public, max-age=300, s-maxage=300",
     "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "no-referrer-when-downgrade",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
   });
 
   return new NextResponse(html, { status: 200, headers });
