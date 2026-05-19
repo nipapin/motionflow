@@ -7,7 +7,7 @@ import {
   baseCookieOptions,
   verifySessionToken,
 } from "@/lib/auth/session";
-import { oauthPasswordOnlyFromGoogleId } from "@/lib/auth/users-table";
+import { resolveAuthUserFlags } from "@/lib/auth/google-account";
 import {
   decryptLaravelCookie,
   readLaravelSessionUserId,
@@ -17,19 +17,19 @@ type UserRow = RowDataPacket & {
   id: number;
   email: string;
   name: string;
+  password: string;
   google_id?: string | null;
   access?: number | null;
 };
 
-function userJson(user: UserRow) {
-  const oauthPasswordOnly = oauthPasswordOnlyFromGoogleId(user);
+async function userJson(user: UserRow) {
+  const flags = await resolveAuthUserFlags(user);
   const accessNum = Number(user.access ?? 0);
   return {
     id: user.id,
     email: user.email,
     name: user.name,
-    oauthPasswordOnly,
-    canChangePassword: !oauthPasswordOnly,
+    ...flags,
     access: Number.isFinite(accessNum) ? accessNum : 0,
   };
 }
@@ -37,7 +37,7 @@ function userJson(user: UserRow) {
 async function findUserById(id: number): Promise<UserRow | null> {
   const pool = getPool();
   const [rows] = await pool.execute<UserRow[]>(
-    "SELECT id, email, name, google_id, access FROM users WHERE id = ? LIMIT 1",
+    "SELECT id, email, name, password, google_id, access FROM users WHERE id = ? LIMIT 1",
     [id],
   );
   return rows[0] ?? null;
@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
     if (session) {
       try {
         const user = await findUserById(Number(session.sub));
-        if (user) return NextResponse.json({ user: userJson(user) });
+        if (user) return NextResponse.json({ user: await userJson(user) });
       } catch (e) {
         console.error("[auth/me]", e);
       }
@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
         const userId = await readLaravelSessionUserId(sessionId);
         if (userId) {
           const user = await findUserById(userId);
-          if (user) return NextResponse.json({ user: userJson(user) });
+          if (user) return NextResponse.json({ user: await userJson(user) });
         }
       }
     } catch (e) {

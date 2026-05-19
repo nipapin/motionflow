@@ -40,7 +40,7 @@ export default async function RootLayout({
 }) {
   const sessionUser = await getSessionUser();
   const initialUser = sessionUser
-    ? { ...sessionUser, canChangePassword: !sessionUser.oauthPasswordOnly }
+    ? sessionUser
     : null;
 
   return (

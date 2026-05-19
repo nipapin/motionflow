@@ -63,7 +63,7 @@ export function AppChrome({ children }: { children: ReactNode }) {
 
   const routeSidebarLabel = sidebarLabelForPath(normalizedPath);
   const isAiToolPage = AI_TOOL_SIDEBAR_LABELS.has(routeSidebarLabel);
-  const showSearch = isSpaHome || isSidebarSearchCategory(routeSidebarLabel) || isAiToolPage;
+  const showSearch = true;
   const activeCategory = isSpaHome ? spaActiveCategory : routeSidebarLabel;
 
   useEffect(() => {

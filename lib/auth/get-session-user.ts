@@ -6,7 +6,7 @@ import {
   LARAVEL_COOKIE_NAME,
   verifySessionToken,
 } from "@/lib/auth/session";
-import { oauthPasswordOnlyFromGoogleId } from "@/lib/auth/users-table";
+import { resolveAuthUserFlags } from "@/lib/auth/google-account";
 import {
   decryptLaravelCookie,
   readLaravelSessionUserId,
@@ -16,6 +16,7 @@ type UserRow = RowDataPacket & {
   id: number;
   email: string;
   name: string;
+  password: string;
   google_id?: string | null;
   access?: number | null;
 };
@@ -25,6 +26,9 @@ export type SessionUser = {
   email: string;
   name: string;
   oauthPasswordOnly: boolean;
+  hasGoogleLinked: boolean;
+  canChangePassword: boolean;
+  canUnlinkGoogle: boolean;
   /** Laravel contributor tier (see `lib/auth/access-control.ts`). */
   access: number;
 };
@@ -33,17 +37,18 @@ async function loadUserById(id: number): Promise<SessionUser | null> {
   try {
     const pool = getPool();
     const [rows] = await pool.execute<UserRow[]>(
-      "SELECT id, email, name, google_id, access FROM users WHERE id = ? LIMIT 1",
+      "SELECT id, email, name, password, google_id, access FROM users WHERE id = ? LIMIT 1",
       [id],
     );
     const u = rows[0];
     if (!u) return null;
+    const flags = await resolveAuthUserFlags(u);
     const accessNum = Number(u.access ?? 0);
     return {
       id: u.id,
       email: u.email,
       name: u.name,
-      oauthPasswordOnly: oauthPasswordOnlyFromGoogleId(u),
+      ...flags,
       access: Number.isFinite(accessNum) ? accessNum : 0,
     };
   } catch (e) {
