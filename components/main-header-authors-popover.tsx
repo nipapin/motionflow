@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { cn } from "@/lib/utils";
 
-const AUTHORS_LINKS = [
+export const MAIN_HEADER_AUTHORS_LINKS = [
   { label: "Premiere Gal", href: "https://premieregal.motionflow.pro" },
   { label: "Spunkram", href: "https://spunkramv2.motionflow.pro" },
   { label: "Enam Alamin", href: "https://enamalamin.motionflow.pro" },
@@ -33,7 +33,7 @@ export function MainHeaderAuthorsPopover() {
         )}
       >
         <ul className="flex flex-col gap-0.5" role="list">
-          {AUTHORS_LINKS.map((item) => (
+          {MAIN_HEADER_AUTHORS_LINKS.map((item) => (
             <li key={item.href}>
               <a
                 href={item.href}

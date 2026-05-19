@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useGenerations } from "@/hooks/use-generations";
+import { MAIN_HEADER_AUTHORS_LINKS } from "@/components/main-header-authors-popover";
 
 const categories = [
   { name: "After Effects", text: "Ae", href: "/after-effects" },
@@ -312,6 +313,33 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
 
         <div className="mt-8 border-t border-border/50 pt-5 lg:hidden">
           <h3 className="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            More
+          </h3>
+          <ul className="space-y-1">
+            <li>
+              <Link
+                href="/pricing"
+                className="flex w-full items-center rounded-xl px-4 py-3 text-sm font-medium text-muted-foreground smooth hover:bg-foreground/5 hover:text-foreground"
+                onClick={() => setMobileOpen(false)}
+              >
+                Pricing
+              </Link>
+            </li>
+            {MAIN_HEADER_AUTHORS_LINKS.map(({ label, href }) => (
+              <li key={href}>
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex w-full items-center rounded-xl px-4 py-3 text-sm font-medium text-muted-foreground smooth hover:bg-foreground/5 hover:text-foreground"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  {label}
+                </a>
+              </li>
+            ))}
+          </ul>
+          <h3 className="mb-3 mt-6 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Info
           </h3>
           <ul className="space-y-1">
