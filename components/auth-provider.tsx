@@ -16,7 +16,9 @@ export type AuthUser = {
   email: string;
   name: string;
   oauthPasswordOnly?: boolean;
+  hasGoogleLinked?: boolean;
   canChangePassword?: boolean;
+  canUnlinkGoogle?: boolean;
 };
 
 type SignInMode = "signin" | "signup";

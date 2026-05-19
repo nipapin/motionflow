@@ -14,16 +14,20 @@ import {
 } from "@/components/ui/card";
 import { toast } from "sonner";
 
+type AuthUserPayload = {
+  id: number;
+  email: string;
+  name: string;
+  oauthPasswordOnly: boolean;
+  hasGoogleLinked?: boolean;
+  canChangePassword: boolean;
+  canUnlinkGoogle?: boolean;
+};
+
 type PatchJson =
   | {
       success: true;
-      user: {
-        id: number;
-        email: string;
-        name: string;
-        oauthPasswordOnly: boolean;
-        canChangePassword: boolean;
-      };
+      user: AuthUserPayload;
     }
   | {
       success: false;
@@ -50,6 +54,8 @@ export function ProfileSettings() {
   const [savingName, setSavingName] = useState(false);
   const [savingEmail, setSavingEmail] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+  const [unlinkPassword, setUnlinkPassword] = useState("");
+  const [unlinkingGoogle, setUnlinkingGoogle] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -66,7 +72,9 @@ export function ProfileSettings() {
   }
 
   const oauthOnly = Boolean(user.oauthPasswordOnly);
+  const hasGoogleLinked = Boolean(user.hasGoogleLinked);
   const canChangePassword = user.canChangePassword !== false;
+  const canUnlinkGoogle = Boolean(user.canUnlinkGoogle);
 
   const patch = async (body: Record<string, unknown>, onSuccess: () => void) => {
     const r = await fetch("/api/auth/profile", {
@@ -117,6 +125,32 @@ export function ProfileSettings() {
       if (ok) setEmailPassword("");
     } finally {
       setSavingEmail(false);
+    }
+  };
+
+  const onUnlinkGoogle = async () => {
+    if (!unlinkPassword) {
+      toast.error("Enter your current password to unlink Google");
+      return;
+    }
+    setUnlinkingGoogle(true);
+    try {
+      const r = await fetch("/api/auth/profile/unlink-google", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword: unlinkPassword }),
+      });
+      const data = (await r.json()) as PatchJson;
+      if (!data.success) {
+        toast.error(firstError(data.errors) ?? data.message ?? "Could not unlink Google");
+        return;
+      }
+      await refresh();
+      setUnlinkPassword("");
+      toast.success("Google account unlinked");
+    } finally {
+      setUnlinkingGoogle(false);
     }
   };
 
@@ -189,7 +223,9 @@ export function ProfileSettings() {
           <CardDescription>
             {oauthOnly
               ? "This account uses Google sign-in. The email is tied to your Google account."
-              : "Change the address you use to sign in with a password."}
+              : hasGoogleLinked
+                ? "Google is linked. You can sign in with Google or your email and password."
+                : "Change the address you use to sign in with a password."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -234,12 +270,48 @@ export function ProfileSettings() {
         </CardContent>
       </Card>
 
+      {canUnlinkGoogle && (
+        <Card className="border-blue-500/30 bg-card/40 backdrop-blur-sm glow">
+          <CardHeader>
+            <CardTitle>Google account</CardTitle>
+            <CardDescription>
+              Your profile is linked to Google. Unlink to sign in with email and password only, or
+              keep both methods.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 max-w-md">
+            <div className="space-y-2">
+              <Label htmlFor="profile-unlink-pw">Current password</Label>
+              <Input
+                id="profile-unlink-pw"
+                type="password"
+                value={unlinkPassword}
+                onChange={(e) => setUnlinkPassword(e.target.value)}
+                autoComplete="current-password"
+                className="bg-foreground/5 border-transparent"
+              />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void onUnlinkGoogle()}
+              disabled={unlinkingGoogle || !unlinkPassword}
+              className="rounded-full border-red-500/40 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+            >
+              {unlinkingGoogle ? "Unlinking…" : "Unlink Google account"}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {canChangePassword && (
         <Card className="border-blue-500/30 bg-card/40 backdrop-blur-sm glow">
           <CardHeader>
             <CardTitle>Password</CardTitle>
             <CardDescription>
-              Only for accounts that sign in with email and password.
+              {hasGoogleLinked
+                ? "Update the password you use alongside Google sign-in."
+                : "Only for accounts that sign in with email and password."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 max-w-md">

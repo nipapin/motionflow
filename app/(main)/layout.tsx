@@ -49,7 +49,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const sessionUser = await getSessionUser();
-  const initialUser = sessionUser ? { ...sessionUser, canChangePassword: !sessionUser.oauthPasswordOnly } : null;
+  const initialUser = sessionUser ?? null;
   return (
     <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable}`}>
       <body className="font-sans antialiased">

@@ -81,8 +81,6 @@ export function Header({
   };
 
   const isLoggedIn = !!user;
-  const normalizedPath = (pathname.replace(/\/$/, "") || "/") as string;
-  const isMainHome = normalizedPath === "/";
   /** Author storefront (e.g. spunkram.*): account and home must target the main site, not the subdomain. */
   const accountMenuHref = (href: string) => (authorNavPopovers ? motionflowMainSiteUrl(href) : href);
   const desktopLeftClass = typeof sidebarCollapsed === "boolean" ? (sidebarCollapsed ? "lg:left-[72px]" : "lg:left-72") : "lg:left-0";
@@ -242,7 +240,7 @@ export function Header({
         <div className={cn("ml-auto flex min-w-0 shrink-0 items-center gap-1 sm:gap-2", !showBrand && !showSearch && "lg:ml-6")}>
           {!showBrand && (
             <div className="hidden lg:flex items-center gap-2">
-              {isMainHome ? <MainHeaderAuthorsPopover /> : null}
+              <MainHeaderAuthorsPopover />
               <Button
                 variant="ghost"
                 className="text-muted-foreground hover:text-foreground hover:bg-foreground/5 rounded-full h-9 px-4 text-sm font-medium smooth"

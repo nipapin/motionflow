@@ -14,7 +14,7 @@ import {
   decryptLaravelCookie,
   readLaravelSessionUserId,
 } from "@/lib/auth/laravel-session";
-import { oauthPasswordOnlyFromGoogleId } from "@/lib/auth/users-table";
+import { resolveAuthUserFlags } from "@/lib/auth/google-account";
 import { profilePatchSchema } from "@/lib/validations/profile";
 
 type UserRow = RowDataPacket & {
@@ -117,7 +117,8 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    const oauthOnly = oauthPasswordOnlyFromGoogleId(row);
+    const authFlags = await resolveAuthUserFlags(row);
+    const oauthOnly = authFlags.oauthPasswordOnly;
     let nextEmail = row.email;
     let nextName = row.name;
 
@@ -253,14 +254,19 @@ export async function PATCH(req: NextRequest) {
       name: nextName,
     });
 
+    const flagsAfter = await resolveAuthUserFlags({
+      ...row,
+      email: nextEmail,
+      name: nextName,
+    });
+
     const res = NextResponse.json({
       success: true as const,
       user: {
         id: userId,
         email: nextEmail,
         name: nextName,
-        oauthPasswordOnly: oauthOnly,
-        canChangePassword: !oauthOnly,
+        ...flagsAfter,
       },
     });
     res.cookies.set(SESSION_COOKIE_NAME, newToken, {
