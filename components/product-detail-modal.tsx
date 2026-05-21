@@ -11,13 +11,7 @@ import { useFavorites } from "@/components/favorites-provider";
 import { SignInModal } from "@/components/sign-in-modal";
 import { SubscriptionModal } from "@/components/subscription-modal";
 import type { Product } from "@/lib/product-types";
-import {
-  productCardVideoSrc,
-  productKind,
-  productPreviewVideoUrl,
-  productSoftwareLabel,
-  productThumbnailUrl,
-} from "@/lib/product-ui";
+import { productCardVideoSrc, productKind, productPreviewVideoUrl, productSoftwareLabel, productThumbnailUrl } from "@/lib/product-ui";
 import { AudioTrack, pauseGlobalAudioPlayback } from "./audio-track";
 import { SimilarProducts } from "./similar-products";
 import { startMarketplaceDownload } from "@/lib/open-marketplace-download";
@@ -141,7 +135,12 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
   } else {
     if (attrs.ae_version || softwareLabel) {
       details.push({
-        icon: <span className="text-[10px] font-bold leading-none">{softwareLabel === "Premiere Pro" ? "Pr" : softwareLabel === "DaVinci Resolve" ? "Dr" : softwareLabel === "Illustrator" ? "Ai" : "Ae"}</span>,
+        icon: (
+          <span className="text-[10px] font-bold leading-none">
+            {softwareLabel === "Premiere Pro" ? "Pr" : softwareLabel === "DaVinci Resolve" ? "Dr" : "Ae"}
+          </span>
+        ),
+        // icon: <span className="text-[10px] font-bold leading-none">{softwareLabel === "Premiere Pro" ? "Pr" : softwareLabel === "DaVinci Resolve" ? "Dr" : softwareLabel === "Illustrator" ? "Ai" : "Ae"}</span>,
         label: "Version",
         value: attrs.ae_version || "—",
       });
@@ -211,7 +210,10 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
             {!isAudio && (
               <button
                 type="button"
-                onClick={(e) => { e.stopPropagation(); void toggleFav(product.id); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void toggleFav(product.id);
+                }}
                 className={cn(
                   "w-10 h-10 rounded-full flex items-center justify-center smooth",
                   favorited ? "bg-red-500/20 text-red-400" : "bg-white/10 text-white hover:bg-white/20",
@@ -327,61 +329,59 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
                       </div>
                     )}
                     <div className="p-5 sm:p-6">
-                    <h1 className="text-xl sm:text-2xl font-semibold text-foreground leading-tight">{product.name}</h1>
+                      <h1 className="text-xl sm:text-2xl font-semibold text-foreground leading-tight">{product.name}</h1>
 
-                    {/* Description */}
-                    {product.description_html ? (
-                      <div
-                        className="mt-3 text-sm text-muted-foreground line-clamp-4 leading-relaxed prose-sm prose-invert"
-                        dangerouslySetInnerHTML={{
-                          __html: product.description_html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ""),
-                        }}
-                      />
-                    ) : product.description ? (
-                      <p className="mt-3 text-sm text-muted-foreground line-clamp-4 leading-relaxed">{product.description}</p>
-                    ) : null}
-
-                    <Button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleAction();
-                      }}
-                      className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-xl font-medium mt-6 mb-6 shadow-lg shadow-blue-500/25"
-                    >
-                      <Download className="w-5 h-5 mr-2" />
-                      {!user ? "Sign in to Download" : "Download"}
-                    </Button>
-
-                    {/* Tags */}
-                    <div className="flex flex-wrap gap-2 mb-6">
-                      {tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="px-3 py-1.5 rounded-full text-xs font-medium bg-white/10 text-foreground border border-border/50"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-
-                    {/* Details */}
-                    <div className="divide-y divide-border/50">
-                      {details.map((detail) => (
+                      {/* Description */}
+                      {product.description_html ? (
                         <div
-                          key={detail.label}
-                          className="grid grid-cols-[1.5rem_1fr_auto] items-start gap-x-3 gap-y-1 py-3 text-sm"
-                        >
-                          <span className="flex h-6 items-center justify-center text-muted-foreground shrink-0">
-                            {detail.icon}
+                          className="mt-3 text-sm text-muted-foreground line-clamp-4 leading-relaxed prose-sm prose-invert"
+                          dangerouslySetInnerHTML={{
+                            __html: product.description_html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ""),
+                          }}
+                        />
+                      ) : product.description ? (
+                        <p className="mt-3 text-sm text-muted-foreground line-clamp-4 leading-relaxed">{product.description}</p>
+                      ) : null}
+
+                      <Button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAction();
+                        }}
+                        className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-xl font-medium mt-6 mb-6 shadow-lg shadow-blue-500/25"
+                      >
+                        <Download className="w-5 h-5 mr-2" />
+                        {!user ? "Sign in to Download" : "Download"}
+                      </Button>
+
+                      {/* Tags */}
+                      <div className="flex flex-wrap gap-2 mb-6">
+                        {tags.map((tag) => (
+                          <span
+                            key={tag}
+                            className="px-3 py-1.5 rounded-full text-xs font-medium bg-white/10 text-foreground border border-border/50"
+                          >
+                            {tag}
                           </span>
-                          <span className="text-muted-foreground min-w-0 pt-0.5 leading-snug">{detail.label}</span>
-                          <span className="text-foreground font-medium text-right tabular-nums pt-0.5 leading-snug whitespace-nowrap">
-                            {detail.value}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+
+                      {/* Details */}
+                      <div className="divide-y divide-border/50">
+                        {details.map((detail) => (
+                          <div
+                            key={detail.label}
+                            className="grid grid-cols-[1.5rem_1fr_auto] items-start gap-x-3 gap-y-1 py-3 text-sm"
+                          >
+                            <span className="flex h-6 items-center justify-center text-muted-foreground shrink-0">{detail.icon}</span>
+                            <span className="text-muted-foreground min-w-0 pt-0.5 leading-snug">{detail.label}</span>
+                            <span className="text-foreground font-medium text-right tabular-nums pt-0.5 leading-snug whitespace-nowrap">
+                              {detail.value}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -390,11 +390,7 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
               {similarProducts.length > 0 && (
                 <div className="mt-12 pb-4">
                   <h2 className="text-lg font-semibold text-foreground mb-6">Similar Items</h2>
-                  <SimilarProducts
-                    products={similarProducts}
-                    kind={kind}
-                    onProductClick={onProductChange}
-                  />
+                  <SimilarProducts products={similarProducts} kind={kind} onProductClick={onProductChange} />
                 </div>
               )}
             </div>

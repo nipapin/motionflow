@@ -255,7 +255,7 @@ export interface HomeSection {
 
 const HOME_SECTIONS: { title: string; slugs: string[] }[] = [
   { title: "Most Popular Templates", slugs: ["after-effects", "premiere-pro", "davinci-resolve"] },
-  { title: "Most Popular Graphics", slugs: ["illustrator"] },
+  // { title: "Most Popular Graphics", slugs: ["illustrator"] },
   { title: "Most Popular Stock Audio", slugs: ["stock-audio"] },
   { title: "Most Popular Sound FX", slugs: ["sound-fx"] },
 ];

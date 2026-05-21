@@ -2,7 +2,7 @@ export const SIDEBAR_SEARCH_CATEGORIES = [
   "After Effects",
   "Premiere Pro",
   "DaVinci Resolve",
-  "Illustrator",
+  // "Illustrator",
   "Stock Music",
   "Sound FX",
 ] as const;
@@ -17,7 +17,7 @@ const SEARCH_CATEGORY_TO_HREF: Record<(typeof SEARCH_CATEGORY_OPTIONS)[number], 
   "After Effects": "/after-effects",
   "Premiere Pro": "/premiere-pro",
   "DaVinci Resolve": "/davinci-resolve",
-  Illustrator: "/illustrator",
+  // Illustrator: "/illustrator",
   "Stock Music": "/stock-audio",
   "Sound FX": "/sound-fx",
 };

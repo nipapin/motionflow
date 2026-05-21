@@ -25,7 +25,7 @@ const STOCK_ASSETS_ITEMS: HeaderNavItem[] = [
   { label: "After Effects", href: "/after-effects", text: "Ae" },
   { label: "Premiere Pro", href: "/premiere-pro", text: "Pr" },
   { label: "DaVinci Resolve", href: "/davinci-resolve", text: "Dr" },
-  { label: "Illustrator", href: "/illustrator", text: "Ai" },
+  // { label: "Illustrator", href: "/illustrator", text: "Ai" },
   { label: "Stock Music", href: "/stock-audio", icon: Music },
   { label: "Sound FX", href: "/sound-fx", icon: AudioLines },
   { label: "Footages", href: "/footages", icon: Film },

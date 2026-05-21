@@ -34,7 +34,7 @@ const INDEX_CATEGORY_SLUG_TO_LICENSE_TYPE: Record<string, ItemLicenseType> = {
   "sound-fx": "audio",
   addons: "script",
   /** Used by this app; closest match is template licenses (same as AE/Pr templates). */
-  illustrator: "template",
+  // illustrator: "template",
 };
 
 function licenseTypeForProduct(product: Product | null): ItemLicenseType {

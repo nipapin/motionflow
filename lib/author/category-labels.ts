@@ -2,7 +2,7 @@ const SLUG_TO_LABEL: Record<string, string> = {
   "after-effects": "After Effects",
   "premiere-pro": "Premiere Pro",
   "davinci-resolve": "DaVinci Resolve",
-  "illustrator": "Illustrator",
+  // "illustrator": "Illustrator",
   "stock-audio": "Stock Audio",
   "sound-fx": "Sound FX",
   footages: "Footages",

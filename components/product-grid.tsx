@@ -20,7 +20,7 @@ const softwareCategories = [
   "After Effects",
   "Premiere Pro",
   "DaVinci Resolve",
-  "Illustrator",
+  // "Illustrator",
   "Stock Music",
   "Sound FX",
 ];

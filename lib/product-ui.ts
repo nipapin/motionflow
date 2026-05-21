@@ -16,7 +16,7 @@ const SLUG_TO_SOFTWARE_LABEL: Record<string, string> = {
   "after-effects": "After Effects",
   "premiere-pro": "Premiere Pro",
   "davinci-resolve": "DaVinci Resolve",
-  illustrator: "Illustrator",
+  // illustrator: "Illustrator",
   "stock-audio": "Stock Music",
   "sound-fx": "Sound FX",
 };

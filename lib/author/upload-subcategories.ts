@@ -41,12 +41,12 @@ export const UPLOAD_SUBCATEGORIES: Record<UploadCategorySlug, SubCategoryOption[
     { slug: "macros", label: "Macros" },
     { slug: "templates", label: "Templates" },
   ],
-  illustrator: [
-    { slug: "vectors", label: "Vectors" },
-    { slug: "icons", label: "Icons" },
-    { slug: "patterns", label: "Patterns" },
-    { slug: "brushes", label: "Brushes" },
-  ],
+  // illustrator: [
+  //   { slug: "vectors", label: "Vectors" },
+  //   { slug: "icons", label: "Icons" },
+  //   { slug: "patterns", label: "Patterns" },
+  //   { slug: "brushes", label: "Brushes" },
+  // ],
   "stock-audio": [
     { slug: "corporate", label: "Corporate" },
     { slug: "cinematic", label: "Cinematic" },
