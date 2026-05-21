@@ -63,7 +63,7 @@ export async function resolveAuthUserFlags(row: UserAuthRow): Promise<AuthUserFl
   return {
     hasGoogleLinked,
     oauthPasswordOnly,
-    canChangePassword: !oauthPasswordOnly,
-    canUnlinkGoogle: hasGoogleLinked && !oauthPasswordOnly,
+    canChangePassword: !hasGoogleLinked,
+    canUnlinkGoogle: hasGoogleLinked,
   };
 }

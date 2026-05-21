@@ -9,6 +9,7 @@ import {
   sessionCookieMaxAgeSec,
   signSessionToken,
 } from "@/lib/auth/session";
+import { authUserPayloadFromRow } from "@/lib/auth/user-payload";
 import { loginSchema } from "@/lib/validations/auth";
 import {
   createLaravelSession,
@@ -20,6 +21,7 @@ type UserRow = RowDataPacket & {
   email: string;
   name: string;
   password: string;
+  google_id?: string | null;
 };
 
 function zodFieldErrors(err: import("zod").ZodError): Record<string, string[]> {
@@ -59,7 +61,7 @@ export async function POST(req: NextRequest) {
   try {
     const pool = getPool();
     const [rows] = await pool.execute<UserRow[]>(
-      "SELECT id, email, name, password FROM users WHERE email = ? LIMIT 1",
+      "SELECT id, email, name, password, google_id FROM users WHERE email = ? LIMIT 1",
       [email],
     );
     const user = rows[0];
@@ -84,7 +86,7 @@ export async function POST(req: NextRequest) {
 
     const res = NextResponse.json({
       success: true as const,
-      user: { id: user.id, email: user.email, name: user.name },
+      user: await authUserPayloadFromRow(user),
     });
     const cookieOpts = { ...baseCookieOptions(req), maxAge: sessionCookieMaxAgeSec() };
     res.cookies.set(SESSION_COOKIE_NAME, token, cookieOpts);

@@ -7,7 +7,7 @@ import {
   baseCookieOptions,
   verifySessionToken,
 } from "@/lib/auth/session";
-import { resolveAuthUserFlags } from "@/lib/auth/google-account";
+import { authUserPayloadFromRow } from "@/lib/auth/user-payload";
 import {
   decryptLaravelCookie,
   readLaravelSessionUserId,
@@ -23,13 +23,10 @@ type UserRow = RowDataPacket & {
 };
 
 async function userJson(user: UserRow) {
-  const flags = await resolveAuthUserFlags(user);
+  const payload = await authUserPayloadFromRow(user);
   const accessNum = Number(user.access ?? 0);
   return {
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    ...flags,
+    ...payload,
     access: Number.isFinite(accessNum) ? accessNum : 0,
   };
 }

@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
 import type { RowDataPacket } from "mysql2";
-import { z } from "zod";
 import { getPool } from "@/lib/db";
 import { resolveAuthUserFlags } from "@/lib/auth/google-account";
 import { oauthPasswordOnlyFromGoogleId } from "@/lib/auth/users-table";
@@ -17,10 +15,6 @@ import {
   decryptLaravelCookie,
   readLaravelSessionUserId,
 } from "@/lib/auth/laravel-session";
-
-const bodySchema = z.object({
-  currentPassword: z.string().min(1, "Current password is required"),
-});
 
 type UserRow = RowDataPacket & {
   id: number;
@@ -56,30 +50,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json(
-      { success: false as const, message: "Invalid JSON body" },
-      { status: 400 },
-    );
-  }
-
-  const parsed = bodySchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json(
-      {
-        success: false as const,
-        message: "The given data was invalid.",
-        errors: { currentPassword: ["Current password is required."] },
-      },
-      { status: 422 },
-    );
-  }
-
-  const { currentPassword } = parsed.data;
-
   try {
     const pool = getPool();
     const [rows] = await pool.execute<UserRow[]>(
@@ -99,29 +69,6 @@ export async function POST(req: NextRequest) {
         {
           success: false as const,
           message: "No Google account is linked to this profile.",
-        },
-        { status: 422 },
-      );
-    }
-
-    const flagsBefore = await resolveAuthUserFlags(row);
-    if (!flagsBefore.canUnlinkGoogle) {
-      return NextResponse.json(
-        {
-          success: false as const,
-          message:
-            "This account signs in with Google only. Set a password via email registration before unlinking Google.",
-        },
-        { status: 422 },
-      );
-    }
-
-    if (!(await bcrypt.compare(currentPassword, row.password))) {
-      return NextResponse.json(
-        {
-          success: false as const,
-          message: "The given data was invalid.",
-          errors: { currentPassword: ["Current password is incorrect."] },
         },
         { status: 422 },
       );

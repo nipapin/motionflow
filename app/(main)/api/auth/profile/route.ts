@@ -118,7 +118,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     const authFlags = await resolveAuthUserFlags(row);
-    const oauthOnly = authFlags.oauthPasswordOnly;
+    const googleLinked = authFlags.hasGoogleLinked;
     let nextEmail = row.email;
     let nextName = row.name;
 
@@ -145,11 +145,11 @@ export async function PATCH(req: NextRequest) {
     }
 
     if (hasEmail && email.toLowerCase() !== row.email.toLowerCase()) {
-      if (oauthOnly) {
+      if (googleLinked) {
         return NextResponse.json(
           {
             success: false as const,
-            message: "Email cannot be changed for accounts that sign in with Google only.",
+            message: "Email cannot be changed for accounts linked to Google.",
             errors: { email: ["Use your Google account to change the email."] },
           },
           { status: 422 },
@@ -197,14 +197,14 @@ export async function PATCH(req: NextRequest) {
     }
 
     if (wantsPassword) {
-      if (oauthOnly) {
+      if (googleLinked) {
         return NextResponse.json(
           {
             success: false as const,
-            message: "Password can only be changed for accounts that use email and password.",
+            message: "Password cannot be changed for accounts linked to Google.",
             errors: {
               newPassword: [
-                "This account signs in with Google. Password change is not available.",
+                "This account is linked to Google. Password change is not available.",
               ],
             },
           },

@@ -6,7 +6,7 @@ import {
   LARAVEL_COOKIE_NAME,
   verifySessionToken,
 } from "@/lib/auth/session";
-import { resolveAuthUserFlags } from "@/lib/auth/google-account";
+import { authUserPayloadFromRow } from "@/lib/auth/user-payload";
 import {
   decryptLaravelCookie,
   readLaravelSessionUserId,
@@ -42,13 +42,10 @@ async function loadUserById(id: number): Promise<SessionUser | null> {
     );
     const u = rows[0];
     if (!u) return null;
-    const flags = await resolveAuthUserFlags(u);
+    const payload = await authUserPayloadFromRow(u);
     const accessNum = Number(u.access ?? 0);
     return {
-      id: u.id,
-      email: u.email,
-      name: u.name,
-      ...flags,
+      ...payload,
       access: Number.isFinite(accessNum) ? accessNum : 0,
     };
   } catch (e) {
