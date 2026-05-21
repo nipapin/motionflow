@@ -1,17 +1,8 @@
 "use client";
 
 import type { LucideIcon } from "lucide-react";
-import {
-  AudioLines,
-  ChevronDown,
-  Film,
-  ImageIcon,
-  MessageSquare,
-  Mic,
-  Music,
-  Video,
-  Wand2,
-} from "lucide-react";
+import { AudioLines, ChevronDown, Film, Music } from "lucide-react";
+import { AI_TOOLS } from "@/lib/ai-tools";
 import { Button } from "@/components/ui/button";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { motionflowMainSiteUrl } from "@/lib/motionflow-urls";
@@ -32,11 +23,12 @@ const STOCK_ASSETS_ITEMS: HeaderNavItem[] = [
 ];
 
 const AI_TOOLS_ITEMS: HeaderNavItem[] = [
-  { label: "Image Gen", href: "/image-generation", icon: ImageIcon },
-  { label: "Image Edit", href: "/image-edit", icon: Wand2 },
-  { label: "Video Gen", href: "/video-generation", icon: Video },
-  { label: "Text to Speech", href: "/text-to-speech", icon: MessageSquare },
-  { label: "Speech to Text", href: "/speech-to-text", icon: Mic },
+  { label: "All AI Tools", href: "/ai-tools", text: "AI" },
+  ...AI_TOOLS.map((tool) => ({
+    label: tool.label,
+    href: tool.href,
+    icon: tool.icon,
+  })),
 ];
 
 function ItemGlyph({ item }: { item: HeaderNavItem }) {

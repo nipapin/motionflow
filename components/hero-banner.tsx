@@ -11,7 +11,7 @@ const categories = [
   { name: "DaVinci Resolve", label: "DaVinci Resolve", text: "Dr", gradient: "from-orange-500 via-red-500 to-rose-500", href: "/davinci-resolve" },
   { name: "Stock Music", label: "Stock Music", icon: Music, gradient: "from-emerald-500 via-teal-500 to-cyan-500", href: "/stock-audio" },
   { name: "Sound FX", label: "Sound FX", icon: AudioLines, gradient: "from-blue-500 via-cyan-500 to-teal-500", href: "/sound-fx" },
-  { name: "AI tools", label: "AI tools", text: "AI", gradient: "from-amber-500 via-orange-500 to-yellow-500", href: "/image-generation" },
+  { name: "AI tools", label: "AI tools", text: "AI", gradient: "from-amber-500 via-orange-500 to-yellow-500", href: "/ai-tools" },
 ];
 
 interface HeroBannerProps {

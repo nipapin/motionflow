@@ -7,6 +7,7 @@ export const SIDEBAR_LABEL_BY_PATH: Record<string, string> = {
   "/stock-audio": "Stock Music",
   "/sound-fx": "Sound FX",
   "/footages": "Footages",
+  "/ai-tools": "AI Tools",
   "/image-generation": "Image Gen",
   "/image-edit": "Image Edit",
   "/video-generation": "Video Gen",

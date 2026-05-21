@@ -29,10 +29,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDownloadAsset } from "@/components/use-download-asset";
 import type { FootagePhoto, FootageSearchResult } from "@/app/(main)/api/stock/unsplash/route";
 import type { FootagePhotoDetail } from "@/app/(main)/api/stock/unsplash/[id]/route";
-import type {
-  FootageVideo,
-  FootageVideoSearchResult,
-} from "@/app/(main)/api/stock/pexels/videos/route";
+import type { FootageVideo, FootageVideoSearchResult } from "@/lib/pexels-videos";
 import { cn } from "@/lib/utils";
 import { MasonryGrid } from "@/components/masonry-grid";
 

@@ -179,4 +179,5 @@
   .gradient-text {
     @apply bg-gradient-to-r from-foreground via-foreground/80 to-foreground bg-clip-text;
   }
+
 }

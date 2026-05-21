@@ -8,16 +8,12 @@ import {
   Music,
   Menu,
   X,
-  ImageIcon,
-  Wand2,
-  Video,
-  MessageSquare,
   AudioLines,
   PanelLeftClose,
   PanelLeftOpen,
-  Mic,
   Film,
 } from "lucide-react";
+import { AI_TOOLS } from "@/lib/ai-tools";
 import { Button } from "@/components/ui/button";
 import { useGenerations } from "@/hooks/use-generations";
 import { MAIN_HEADER_AUTHORS_LINKS } from "@/components/main-header-authors-popover";
@@ -30,14 +26,6 @@ const categories = [
   { name: "Stock Music", icon: Music, href: "/stock-audio" },
   { name: "Sound FX", icon: AudioLines, href: "/sound-fx" },
   { name: "Footages", icon: Film, href: "/footages" },
-];
-
-const aiTools = [
-  { name: "Image Gen", icon: ImageIcon, href: "/image-generation" },
-  { name: "Image Edit", icon: Wand2, href: "/image-edit" },
-  { name: "Video Gen", icon: Video, href: "/video-generation" },
-  { name: "Text to Speech", icon: MessageSquare, href: "/text-to-speech" },
-  { name: "Speech to Text", icon: Mic, href: "/speech-to-text" },
 ];
 
 const footerLinks = [
@@ -130,7 +118,7 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
     );
   };
 
-  const AIToolItem = ({ tool }: { tool: (typeof aiTools)[0] }) => {
+  const AIToolItem = ({ tool }: { tool: (typeof AI_TOOLS)[0] }) => {
     const content = (
       <>
         <tool.icon className="w-5 h-5 shrink-0" />
@@ -294,16 +282,33 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
         </div>
 
         <div className="mb-6">
-          <h3
-            className={cn(
-              "px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-opacity duration-300",
-              collapsed ? "mb-0 h-0 overflow-hidden opacity-0" : "mb-3 opacity-100",
-            )}
-          >
-            AI Tools
-          </h3>
+          {useLinks ? (
+            <Link
+              href="/ai-tools"
+              title={collapsed ? "AI Tools" : undefined}
+              onClick={() => setMobileOpen(false)}
+              className={cn(
+                "mb-3 block px-3 text-xs font-semibold uppercase tracking-wider transition-opacity duration-300 smooth",
+                collapsed ? "mb-0 h-0 overflow-hidden opacity-0" : "opacity-100",
+                activeCategory === "AI Tools"
+                  ? "text-amber-400"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              AI Tools
+            </Link>
+          ) : (
+            <h3
+              className={cn(
+                "px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-opacity duration-300",
+                collapsed ? "mb-0 h-0 overflow-hidden opacity-0" : "mb-3 opacity-100",
+              )}
+            >
+              AI Tools
+            </h3>
+          )}
           <ul className="space-y-1">
-            {aiTools.map((tool) => (
+            {AI_TOOLS.map((tool) => (
               <li key={tool.name}>
                 <AIToolItem tool={tool} />
               </li>
