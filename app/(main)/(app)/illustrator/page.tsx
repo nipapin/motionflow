@@ -1,6 +1,7 @@
 import { Metadata } from "next";
 import { CategoryPageLayout } from "@/components/category-page-layout";
 import { getMarketItemsForSoftwareLabel, getSubCategorySlugs } from "@/lib/market-items";
+import { redirect } from "next/navigation";
 
 const INDEX_SLUG = "illustrator";
 
@@ -16,6 +17,7 @@ export const metadata: Metadata = {
 };
 
 export default async function IllustratorPage() {
+  return redirect("/");
   const [products, subCategorySlugs] = await Promise.all([
     getMarketItemsForSoftwareLabel("Illustrator"),
     getSubCategorySlugs(INDEX_SLUG),

@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 export const MAIN_HEADER_AUTHORS_LINKS = [
   { label: "Premiere Gal", href: "https://premieregal.motionflow.pro" },
-  { label: "Spunkram", href: "https://spunkramv2.motionflow.pro" },
+  { label: "Spunkram", href: "https://spunkram.motionflow.pro" },
   { label: "Enam Alamin", href: "https://enamalamin.motionflow.pro" },
 ] as const;
 

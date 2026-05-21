@@ -26,7 +26,7 @@ const categories = [
   { name: "After Effects", text: "Ae", href: "/after-effects" },
   { name: "Premiere Pro", text: "Pr", href: "/premiere-pro" },
   { name: "DaVinci Resolve", text: "Dr", href: "/davinci-resolve" },
-  { name: "Illustrator", text: "Ai", href: "/illustrator" },
+  // { name: "Illustrator", text: "Ai", href: "/illustrator" },
   { name: "Stock Music", icon: Music, href: "/stock-audio" },
   { name: "Sound FX", icon: AudioLines, href: "/sound-fx" },
   { name: "Footages", icon: Film, href: "/footages" },
