@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Play, Music, AudioLines, X } from "lucide-react";
+import { ArrowRight, Sparkles, Music, AudioLines } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 const categories = [
@@ -19,8 +18,6 @@ interface HeroBannerProps {
 }
 
 export function HeroBanner({ onCategoryChange }: HeroBannerProps) {
-  const [videoOpen, setVideoOpen] = useState(false);
-
   return (
     <div className="relative rounded-3xl overflow-hidden bg-linear-to-br from-card via-card to-primary/5 border border-blue-500/20 mb-10 glow">
       {/* Colorful gradient overlays */}
@@ -54,11 +51,13 @@ export function HeroBanner({ onCategoryChange }: HeroBannerProps) {
             <Button 
               size="lg" 
               variant="ghost" 
-              onClick={() => setVideoOpen(true)}
+              asChild
               className="text-foreground hover:bg-foreground/5 rounded-full px-8 h-12 text-sm font-medium smooth border border-blue-500/30 hover:border-blue-500/50"
             >
-              <Play className="w-4 h-4 mr-2" />
-              Learn More
+              <Link href="/ai-tools">
+                <Sparkles className="w-4 h-4 mr-2" />
+                AI Tools
+              </Link>
             </Button>
           </div>
         </div>
@@ -90,32 +89,6 @@ export function HeroBanner({ onCategoryChange }: HeroBannerProps) {
         </div>
       </div>
 
-      {/* Video Modal */}
-      {videoOpen && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
-          onClick={() => setVideoOpen(false)}
-        >
-          <div 
-            className="relative w-full max-w-4xl mx-4 aspect-video rounded-2xl overflow-hidden border border-blue-500/30 bg-black"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setVideoOpen(false)}
-              className="absolute -top-12 right-0 p-2 text-white/70 hover:text-white smooth"
-            >
-              <X className="w-6 h-6" />
-            </button>
-            <iframe
-              src="https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1"
-              title="Video Player"
-              className="w-full h-full"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 }
