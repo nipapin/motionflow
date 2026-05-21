@@ -16,6 +16,14 @@ import {
   encryptLaravelCookie,
 } from "@/lib/auth/laravel-session";
 
+type UserRow = RowDataPacket & {
+  id: number;
+  email: string;
+  name: string;
+  password: string;
+  google_id?: string | null;
+};
+
 function zodFieldErrors(err: import("zod").ZodError): Record<string, string[]> {
   const out: Record<string, string[]> = {};
   const fe = err.flatten().fieldErrors;
@@ -95,9 +103,10 @@ export async function POST(req: NextRequest) {
     const id = result.insertId;
     const token = await signSessionToken({ id, email, name });
 
-    const [inserted] = await pool.execute<
-      RowDataPacket & { id: number; email: string; name: string; password: string; google_id?: null }
-    >("SELECT id, email, name, password, google_id FROM users WHERE id = ? LIMIT 1", [id]);
+    const [inserted] = await pool.execute<UserRow[]>(
+      "SELECT id, email, name, password, google_id FROM users WHERE id = ? LIMIT 1",
+      [id],
+    );
     const created = inserted[0];
     if (!created) {
       return NextResponse.json(
