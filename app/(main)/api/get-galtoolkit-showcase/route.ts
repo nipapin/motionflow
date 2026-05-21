@@ -1,29 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
-import { proxyToLaravel } from "@/lib/laravel-proxy";
+import { getShowcaseForSection } from "@/lib/laravel-port/showcase-tree";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+} as const;
+
 /**
- * Port of Laravel:
- *   `Route::get('/get-galtoolkit-showcase', [ShowcaseController, 'getShowcase'])
- *      ->withoutMiddleware('throttle:api');`
+ * Port of Laravel `ShowcaseController::getShowcase`. Mirrors the Laravel
+ * response shape (`{ items, jsonPath }`) and CORS headers.
  *
- * Returns 12 random preview clips for the requested package section. The
- * Laravel handler also emits CORS headers — we let them flow through the proxy
- * unchanged.
+ * Used cross-origin by the PremiereGal Galtoolkit page, so we expose a CORS
+ * preflight (`OPTIONS`) in addition to `GET`.
  */
 export async function GET(req: NextRequest) {
-    return proxyToLaravel(req, "/api/get-galtoolkit-showcase");
+    const sectionRaw = req.nextUrl.searchParams.get("section") ?? "";
+    const section = decodeURIComponent(sectionRaw);
+
+    const result = await getShowcaseForSection(section);
+    if (!result) {
+        return NextResponse.json({ error: "Section not found" }, { status: 404, headers: CORS_HEADERS });
+    }
+    return NextResponse.json(result, { status: 200, headers: CORS_HEADERS });
 }
 
 export async function OPTIONS() {
-    return new NextResponse(null, {
-        status: 204,
-        headers: {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        },
-    });
+    return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }

@@ -1,5 +1,6 @@
-import { NextRequest } from "next/server";
-import { proxyToLaravel } from "@/lib/laravel-proxy";
+import type { NextRequest } from "next/server";
+import { apiCheckPurchaseByCode } from "@/lib/laravel-port/sold-items";
+import { prepareResponse } from "@/lib/laravel-port/api-response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,10 +10,15 @@ interface RouteContext {
 }
 
 /**
- * Port of Laravel `Route::get('/item/verify/{word?}', [ApiController, 'itemVerifyPurchase'])`.
+ * Port of Laravel `ApiController::itemVerifyPurchase`:
+ * verifies an Envato-style purchase code (`sold_items.purchase_code`).
  */
-export async function GET(req: NextRequest, ctx: RouteContext) {
+export async function GET(_req: NextRequest, ctx: RouteContext) {
     const { word } = await ctx.params;
-    const tail = word && word.length > 0 ? `/${word.map(encodeURIComponent).join("/")}` : "";
-    return proxyToLaravel(req, `/api/item/verify${tail}`);
+    const code = word?.[0];
+    if (!code) return prepareResponse("Purchase code is required", 422);
+
+    const collection = await apiCheckPurchaseByCode(code);
+    if (collection) return prepareResponse({ collection });
+    return prepareResponse("The purchase code does not exist or a refund has been made", 404);
 }
