@@ -30,6 +30,7 @@ export const GENERATION_TOOLS = [
   "image_edit",
   "image_remove_bg",
   "image_upscale",
+  "svg",
   "video",
   "tts",
   "stt",

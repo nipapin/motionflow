@@ -1,0 +1,668 @@
+"use client";
+
+import Link from "next/link";
+import { useState, useEffect, useCallback, type FormEvent } from "react";
+import {
+  Wand2,
+  Download,
+  RefreshCw,
+  Shapes,
+  X,
+  Trash2,
+  RotateCcw,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { CircularLoader } from "@/components/ui/circular-loader";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useAuth } from "@/components/auth-provider";
+import { CreatorAiGateModal } from "@/components/creator-ai-gate-modal";
+import { SignInModal } from "@/components/sign-in-modal";
+import { useCreatorAiGateAfterSignIn } from "@/hooks/use-creator-ai-gate-after-sign-in";
+import {
+  useGenerations,
+  normalizeGenerationStatus,
+  type GenerationStatus,
+} from "@/hooks/use-generations";
+import { useExtraGenerationsPurchase } from "@/hooks/use-extra-generations-purchase";
+import { AiToolPageHeader } from "@/components/ai-tool-page-header";
+import { BuyExtraGenerationsDialog } from "@/components/buy-extra-generations-dialog";
+import {
+  CREATOR_AI_REQUIRED_CODE,
+  GENERATION_LIMIT_REACHED_CODE,
+  getAiGenerateBlockReason,
+} from "@/lib/ai-generation-gate";
+import { downloadUrlAsFile } from "@/lib/download-url-as-file";
+import { replicateFileUrlToDisplaySrc } from "@/lib/replicate-file-display-url";
+
+/**
+ * Style ids must match the server-side `ALLOWED_STYLES` set in
+ * `app/(main)/api/generations/svg/route.ts`.
+ */
+const svgStylePresets = [
+  {
+    group: "Vector illustration",
+    items: [
+      { id: "vector_illustration", label: "Default illustration" },
+      { id: "vector_illustration/cartoon", label: "Cartoon" },
+      { id: "vector_illustration/doodle_line_art", label: "Doodle line art" },
+      { id: "vector_illustration/engraving", label: "Engraving" },
+      { id: "vector_illustration/flat_2", label: "Flat 2" },
+      { id: "vector_illustration/kawaii", label: "Kawaii" },
+      { id: "vector_illustration/line_art", label: "Line art" },
+      { id: "vector_illustration/line_circuit", label: "Line circuit" },
+      { id: "vector_illustration/linocut", label: "Linocut" },
+      { id: "vector_illustration/seamless", label: "Seamless pattern" },
+    ],
+  },
+  {
+    group: "Icon",
+    items: [
+      { id: "icon", label: "Default icon" },
+      { id: "icon/broken_line", label: "Broken line" },
+      { id: "icon/colored_outline", label: "Colored outline" },
+      { id: "icon/colored_shapes", label: "Colored shapes" },
+      { id: "icon/colored_shapes_gradient", label: "Colored shapes gradient" },
+      { id: "icon/doodle_fill", label: "Doodle fill" },
+      { id: "icon/doodle_offset_fill", label: "Doodle offset fill" },
+      { id: "icon/offset_fill", label: "Offset fill" },
+      { id: "icon/outline", label: "Outline" },
+      { id: "icon/outline_gradient", label: "Outline gradient" },
+      { id: "icon/uneven_fill", label: "Uneven fill" },
+    ],
+  },
+] as const;
+
+const STYLE_LABELS: Record<string, string> = Object.fromEntries(
+  svgStylePresets.flatMap((g) => g.items.map((s) => [s.id, s.label])),
+);
+
+const aspectRatios = [
+  { id: "1:1", label: "1:1 — Square" },
+  { id: "16:9", label: "16:9 — Widescreen" },
+  { id: "9:16", label: "9:16 — Portrait" },
+  { id: "4:3", label: "4:3 — Standard" },
+  { id: "3:4", label: "3:4 — Vertical" },
+];
+
+const KNOWN_STYLES = new Set(Object.keys(STYLE_LABELS));
+const KNOWN_RATIOS = new Set(aspectRatios.map((r) => r.id));
+
+type ApiGenerationRecord = {
+  id: string;
+  status: string;
+  settings: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+  error_message: string | null;
+  created_at: string;
+};
+
+interface RecentSvg {
+  id: string;
+  url: string;
+  prompt: string;
+  style: string;
+  ratio: string;
+}
+
+function recordsToRecentSvgs(rows: ApiGenerationRecord[]): RecentSvg[] {
+  const out: RecentSvg[] = [];
+  for (const row of rows) {
+    if (row.status !== "ok" || !row.result) continue;
+    const imgs = row.result.images;
+    if (!Array.isArray(imgs)) continue;
+    const first = imgs.find((u): u is string => typeof u === "string");
+    if (!first) continue;
+    const s = row.settings;
+    out.push({
+      id: row.id,
+      url: first,
+      prompt: typeof s.prompt === "string" ? s.prompt : "",
+      style:
+        typeof s.style === "string" && KNOWN_STYLES.has(s.style)
+          ? s.style
+          : "vector_illustration",
+      ratio:
+        typeof s.aspect_ratio === "string" && KNOWN_RATIOS.has(s.aspect_ratio)
+          ? s.aspect_ratio
+          : "1:1",
+    });
+  }
+  return out;
+}
+
+export function SvgGenerator() {
+  const { user } = useAuth();
+  const {
+    status: generations,
+    loading: generationsLoading,
+    error: generationsError,
+    authenticated,
+    setStatus: setGenerationsStatus,
+    refresh: refreshGenerations,
+  } = useGenerations();
+
+  const {
+    buyOpen,
+    setBuyOpen,
+    openBuyDialog,
+    selectedCount,
+    setSelectedCount,
+    continuePurchase,
+    checkoutLoading,
+    purchaseDisabled,
+  } = useExtraGenerationsPurchase({ onSuccess: refreshGenerations });
+
+  const [signInOpen, setSignInOpen] = useState(false);
+  const [creatorAiGateOpen, setCreatorAiGateOpen] = useState(false);
+  const [creatorAiVariant, setCreatorAiVariant] = useState<
+    "subscribe" | "upgrade"
+  >("subscribe");
+
+  const { markGuestWantedGenerate } = useCreatorAiGateAfterSignIn(
+    user,
+    generations,
+    generationsLoading,
+    signInOpen,
+    setCreatorAiGateOpen,
+    setCreatorAiVariant,
+  );
+
+  const [prompt, setPrompt] = useState("");
+  const [selectedStyle, setSelectedStyle] = useState("vector_illustration");
+  const [selectedRatio, setSelectedRatio] = useState("1:1");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedSvgs, setGeneratedSvgs] = useState<string[]>([]);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [resultDownloadLoading, setResultDownloadLoading] = useState(false);
+  const [recentDownloadId, setRecentDownloadId] = useState<string | null>(null);
+  const [lightboxDownloadLoading, setLightboxDownloadLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [recentSvgs, setRecentSvgs] = useState<RecentSvg[]>([]);
+
+  const refreshRecent = useCallback(async () => {
+    if (!user) {
+      setRecentSvgs([]);
+      return;
+    }
+    try {
+      const res = await fetch(
+        "/api/me/generation-records?tool=svg&limit=5",
+        { credentials: "include", cache: "no-store" },
+      );
+      if (!res.ok) return;
+      const data = (await res.json()) as { items?: ApiGenerationRecord[] };
+      setRecentSvgs(recordsToRecentSvgs(data.items ?? []).slice(0, 2));
+    } catch {
+      /* ignore */
+    }
+  }, [user]);
+
+  useEffect(() => {
+    void refreshRecent();
+  }, [refreshRecent]);
+
+  const deleteRecent = useCallback(
+    async (id: string) => {
+      setRecentSvgs((prev) => prev.filter((it) => it.id !== id));
+      try {
+        await fetch(`/api/me/generation-records/${id}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+      } catch {
+        void refreshRecent();
+      }
+    },
+    [refreshRecent],
+  );
+
+  const repeatRecent = useCallback((item: RecentSvg) => {
+    setPrompt(item.prompt);
+    setSelectedStyle(item.style);
+    setSelectedRatio(item.ratio);
+    setErrorMessage(null);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, []);
+
+  const handleGenerate = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setErrorMessage(null);
+
+    if (!prompt.trim() || isGenerating || generationsLoading) {
+      return;
+    }
+
+    const block = getAiGenerateBlockReason(
+      user,
+      generations,
+      generationsLoading,
+    );
+    if (block === "sign_in") {
+      markGuestWantedGenerate();
+      setSignInOpen(true);
+      return;
+    }
+    if (block === "needs_creator_ai") {
+      setCreatorAiVariant(
+        generations?.plan === "creator" ? "upgrade" : "subscribe",
+      );
+      setCreatorAiGateOpen(true);
+      return;
+    }
+    if (block === "limit") {
+      openBuyDialog();
+      return;
+    }
+
+    setIsGenerating(true);
+
+    try {
+      const res = await fetch("/api/generations/svg", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: prompt.trim(),
+          style: selectedStyle,
+          aspect_ratio: selectedRatio,
+        }),
+      });
+
+      const data = (await res.json().catch(() => ({}))) as {
+        images?: string[];
+        error?: string;
+        code?: string;
+        plan?: string;
+        generations?: GenerationStatus;
+        record_id?: string;
+      } & Partial<GenerationStatus>;
+
+      if (res.status === 403 && data.code === CREATOR_AI_REQUIRED_CODE) {
+        void refreshGenerations();
+        setCreatorAiVariant(data.plan === "creator" ? "upgrade" : "subscribe");
+        setCreatorAiGateOpen(true);
+        return;
+      }
+
+      if (res.status === 402 && data.code === GENERATION_LIMIT_REACHED_CODE) {
+        setGenerationsStatus(normalizeGenerationStatus(data));
+        openBuyDialog();
+        return;
+      }
+
+      if (!res.ok) {
+        if (data.generations) {
+          setGenerationsStatus(data.generations);
+        } else {
+          refreshGenerations();
+        }
+        throw new Error(data.error || `Request failed (${res.status})`);
+      }
+
+      const images = data.images ?? [];
+      if (!images.length) {
+        throw new Error("No SVGs returned");
+      }
+
+      if (data.generations) {
+        setGenerationsStatus(data.generations);
+      } else {
+        refreshGenerations();
+      }
+      setGeneratedSvgs(images);
+      void refreshRecent();
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to generate SVG";
+      setErrorMessage(message);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const triggerClasses =
+    "w-full h-11 bg-background/50 border-blue-500/30 text-foreground rounded-xl px-4 hover:border-blue-500/60 focus-visible:border-blue-500/60 focus-visible:ring-blue-500/30";
+
+  return (
+    <div className="max-w-7xl mx-auto">
+      <AiToolPageHeader
+        title="AI SVG Generation"
+        description="Create scalable vector graphics, icons and illustrations from text prompts"
+        status={generations}
+        loading={generationsLoading}
+        authenticated={authenticated}
+        error={generationsError}
+      />
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
+        <form
+          onSubmit={handleGenerate}
+          className="lg:col-span-1 space-y-3 lg:space-y-6"
+        >
+          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
+            <label
+              htmlFor="svg-prompt"
+              className="text-sm font-medium text-foreground mb-3 block"
+            >
+              Prompt
+            </label>
+            <textarea
+              id="svg-prompt"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Describe the vector graphic you want to create..."
+              className="w-full h-32 bg-background/50 border border-blue-500/30 rounded-xl p-4 text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:border-blue-500/60 smooth"
+            />
+          </div>
+
+          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
+            <label
+              htmlFor="svg-style"
+              className="text-sm font-medium text-foreground mb-3 block"
+            >
+              Style
+            </label>
+            <Select value={selectedStyle} onValueChange={setSelectedStyle}>
+              <SelectTrigger id="svg-style" className={triggerClasses}>
+                <SelectValue placeholder="Select style" />
+              </SelectTrigger>
+              <SelectContent>
+                {svgStylePresets.map((group) => (
+                  <SelectGroup key={group.group}>
+                    <SelectLabel>{group.group}</SelectLabel>
+                    {group.items.map((style) => (
+                      <SelectItem key={style.id} value={style.id}>
+                        {style.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
+            <label
+              htmlFor="svg-ratio"
+              className="text-sm font-medium text-foreground mb-3 block"
+            >
+              Aspect Ratio
+            </label>
+            <Select value={selectedRatio} onValueChange={setSelectedRatio}>
+              <SelectTrigger id="svg-ratio" className={triggerClasses}>
+                <SelectValue placeholder="Select aspect ratio" />
+              </SelectTrigger>
+              <SelectContent>
+                {aspectRatios.map((ratio) => (
+                  <SelectItem key={ratio.id} value={ratio.id}>
+                    {ratio.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Button
+            type="submit"
+            disabled={!prompt.trim() || isGenerating || generationsLoading}
+            className="w-full h-12 bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl font-medium smooth shadow-lg shadow-blue-500/25 disabled:opacity-50"
+          >
+            {isGenerating ? (
+              <>
+                <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Wand2 className="w-5 h-5 mr-2" />
+                Generate
+              </>
+            )}
+          </Button>
+
+          {errorMessage && (
+            <p className="text-sm text-red-400 text-center">{errorMessage}</p>
+          )}
+        </form>
+
+        <div className="lg:col-span-2 space-y-6">
+          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5 min-h-[350px]">
+            <h3 className="text-lg font-medium text-foreground mb-4">
+              Generated SVG
+            </h3>
+            {generatedSvgs.length > 0 ? (
+              <div className="space-y-4">
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setLightboxImage(
+                        replicateFileUrlToDisplaySrc(generatedSvgs[0]),
+                      )
+                    }
+                    className="block max-w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 rounded-xl"
+                  >
+                    <img
+                      src={replicateFileUrlToDisplaySrc(generatedSvgs[0])}
+                      alt="Generated SVG"
+                      className="block max-w-full h-auto max-h-[420px] w-auto rounded-xl border border-blue-500/20 bg-white"
+                    />
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-end gap-3">
+                  <Button
+                    type="button"
+                    disabled={resultDownloadLoading}
+                    className="bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-lg disabled:opacity-60"
+                    onClick={() =>
+                      void downloadUrlAsFile(
+                        replicateFileUrlToDisplaySrc(generatedSvgs[0]),
+                        "motionflow-svg.svg",
+                        { onLoadingChange: setResultDownloadLoading },
+                      )
+                    }
+                  >
+                    {resultDownloadLoading ? (
+                      <CircularLoader className="w-4 h-4 mr-2 text-white" />
+                    ) : (
+                      <Download className="w-4 h-4 mr-2" />
+                    )}
+                    Download SVG
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-center py-16">
+                <div className="w-20 h-20 rounded-2xl bg-blue-500/10 flex items-center justify-center mb-4">
+                  <Shapes className="w-10 h-10 text-blue-400" />
+                </div>
+                <h3 className="text-lg font-medium text-foreground mb-2">
+                  No SVGs generated yet
+                </h3>
+                <p className="text-muted-foreground max-w-sm">
+                  Enter a prompt and click generate to create AI-powered vector
+                  graphics
+                </p>
+              </div>
+            )}
+          </div>
+
+          {user && recentSvgs.length > 0 ? (
+            <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-medium text-foreground">
+                  Recent generations
+                </h3>
+                <Link
+                  href="/profile/generations?tab=image"
+                  className="text-sm text-blue-400 hover:underline"
+                >
+                  View all
+                </Link>
+              </div>
+              <ul className="space-y-2">
+                {recentSvgs.map((item) => {
+                  const displaySrc = replicateFileUrlToDisplaySrc(item.url);
+                  const styleLabel = STYLE_LABELS[item.style] ?? item.style;
+                  return (
+                    <li
+                      key={item.id}
+                      className="flex items-center gap-3 p-2 rounded-xl border border-blue-500/20 bg-background/30 hover:border-blue-500/40 smooth"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setLightboxImage(displaySrc)}
+                        className="w-14 h-14 shrink-0 rounded-lg overflow-hidden border border-blue-500/20 bg-white hover:opacity-80 smooth focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
+                      >
+                        <img
+                          src={displaySrc}
+                          alt=""
+                          className="w-full h-full object-contain"
+                        />
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <p
+                          className="text-sm text-foreground truncate"
+                          title={item.prompt}
+                        >
+                          {item.prompt || "Untitled"}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {styleLabel} · {item.ratio}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => repeatRecent(item)}
+                          title="Repeat with same settings"
+                          aria-label="Repeat generation"
+                          className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={recentDownloadId !== null}
+                          onClick={() =>
+                            void downloadUrlAsFile(
+                              displaySrc,
+                              `motionflow-svg-${item.id.slice(0, 8)}.svg`,
+                              {
+                                onLoadingChange: (v) => {
+                                  if (v) setRecentDownloadId(item.id);
+                                  else
+                                    setRecentDownloadId((prev) =>
+                                      prev === item.id ? null : prev,
+                                    );
+                                },
+                              },
+                            )
+                          }
+                          title="Download"
+                          aria-label="Download SVG"
+                          className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth disabled:opacity-50"
+                        >
+                          {recentDownloadId === item.id ? (
+                            <CircularLoader className="w-4 h-4 text-muted-foreground" />
+                          ) : (
+                            <Download className="w-4 h-4" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void deleteRecent(item.id)}
+                          title="Delete"
+                          aria-label="Delete generation"
+                          className="p-2 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 smooth"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <SignInModal
+        open={signInOpen}
+        onOpenChange={setSignInOpen}
+        onAuthSuccess={() => setSignInOpen(false)}
+      />
+      <CreatorAiGateModal
+        open={creatorAiGateOpen}
+        onOpenChange={setCreatorAiGateOpen}
+        variant={creatorAiVariant}
+      />
+
+      <BuyExtraGenerationsDialog
+        open={buyOpen}
+        onOpenChange={setBuyOpen}
+        selectedCount={selectedCount}
+        onSelectCount={setSelectedCount}
+        onContinue={continuePurchase}
+        continueLoading={checkoutLoading}
+        continueDisabled={purchaseDisabled}
+      />
+
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
+          onClick={() => setLightboxImage(null)}
+        >
+          <button
+            onClick={() => setLightboxImage(null)}
+            className="absolute top-6 right-6 p-2 text-white/70 hover:text-white smooth"
+          >
+            <X className="w-8 h-8" />
+          </button>
+          <div
+            className="relative max-w-4xl max-h-[85vh] mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={replicateFileUrlToDisplaySrc(lightboxImage)}
+              alt="Generated SVG"
+              className="max-w-full max-h-[85vh] object-contain rounded-2xl border border-blue-500/30 bg-white"
+            />
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
+              <Button
+                type="button"
+                disabled={lightboxDownloadLoading}
+                className="bg-white text-black hover:bg-white/90 rounded-xl shadow-lg disabled:opacity-60"
+                onClick={() =>
+                  void downloadUrlAsFile(
+                    replicateFileUrlToDisplaySrc(lightboxImage),
+                    "motionflow-svg.svg",
+                    { onLoadingChange: setLightboxDownloadLoading },
+                  )
+                }
+              >
+                {lightboxDownloadLoading ? (
+                  <CircularLoader className="w-4 h-4 mr-2 text-black" />
+                ) : (
+                  <Download className="w-4 h-4 mr-2" />
+                )}
+                Download
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -36,20 +36,21 @@ const TIER_LABELS: Record<PlanId, string> = {
 
 const creatorFeatures = [
   "Unlimited downloads",
-  "After Effects templates",
-  "Premiere Pro templates",
-  "DaVinci Resolve templates",
-  "Stock Music library",
-  "Sound FX library",
-  "Graphics assets",
+  "After Effects, Premiere Pro & DaVinci Resolve templates",
+  "Stock music & sound FX library",
   "Commercial license",
-  "New releases every week",
-  "24/7 Support",
+  "5 AI generations / month",
 ];
 
-const aiFeatures = ["AI Image Generation", "AI Video Generation", "Text to Speech", "Speech to Text"];
-
-const ultimateFeatures = [...creatorFeatures, ...aiFeatures, "Priority support", "Early access to new tools"];
+const ultimateFeatures = [
+  "Unlimited downloads",
+  "After Effects, Premiere Pro & DaVinci Resolve templates",
+  "Stock music & sound FX library",
+  "Commercial license",
+  "100 AI generations / month",
+  "AI Image & Video Generation",
+  "Text to Speech & Speech to Text",
+];
 
 interface PricingPageClientProps {
   currentUser: { id: number; email: string } | null;

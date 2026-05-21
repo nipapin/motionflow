@@ -51,6 +51,7 @@ export function useGenerations(): GenerationsState {
         imageEditRes,
         imageRemoveBgRes,
         imageUpscaleRes,
+        svgRes,
         ttsRes,
         sttRes,
       ] = await Promise.all([
@@ -74,6 +75,10 @@ export function useGenerations(): GenerationsState {
           credentials: "include",
           cache: "no-store",
         }),
+        fetch("/api/me/generation-records?tool=svg&limit=100", {
+          credentials: "include",
+          cache: "no-store",
+        }),
         fetch("/api/me/generation-records?tool=tts&limit=100", {
           credentials: "include",
           cache: "no-store",
@@ -89,6 +94,7 @@ export function useGenerations(): GenerationsState {
         !imageEditRes.ok ||
         !imageRemoveBgRes.ok ||
         !imageUpscaleRes.ok ||
+        !svgRes.ok ||
         !ttsRes.ok ||
         !sttRes.ok
       ) {
@@ -100,6 +106,7 @@ export function useGenerations(): GenerationsState {
         imageEditData,
         imageRemoveBgData,
         imageUpscaleData,
+        svgData,
         ttsData,
         sttData,
       ] = (await Promise.all([
@@ -108,6 +115,7 @@ export function useGenerations(): GenerationsState {
         imageEditRes.json(),
         imageRemoveBgRes.json(),
         imageUpscaleRes.json(),
+        svgRes.json(),
         ttsRes.json(),
         sttRes.json(),
       ])) as Array<{ items?: ApiGenerationRecord[] }>;
@@ -117,6 +125,7 @@ export function useGenerations(): GenerationsState {
         ...(imageEditData.items ?? []),
         ...(imageRemoveBgData.items ?? []),
         ...(imageUpscaleData.items ?? []),
+        ...(svgData.items ?? []),
       ].sort(
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),

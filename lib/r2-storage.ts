@@ -91,6 +91,7 @@ const EXT_BY_MIME: Record<string, string> = {
     "image/webp": "webp",
     "image/gif": "gif",
     "image/avif": "avif",
+    "image/svg+xml": "svg",
     "video/mp4": "mp4",
     "video/webm": "webm",
     "video/quicktime": "mov",

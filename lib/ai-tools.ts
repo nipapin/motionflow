@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { ImageIcon, MessageSquare, Mic, Video, Wand2 } from "lucide-react";
+import { ImageIcon, MessageSquare, Mic, Shapes, Video, Wand2 } from "lucide-react";
 
 export type AiToolCategory = "Video" | "Image" | "Audio";
 
@@ -53,6 +53,18 @@ export const AI_TOOLS: AiToolItem[] = [
     previewFallback: "from-amber-700 via-orange-700 to-rose-700",
   },
   {
+    name: "SVG Gen",
+    displayName: "SvgGen",
+    label: "SVG Gen",
+    href: "/svg-generation",
+    icon: Shapes,
+    category: "Image",
+    cardDescription:
+      "Generate crisp vector graphics, icons and illustrations as ready-to-use SVG files.",
+    pexelsQuery: "abstract geometric pattern animation",
+    previewFallback: "from-sky-700 via-indigo-700 to-purple-700",
+  },
+  {
     name: "Text to Speech",
     displayName: "VoiceGen",
     label: "Text to Speech",
@@ -76,7 +88,7 @@ export const AI_TOOLS: AiToolItem[] = [
   },
 ];
 
-export const LABS_HERO_WORDS = ["content", "video", "music", "images", "voice"] as const;
+export const LABS_HERO_WORDS = ["video", "images", "voice", "text", "graphics"] as const;
 
 export const LABS_CTA_IMAGES = [
   {
