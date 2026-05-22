@@ -618,10 +618,9 @@ interface TransactionSaleResult {
  * and feed it through `addSoldItemFromTransactionLine`.
  *
  * The unified-lifetime branch (`SubscriptionSystem::create` for lifetime
- * "subscriptions") is INTENTIONALLY OMITTED because Motionflow's current
- * checkout never sets `product.custom_data.subs_system = 1` on a lifetime
- * price. Add the branch back here when the marketplace ports
- * `config/subs_control.php`.
+ * author subscriptions without a Paddle `sub_…` id) is handled upstream in
+ * `upsertFromTransaction` — see `THIRD_PARTY_LIFETIME_PRICE_TO_AUTHOR` and
+ * `pickAuthorIdForSubscriptionTransaction`.
  */
 export async function handleTransactionForSale(
   txn: LaravelPaddleTransaction,
@@ -859,8 +858,41 @@ export async function handleAdjustmentRefund(params: {
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Subscription helpers used by the subscription_systems path                 */
+/*  Third-party author subscriptions (Premiere Gal, Spunkram)                  */
 /* -------------------------------------------------------------------------- */
+
+/** Author bundles stored in `subscription_systems`, not Motionflow Creator tiers. */
+const THIRD_PARTY_SUBSCRIPTION_AUTHOR_IDS = new Set<number>([4141, 1691]);
+
+/**
+ * One-time lifetime Paddle price ids → `subscription_systems.author_id`.
+ * Premiere Gal Toolkit MAX lifetime (`pri_01km5ht3bbx00pa6yssfhf6td3`) has no
+ * recurring Paddle subscription — checkout completes as `transaction.completed`
+ * with `subscription_id = null`, but the row still belongs in `subscription_systems`.
+ */
+export const THIRD_PARTY_LIFETIME_PRICE_TO_AUTHOR: Record<string, number> = {
+  pri_01km5ht3bbx00pa6yssfhf6td3: 4141,
+};
+
+/**
+ * True when a one-time transaction is a marketplace item sale (`sold_items`),
+ * not an author lifetime subscription. Used to avoid routing `item_licenses`
+ * purchases into `subscription_systems`.
+ */
+export function isMarketplaceOneTimeSale(txn: LaravelPaddleTransaction): boolean {
+  const cd = txn.custom_data ?? null;
+  if (!cd) return false;
+
+  const kind = String(cd["kind"] ?? "").trim().toLowerCase();
+  if (kind === "spunkram_item") return true;
+
+  const itemLicenses = cd["item_licenses"];
+  if (itemLicenses && typeof itemLicenses === "object" && !Array.isArray(itemLicenses)) {
+    return Object.keys(itemLicenses as object).length > 0;
+  }
+
+  return pickNumber(cd["item_id"]) != null || pickNumber(cd["itemId"]) != null;
+}
 
 /**
  * Compute the Paddle-derived monetary fields the way `handleSubscription`
@@ -898,12 +930,24 @@ export function computeSubscriptionMoneyFromTransaction(
 export function pickAuthorIdForSubscriptionTransaction(
   txn: LaravelPaddleTransaction,
 ): number | null {
+  for (const item of txn.items ?? []) {
+    const priceId = item?.price?.id?.trim();
+    if (priceId) {
+      const mappedAuthorId = THIRD_PARTY_LIFETIME_PRICE_TO_AUTHOR[priceId];
+      if (mappedAuthorId) return mappedAuthorId;
+    }
+  }
+
   const lines = txn.details?.line_items ?? [];
   for (const line of lines) {
     const productCustom = (line?.product?.custom_data ?? null) as Record<string, unknown> | null;
     const subsSystem = pickNumber(productCustom?.["subs_system"]);
     const authorId = pickNumber(productCustom?.["author_id"]);
     if (authorId && subsSystem === 1) {
+      return authorId;
+    }
+    // Lifetime author products often omit `subs_system = 1` on one-time prices.
+    if (authorId && THIRD_PARTY_SUBSCRIPTION_AUTHOR_IDS.has(authorId)) {
       return authorId;
     }
   }
@@ -915,6 +959,10 @@ export function pickAuthorIdForSubscriptionTransaction(
   const kind = String(cd?.["kind"] ?? "").trim().toLowerCase();
   if (kind === "spunkram_subscription") {
     return pickNumber(cd?.["author_id"]);
+  }
+  const txnAuthorId = pickNumber(cd?.["author_id"]);
+  if (txnAuthorId && THIRD_PARTY_SUBSCRIPTION_AUTHOR_IDS.has(txnAuthorId)) {
+    return txnAuthorId;
   }
   return null;
 }

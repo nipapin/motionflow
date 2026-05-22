@@ -17,6 +17,7 @@ import {
   type LaravelPaddleItem,
   handleTransactionForSale,
   handleAdjustmentRefund,
+  isMarketplaceOneTimeSale,
   pickAuthorIdForSubscriptionTransaction,
   computeSubscriptionMoneyFromTransaction,
 } from "@/lib/paddle-laravel-port";
@@ -642,49 +643,52 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
   //   if ($data['subscription_id']) $this->handleSubscription($data);
   //   else                          $this->handleTransaction($data);   // → sold_items
   //
-  // A `transaction.completed` event WITHOUT a `subscription_id` is a one-time
-  // sale (Spunkram marketplace item, single-item add-on, etc.) and must be
-  // written to `sold_items`, NOT `subscription_systems`. Without this branch
-  // the row would fall through to the recurring-subscription INSERT below and
-  // get stamped as `plan = 'lifetime'` (because `billing_cycle` is null on a
-  // one-time price), which is the exact bug we're patching out here.
+  // One-time purchases WITHOUT a Paddle `subscription_id` are usually marketplace
+  // sales (`sold_items`). Exception: third-party author lifetime subscriptions
+  // (Premiere Gal `pri_01km5ht3bbx00pa6yssfhf6td3`, etc.) — those are still
+  // one-time transactions but must be written to `subscription_systems` with
+  // `subscription_id = txn.id` and `plan = lifetime`.
   if (!txn.subscription_id) {
-    try {
-      const saleResult = await handleTransactionForSale(
-        txn as unknown as LaravelPaddleTransaction,
-      );
-      if (!saleResult.ok) {
+    const laravelTxn = txn as unknown as LaravelPaddleTransaction;
+    const authorIdForSubscription = pickAuthorIdForSubscriptionTransaction(laravelTxn);
+    const isMarketplaceSale = isMarketplaceOneTimeSale(laravelTxn);
+
+    if (authorIdForSubscription == null || isMarketplaceSale) {
+      try {
+        const saleResult = await handleTransactionForSale(laravelTxn);
+        if (!saleResult.ok) {
+          return {
+            ok: false,
+            reason: saleResult.reason ?? "sold_items_write_failed",
+            buyerId: userId,
+          };
+        }
+        const inserted = saleResult.soldItemIds?.length ?? 0;
+        return {
+          ok: true,
+          buyerId: saleResult.buyerId ?? userId,
+          reason:
+            inserted > 0
+              ? `sold_items_inserted:${inserted}`
+              : "sold_items_no_change",
+        };
+      } catch (err) {
+        console.error(
+          `[paddle] handleTransactionForSale failed for ${txn.id}:`,
+          err,
+        );
         return {
           ok: false,
-          reason: saleResult.reason ?? "sold_items_write_failed",
+          reason: "sold_items_write_threw",
           buyerId: userId,
         };
       }
-      const inserted = saleResult.soldItemIds?.length ?? 0;
-      return {
-        ok: true,
-        buyerId: saleResult.buyerId ?? userId,
-        reason:
-          inserted > 0
-            ? `sold_items_inserted:${inserted}`
-            : "sold_items_no_change",
-      };
-    } catch (err) {
-      console.error(
-        `[paddle] handleTransactionForSale failed for ${txn.id}:`,
-        err,
-      );
-      return {
-        ok: false,
-        reason: "sold_items_write_threw",
-        buyerId: userId,
-      };
     }
   }
 
-  // Recurring (Paddle subscription) — write/update the matching row in
-  // `subscription_systems`. The subscription_id is the stable key.
-  const rowSubscriptionId = txn.subscription_id;
+  // Recurring Paddle subscription OR one-time third-party author subscription.
+  // Lifetime one-time rows use `txn.id` as the stable `subscription_id` key.
+  const rowSubscriptionId = txn.subscription_id ?? txn.id;
   const paymentId = txn.id;
 
   const totals = txn.details?.totals ?? {};
