@@ -99,7 +99,7 @@ export function oauthPublicOrigin(req: NextRequest): string {
   const fromNext = normalizeOauthOrigin(req.nextUrl.origin);
   if (process.env.NODE_ENV === "production" && isLocalHostname(new URL(fromNext).hostname)) {
     throw new Error(
-      "Google OAuth redirect origin is localhost in production. Set AUTH_PUBLIC_URL=https://next.motionflow.pro on the server.",
+      "Google OAuth redirect origin is localhost in production. Set AUTH_PUBLIC_URL=https://motionflow.pro on the server.",
     );
   }
 
