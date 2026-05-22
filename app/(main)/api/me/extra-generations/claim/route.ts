@@ -64,9 +64,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const customDataUserId = txn.custom_data?.userId;
-    const txnUserId = customDataUserId == null ? null : Number(customDataUserId);
-    if (!txnUserId || txnUserId !== Number(user.id)) {
+    // Accept both the canonical `buyer_id` key (matches `subscription_systems.buyer_id`
+    // / current checkout pages) and the legacy `userId` key for transactions
+    // created before the rename.
+    const customDataBuyerId =
+      txn.custom_data?.buyer_id ?? txn.custom_data?.userId;
+    const txnBuyerId =
+      customDataBuyerId == null ? null : Number(customDataBuyerId);
+    if (!txnBuyerId || txnBuyerId !== Number(user.id)) {
       return NextResponse.json(
         { ok: false, reason: "transaction_user_mismatch" },
         { status: 403 },

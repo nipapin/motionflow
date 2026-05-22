@@ -69,7 +69,13 @@ interface PaddleSubscription {
   business_id?: string | null;
   currency_code?: string | null;
   discount?: { id?: string | null; effective_from?: string | null } | null;
+  /**
+   * `buyer_id` is the canonical key (matches our DB column `subscription_systems.buyer_id`).
+   * `userId` is the legacy camelCase key used by earlier checkout pages — accepted for
+   * backwards compatibility with subscriptions/transactions created before the rename.
+   */
   custom_data?: {
+    buyer_id?: string | number;
     userId?: string | number;
     plan?: string;
     billingPeriod?: string;
@@ -130,7 +136,9 @@ interface PaddleTransaction {
   invoice_id?: string | null;
   invoice_number?: string | null;
   currency_code?: string | null;
+  /** See {@link PaddleSubscription.custom_data} for the buyer_id/userId convention. */
   custom_data?: {
+    buyer_id?: string | number;
     userId?: string | number;
     plan?: string;
     billingPeriod?: string;
@@ -304,13 +312,70 @@ function toMysqlDateTime(iso: string): string {
   return d.toISOString().slice(0, 19).replace("T", " ");
 }
 
+/**
+ * Resolve the Motionflow buyer id from a Paddle subscription/transaction payload.
+ *
+ * Accepts BOTH `custom_data.buyer_id` (canonical, matches the DB column) and
+ * `custom_data.userId` (legacy camelCase from older checkout pages). Returns
+ * the first positive integer it finds, otherwise null.
+ *
+ * Note: this is sync — it does NOT hit the DB. For the webhook hot path we
+ * have {@link resolveBuyerId} which adds a `subscription_systems.buyer_id`
+ * lookup by `subscription_id` for events where Paddle did not propagate
+ * `custom_data` (recurring renewals of legacy subscriptions, final
+ * cancellation invoices, etc.).
+ */
 function pickUserId(
-  data: { custom_data?: { userId?: string | number } | null },
+  data: { custom_data?: { buyer_id?: string | number; userId?: string | number } | null },
 ): number | null {
-  const raw = data.custom_data?.userId;
+  const raw = data.custom_data?.buyer_id ?? data.custom_data?.userId;
   if (raw == null) return null;
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * Best-effort lookup of `buyer_id` from the `subscription_systems` table using
+ * the Paddle subscription id. Used as a fallback when `custom_data` doesn't
+ * carry the buyer id (e.g. recurring renewals of subscriptions that were
+ * created before we started writing `custom_data`, or subscription_cancellation
+ * final invoices which Paddle delivers without `custom_data`).
+ */
+async function lookupBuyerIdBySubscriptionId(
+  subscriptionId: string,
+): Promise<number | null> {
+  if (!subscriptionId) return null;
+  type Row = RowDataPacket & { buyer_id: number | string | null };
+  const [rows] = await getPool().execute<Row[]>(
+    `SELECT buyer_id
+       FROM \`${SUBSCRIPTIONS_TABLE}\`
+      WHERE subscription_id = ?
+      LIMIT 1`,
+    [subscriptionId],
+  );
+  const raw = rows[0]?.buyer_id;
+  if (raw == null) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * Resolve buyer id from a transaction payload, falling back to the DB by
+ * `subscription_id` when `custom_data` is missing/empty. Returns null if no
+ * id can be determined.
+ */
+async function resolveBuyerId(
+  data: {
+    custom_data?: { buyer_id?: string | number; userId?: string | number } | null;
+    subscription_id?: string | null;
+  },
+): Promise<number | null> {
+  const fromCustomData = pickUserId(data);
+  if (fromCustomData) return fromCustomData;
+  if (data.subscription_id) {
+    return lookupBuyerIdBySubscriptionId(data.subscription_id);
+  }
+  return null;
 }
 
 function normalizeExtraAiGenerationsKind(raw: string | undefined | null): string {
@@ -512,23 +577,16 @@ async function releasePaddleLock(conn: PoolConnection, key: string): Promise<voi
 export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
   ok: boolean;
   reason?: string;
+  buyerId?: number;
 }> {
-  const userId = pickUserId(txn);
-  if (!userId) return { ok: false, reason: "missing_userId_in_custom_data" };
-
-  if (normalizeExtraAiGenerationsKind(txn.custom_data?.kind) === "extra_ai_generations") {
-    const { priceId } = pickPaddleCatalogIds(txn.items);
-    const packCount = extraGenerationsPackCountForPriceId(priceId);
-    if (packCount == null) {
-      return { ok: false, reason: "extra_generations_unknown_price_id" };
-    }
-    return applyExtraGenerationsCredit(txn.id, userId, packCount);
-  }
-
-  // Skip side-charges that are NOT new recurring purchases. These are
-  // one-time charges layered onto an existing subscription (e.g. our
-  // Motionflow upgrade prorated fee created via POST /subscriptions/{id}/charge,
-  // or Paddle's own subscription_update / subscription_cancellation invoices).
+  // Detect side-charges FIRST so they short-circuit cleanly with the right
+  // reason, even when `custom_data` is missing (Paddle does not propagate
+  // `custom_data` to subscription_charge / subscription_update / subscription_cancellation
+  // invoices, so the buyer_id resolver below wouldn't find one for them).
+  //
+  // Side-charges are one-time charges layered onto an existing subscription
+  // (Motionflow's upgrade prorated fee created via POST /subscriptions/{id}/charge,
+  // Paddle's own subscription_update / subscription_cancellation invoices).
   // If we ran the regular upsert for them we would clobber the existing
   // recurring row's `plan`, `paddle_price_id`, billing period, etc. with the
   // one-time price's metadata — which is how an active subscription gets
@@ -550,6 +608,25 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
       `[paddle] upsertFromTransaction: skipping side-charge ${txn.id} on subscription ${txn.subscription_id} (origin=${txn.origin ?? "?"})`,
     );
     return { ok: true, reason: "side_charge_skipped" };
+  }
+
+  // Resolve the Motionflow user that owns this purchase. We accept both the
+  // canonical `buyer_id` key and the legacy `userId` key inside `custom_data`,
+  // and fall back to a `subscription_systems.buyer_id` lookup by Paddle
+  // `subscription_id` when neither is present (covers recurring renewals of
+  // subscriptions that were created before `custom_data` was set on checkout,
+  // e.g. rows migrated from the old Laravel app).
+  const userId = await resolveBuyerId(txn);
+  if (!userId) return { ok: false, reason: "missing_buyer_id" };
+
+  if (normalizeExtraAiGenerationsKind(txn.custom_data?.kind) === "extra_ai_generations") {
+    const { priceId } = pickPaddleCatalogIds(txn.items);
+    const packCount = extraGenerationsPackCountForPriceId(priceId);
+    if (packCount == null) {
+      return { ok: false, reason: "extra_generations_unknown_price_id" };
+    }
+    const credit = await applyExtraGenerationsCredit(txn.id, userId, packCount);
+    return { ...credit, buyerId: userId };
   }
 
   // For recurring purchases the subscription_id is the stable key; for one-time
@@ -656,7 +733,7 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
       );
     }
 
-    return { ok: true };
+    return { ok: true, buyerId: userId };
   } finally {
     if (lockKey) await releasePaddleLock(conn, lockKey);
     conn.release();
@@ -951,7 +1028,7 @@ async function autoResubscribeAfterDowngrade(sub: PaddleSubscription): Promise<v
         currencyCode: sub.currency_code ?? null,
         discountId: sub.discount?.id ?? null,
         customData: {
-          userId: String(buyerId),
+          buyer_id: String(buyerId),
           plan: AUTO_RESUBSCRIBE_PRICE_TIERS[targetPriceId] ?? "creator",
           billingPeriod: row.scheduled_change_plan === "annual" ? "yearly" : "monthly",
           source: "auto-downgrade",
@@ -1043,13 +1120,13 @@ export async function handlePaddleEvent(
       return { handled: false, reason: `transaction_status_${txn.status}` };
     }
     const result = await upsertFromTransaction(txn);
-    if (result.ok) {
+    if (result.ok && result.buyerId) {
       // Enforce "one active subscription per buyer_id": after a brand-new
       // checkout completes, cancel any other active Motionflow rows the buyer
       // has. Best-effort — failures are logged and don't fail the webhook.
-      const buyerId = pickUserId(txn);
+      const buyerId = result.buyerId;
       const newSubscriptionId = txn.subscription_id ?? txn.id;
-      if (buyerId && newSubscriptionId.startsWith("sub_")) {
+      if (newSubscriptionId.startsWith("sub_")) {
         cancelOtherActiveSubscriptionsForBuyer(buyerId, newSubscriptionId).catch((err) => {
           console.error(
             `[paddle] cancelOtherActiveSubscriptionsForBuyer threw for buyer ${buyerId}:`,

@@ -280,7 +280,7 @@ export async function uploadContactAttachment(
 function buildAdminzoneRequestUrl(requestId: number): string {
     const base =
         process.env.ADMINZONE_REQUESTS_URL?.trim().replace(/\/+$/, "") ||
-        "https://motionflow.com/adminzone/requests";
+        "https://authors.motionflow.com/adminzone/requests";
     return `${base}/view?id=${requestId}`;
 }
 

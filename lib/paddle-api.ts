@@ -114,7 +114,12 @@ export interface PaddleApiSubscription {
   currency_code?: string | null;
   collection_mode?: "automatic" | "manual" | string | null;
   discount?: { id?: string | null; effective_from?: string | null } | null;
-  custom_data?: { userId?: string | number; plan?: string; billingPeriod?: string } | null;
+  custom_data?: {
+    buyer_id?: string | number;
+    userId?: string | number;
+    plan?: string;
+    billingPeriod?: string;
+  } | null;
   current_billing_period?: { starts_at: string; ends_at: string } | null;
   next_billed_at?: string | null;
   scheduled_change?: {
@@ -262,6 +267,7 @@ export interface PaddleApiTransaction {
   invoice_id?: string | null;
   invoice_number?: string | null;
   custom_data?: {
+    buyer_id?: string | number;
     userId?: string | number;
     plan?: string;
     billingPeriod?: string;

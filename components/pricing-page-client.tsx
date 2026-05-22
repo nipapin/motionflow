@@ -187,7 +187,7 @@ export function PricingPageClient({ currentUser, currentSubscription }: PricingP
         items: [{ priceId, quantity: 1 }],
         customer: { email: currentUser.email },
         customData: {
-          userId: String(currentUser.id),
+          buyer_id: String(currentUser.id),
           plan,
           billingPeriod,
         },

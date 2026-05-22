@@ -96,7 +96,7 @@ export function useExtraGenerationsPurchase(options?: {
           items: [{ priceId: pack.priceId, quantity: 1 }],
           customer: { email: user.email ?? undefined },
           customData: {
-            userId: String(user.id),
+            buyer_id: String(user.id),
             kind: "extra_ai_generations",
             generations: String(pack.count),
           },
