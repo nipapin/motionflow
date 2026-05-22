@@ -9,9 +9,10 @@
  *      switch to look it up by `subscription_id` instead (lifetime/one-time
  *      rows have `subscription_id = txn_…`, so both columns usually match for
  *      one-off purchases, but the lookup mode is selectable just in case).
- *   2. Call Paddle `GET /transactions/{id}` to retrieve `custom_data.item_id`
- *      and `custom_data.license`. That data was never persisted on our side —
- *      Paddle is the source of truth here.
+ *   2. Call Paddle `GET /transactions/{id}` to retrieve item_id and license.
+ *      Supports two custom_data shapes:
+ *        - Next.js checkout: kind=spunkram_item, item_id, license
+ *        - Laravel checkout: item_licenses = { "<item_id>": <license_int> }
  *   3. Look up `marketplace_items.author_id` for the item (plus `co_author_id`
  *      parsed from the `team` JSON column when present).
  *   4. Generate an Envato-style `purchase_code` (8-4-4-4-12 uppercase hex).
@@ -177,6 +178,50 @@ function pickBuyerIdFromCustomData(cd) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+/**
+ * Resolve item_id + license from Paddle transaction custom_data.
+ * Accepts the Next.js Spunkram checkout shape and the legacy Laravel
+ * `item_licenses` map written by the old marketplace checkout.
+ */
+function pickItemAndLicenseFromCustomData(customData) {
+  const kind = String(customData?.kind ?? "").trim().toLowerCase();
+
+  if (kind === "spunkram_item") {
+    const itemId = pickItemIdFromCustomData(customData);
+    const license = mapLicenseToInt(customData.license);
+    if (itemId && license != null) {
+      return { itemId, license, source: "spunkram_item" };
+    }
+    return null;
+  }
+
+  const itemLicenses = customData?.item_licenses;
+  if (itemLicenses && typeof itemLicenses === "object" && !Array.isArray(itemLicenses)) {
+    const entries = Object.entries(itemLicenses)
+      .map(([rawItemId, rawLicense]) => {
+        const itemId = Number(rawItemId);
+        const license = mapLicenseToInt(rawLicense);
+        if (!Number.isFinite(itemId) || itemId <= 0 || license == null) return null;
+        return { itemId, license };
+      })
+      .filter(Boolean);
+    if (entries.length === 1) {
+      return { ...entries[0], source: "item_licenses" };
+    }
+    if (entries.length > 1) {
+      return { multi: true, entries };
+    }
+  }
+
+  const itemId = pickItemIdFromCustomData(customData);
+  const license = mapLicenseToInt(customData.license);
+  if (itemId && license != null) {
+    return { itemId, license, source: "item_id" };
+  }
+
+  return null;
+}
+
 async function main() {
   const flags = parseFlags(process.argv.slice(2));
   if (!flags.txnId) {
@@ -240,27 +285,24 @@ async function main() {
     const customData = txn.custom_data ?? {};
     console.log(`[migrate] Paddle txn ${txnId} custom_data:`, customData);
 
-    const kind = String(customData.kind ?? "").trim().toLowerCase();
-    if (kind !== "spunkram_item") {
+    const resolved = pickItemAndLicenseFromCustomData(customData);
+    if (!resolved) {
       console.error(
-        `[migrate] custom_data.kind="${kind}" — this script only migrates Spunkram one-time items. Aborting.`,
+        "[migrate] Could not resolve item_id/license from custom_data. " +
+          "Expected kind=spunkram_item, item_licenses, or item_id+license. Aborting.",
+      );
+      process.exit(3);
+    }
+    if (resolved.multi) {
+      console.error(
+        `[migrate] custom_data.item_licenses has ${resolved.entries.length} entries — ` +
+          "this script only handles single-item purchases. Aborting.",
       );
       process.exit(3);
     }
 
-    const itemId = pickItemIdFromCustomData(customData);
-    if (!itemId) {
-      console.error("[migrate] custom_data.item_id missing/invalid in Paddle transaction. Aborting.");
-      process.exit(4);
-    }
-
-    const license = mapLicenseToInt(customData.license);
-    if (license == null) {
-      console.error(
-        `[migrate] custom_data.license="${customData.license}" is unrecognised. Expected "personal" or "commercial". Aborting.`,
-      );
-      process.exit(5);
-    }
+    const { itemId, license, source } = resolved;
+    console.log(`[migrate] Resolved item_id=${itemId} license=${license} (source=${source})`);
 
     const customDataBuyerId = pickBuyerIdFromCustomData(customData);
     const buyerId = Number(sub.buyer_id);
