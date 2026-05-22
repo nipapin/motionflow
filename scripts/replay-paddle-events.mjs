@@ -61,7 +61,7 @@ async function readStdin() {
 }
 
 async function collectTargetEventIds() {
-  const args = process.argv.slice(2).filter(Boolean);
+  const args = process.argv.slice(2).filter((a) => a && !a.startsWith("--"));
   if (args.length) return args;
   if (!process.stdin.isTTY) {
     const txt = await readStdin();
@@ -71,6 +71,35 @@ async function collectTargetEventIds() {
       .filter((s) => s.startsWith("evt_"));
   }
   return [];
+}
+
+function hasFlag(name) {
+  return process.argv.slice(2).includes(name);
+}
+
+function summarizeEvent(evt) {
+  const d = evt.data ?? {};
+  const items = Array.isArray(d.items) ? d.items : [];
+  return {
+    event_id: evt.event_id ?? evt.id,
+    event_type: evt.event_type,
+    occurred_at: evt.occurred_at,
+    txn_id: d.id,
+    subscription_id: d.subscription_id ?? null,
+    customer_id: d.customer_id ?? null,
+    status: d.status ?? null,
+    origin: d.origin ?? null,
+    custom_data: d.custom_data ?? null,
+    items_summary: items.map((it) => ({
+      product_id: it?.price?.product_id ?? null,
+      price_id: it?.price?.id ?? null,
+      price_name: it?.price?.name ?? null,
+      billing_cycle: it?.price?.billing_cycle ?? null,
+      quantity: it?.quantity ?? null,
+    })),
+    totals: d.details?.totals ?? null,
+    billing_period: d.billing_period ?? null,
+  };
 }
 
 async function paddleEventsPage(after) {
@@ -148,17 +177,26 @@ async function replayToWebhook(evtPayload) {
 }
 
 (async () => {
+  const dumpOnly = hasFlag("--dump");
   const ids = await collectTargetEventIds();
   if (ids.length === 0) {
     console.error(
       "Provide event IDs as args or via stdin (one per line or whitespace-separated).\n" +
-        "Usage: node --env-file=.env scripts/replay-paddle-events.mjs evt_01... evt_02...",
+        "Usage:\n" +
+        "  node --env-file=.env scripts/replay-paddle-events.mjs evt_01... evt_02...\n" +
+        "  node --env-file=.env scripts/replay-paddle-events.mjs --dump evt_01...     # print payloads, do not POST",
     );
     process.exit(1);
   }
-  console.log(
-    `Replaying ${ids.length} event(s) via ${webhookUrl} (env=${process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT ?? "sandbox"})…`,
-  );
+  if (!dumpOnly) {
+    console.log(
+      `Replaying ${ids.length} event(s) via ${webhookUrl} (env=${process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT ?? "sandbox"})…`,
+    );
+  } else {
+    console.log(
+      `Fetching ${ids.length} event(s) for inspection (env=${process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT ?? "sandbox"})…`,
+    );
+  }
 
   const { found, missing, pagesScanned } = await fetchEventsByIds(ids);
   console.log(`Scanned ${pagesScanned} page(s); found ${found.size}/${ids.length}.`);
@@ -166,6 +204,13 @@ async function replayToWebhook(evtPayload) {
     console.warn(
       `Not found on Paddle (older than ~90 days, wrong env, or wrong API key?): ${missing.join(", ")}`,
     );
+  }
+
+  if (dumpOnly) {
+    for (const [, evt] of found) {
+      console.log(JSON.stringify(summarizeEvent(evt), null, 2));
+    }
+    process.exit(missing.length > 0 ? 2 : 0);
   }
 
   let okCount = 0;

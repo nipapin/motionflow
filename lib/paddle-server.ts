@@ -12,6 +12,14 @@ import {
   type PaddleApiBillingCycle,
   type PaddleApiUnitPrice,
 } from "@/lib/paddle-api";
+import {
+  type LaravelPaddleTransaction,
+  type LaravelPaddleItem,
+  handleTransactionForSale,
+  handleAdjustmentRefund,
+  pickAuthorIdForSubscriptionTransaction,
+  computeSubscriptionMoneyFromTransaction,
+} from "@/lib/paddle-laravel-port";
 
 const SUBSCRIPTIONS_TABLE = "subscription_systems";
 const EXTRA_GEN_CREDIT_EVENTS_TABLE = "paddle_extra_generation_credit_events";
@@ -629,22 +637,89 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
     return { ...credit, buyerId: userId };
   }
 
-  // For recurring purchases the subscription_id is the stable key; for one-time
-  // purchases there isn't one, so fall back to the transaction id (matches
-  // legacy Laravel behaviour where lifetime rows have `subscription_id = txn_…`).
-  const rowSubscriptionId = txn.subscription_id ?? txn.id;
+  // 1:1 port of `GatewayPaddle::webhook` transaction.completed routing:
+  //
+  //   if ($data['subscription_id']) $this->handleSubscription($data);
+  //   else                          $this->handleTransaction($data);   // → sold_items
+  //
+  // A `transaction.completed` event WITHOUT a `subscription_id` is a one-time
+  // sale (Spunkram marketplace item, single-item add-on, etc.) and must be
+  // written to `sold_items`, NOT `subscription_systems`. Without this branch
+  // the row would fall through to the recurring-subscription INSERT below and
+  // get stamped as `plan = 'lifetime'` (because `billing_cycle` is null on a
+  // one-time price), which is the exact bug we're patching out here.
+  if (!txn.subscription_id) {
+    try {
+      const saleResult = await handleTransactionForSale(
+        txn as unknown as LaravelPaddleTransaction,
+      );
+      if (!saleResult.ok) {
+        return {
+          ok: false,
+          reason: saleResult.reason ?? "sold_items_write_failed",
+          buyerId: userId,
+        };
+      }
+      const inserted = saleResult.soldItemIds?.length ?? 0;
+      return {
+        ok: true,
+        buyerId: saleResult.buyerId ?? userId,
+        reason:
+          inserted > 0
+            ? `sold_items_inserted:${inserted}`
+            : "sold_items_no_change",
+      };
+    } catch (err) {
+      console.error(
+        `[paddle] handleTransactionForSale failed for ${txn.id}:`,
+        err,
+      );
+      return {
+        ok: false,
+        reason: "sold_items_write_threw",
+        buyerId: userId,
+      };
+    }
+  }
+
+  // Recurring (Paddle subscription) — write/update the matching row in
+  // `subscription_systems`. The subscription_id is the stable key.
+  const rowSubscriptionId = txn.subscription_id;
   const paymentId = txn.id;
 
   const totals = txn.details?.totals ?? {};
-  const subtotal = minorToMajor(totals.subtotal); // amount
-  const grandTotal = minorToMajor(totals.grand_total ?? totals.total); // amount_summary
-  const taxAmount = minorToMajor(totals.tax);
+  const subtotalFromTotals = minorToMajor(totals.subtotal);
+  const grandTotal = minorToMajor(totals.grand_total ?? totals.total); // amount_summary fallback
+  const taxFromTotals = minorToMajor(totals.tax);
   const currencyCode = totals.currency_code ?? txn.currency_code ?? null;
 
   const plan = pickTransactionPlan(txn);
   const quantity = Number(txn.items?.[0]?.quantity) || 1;
   const { priceId: paddlePriceId, productId: paddleProductId } = pickPaddleCatalogIds(txn.items);
   const paddleProductName = pickPaddleProductName(txn.items);
+
+  // 1:1 port of `GatewayPaddle::handleSubscription` for third-party author
+  // subscriptions (Spunkram / Premiere Gal). When the transaction maps to an
+  // author subscription (`product.custom_data.subs_system == 1` + author_id,
+  // OR a Spunkram-subscription checkout where author_id is set on
+  // `transaction.custom_data`), we recompute amount / system_tax /
+  // amount_summary the Laravel way (using line 0's `unit_price.amount` and
+  // the 5%+$0.50 Paddle gateway fee) and stamp `author_id` + `author_earn`
+  // onto the row. For Motionflow's own Creator / Creator-AI tiers
+  // `pickAuthorIdForSubscriptionTransaction` returns null, and we fall back
+  // to the totals-derived numbers — same as before this port.
+  const authorId = pickAuthorIdForSubscriptionTransaction(
+    txn as unknown as LaravelPaddleTransaction,
+  );
+  const subscriptionMoney = authorId
+    ? computeSubscriptionMoneyFromTransaction(
+        (txn.items?.[0] as unknown as LaravelPaddleItem | undefined) ?? undefined,
+      )
+    : null;
+  const amount = subscriptionMoney ? subscriptionMoney.netIncome : subtotalFromTotals;
+  const amountSummary = subscriptionMoney ? subscriptionMoney.unitPrice : grandTotal;
+  const systemTax = subscriptionMoney ? subscriptionMoney.systemTax : taxFromTotals;
+  const authorEarn = subscriptionMoney ? subscriptionMoney.authorEarn : null;
 
   // ends_at: subscription transactions carry billing_period; one-time purchases
   // (lifetime) leave it NULL.
@@ -672,10 +747,10 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
       rowSubscriptionId,
       paymentId,
       1,
-      subtotal,
-      grandTotal,
-      Math.round(grandTotal),
-      taxAmount,
+      amount,
+      amountSummary,
+      Math.round(amountSummary),
+      systemTax,
       PAYMENT_SYSTEM,
       "personal",
       plan,
@@ -688,6 +763,8 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
       endsAt,
       billingPeriod.startsAt,
       billingPeriod.endsAt,
+      authorId,
+      authorEarn,
     ];
     const valuePlaceholders = insertParams.map(() => "?").join(", ");
 
@@ -700,6 +777,7 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
           \`count\`, \`arguments\`,
           \`trial_ends_at\`, \`ends_at\`,
           \`paddle_billing_period_starts_at\`, \`paddle_billing_period_ends_at\`,
+          \`author_id\`, \`author_earn\`,
           \`created_at\`, \`updated_at\`)
        VALUES (${valuePlaceholders}, NOW(), NOW())
        ON DUPLICATE KEY UPDATE
@@ -721,6 +799,8 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
          \`ends_at\`        = COALESCE(VALUES(\`ends_at\`), \`ends_at\`),
          \`paddle_billing_period_starts_at\` = COALESCE(VALUES(\`paddle_billing_period_starts_at\`), \`paddle_billing_period_starts_at\`),
          \`paddle_billing_period_ends_at\` = COALESCE(VALUES(\`paddle_billing_period_ends_at\`), \`paddle_billing_period_ends_at\`),
+         \`author_id\`     = COALESCE(VALUES(\`author_id\`), \`author_id\`),
+         \`author_earn\`   = COALESCE(VALUES(\`author_earn\`), \`author_earn\`),
          \`updated_at\`     = NOW()`,
       insertParams,
     );
@@ -1146,7 +1226,17 @@ export async function handlePaddleEvent(
     return { handled: result.ok, reason: result.reason };
   }
 
-  if (event.event_type === "subscription.canceled" || event.event_type === "subscription.paused") {
+  // 1:1 port of `GatewayPaddle::webhook` — subscription.cancelled / .paused /
+  // .past_due all end up calling SubscriptionSystem::terminate/suspend, which
+  // in our schema collapses to `status = -1`. We treat `past_due` as a final
+  // cancel because Paddle stops dunning by the time it surfaces here (Paddle
+  // Billing fires `subscription.canceled` after exhausting retries, but emits
+  // `subscription.past_due` for legacy / non-retryable failures).
+  if (
+    event.event_type === "subscription.canceled" ||
+    event.event_type === "subscription.paused" ||
+    event.event_type === "subscription.past_due"
+  ) {
     const sub = asSubscription(event.data);
     if (!sub) return { handled: false, reason: "missing_subscription_id" };
     const result = await markSubscriptionCanceled(sub);
@@ -1160,6 +1250,63 @@ export async function handlePaddleEvent(
       });
     }
     return { handled: result.ok, reason: result.reason };
+  }
+
+  // 1:1 port of `GatewayPaddle::webhook` adjustment.updated branch:
+  //
+  //   foreach($data['items'] as $one_item) {
+  //     SoldItems::handleCancellationPaymentPaddle($data['transaction_id'], $one_item['item_id']);
+  //   }
+  //
+  // Paddle delivers a single adjustment.updated per refund/credit-note. For
+  // every line we flip the matching `sold_items` row to status=0, decrement
+  // the author / co-author / external-referral balances, and stamp
+  // `platform_earn = -system_tax`. Idempotent: rows already at status≠1 are
+  // skipped.
+  if (event.event_type === "adjustment.updated") {
+    const data = (event.data ?? {}) as {
+      transaction_id?: string;
+      items?: Array<{ item_id?: string }>;
+    };
+    const transactionId = String(data.transaction_id ?? "");
+    if (!transactionId) {
+      return { handled: false, reason: "missing_transaction_id" };
+    }
+    const items = Array.isArray(data.items) ? data.items : [];
+    if (items.length === 0) {
+      return { handled: true, reason: "adjustment_no_items" };
+    }
+    let refunded = 0;
+    let skipped = 0;
+    for (const it of items) {
+      const adjustmentItemId = String(it?.item_id ?? "");
+      if (!adjustmentItemId) {
+        skipped += 1;
+        continue;
+      }
+      try {
+        const r = await handleAdjustmentRefund({
+          transactionId,
+          adjustmentItemId,
+        });
+        if (r.ok) {
+          if (r.reason) skipped += 1;
+          else refunded += 1;
+        } else {
+          skipped += 1;
+        }
+      } catch (err) {
+        console.error(
+          `[paddle] handleAdjustmentRefund threw for ${transactionId}-${adjustmentItemId}:`,
+          err,
+        );
+        skipped += 1;
+      }
+    }
+    return {
+      handled: true,
+      reason: `adjustment_refunded:${refunded}_skipped:${skipped}`,
+    };
   }
 
   return { handled: false, reason: "unhandled_event_type" };

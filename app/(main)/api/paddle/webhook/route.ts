@@ -37,7 +37,13 @@ export async function POST(request: Request) {
         `[paddle-webhook] Skipped ${event.event_type} (${event.event_id}): ${result.reason ?? "unhandled"}`,
       );
     } else {
-      console.info(`[paddle-webhook] Handled ${event.event_type} (${event.event_id})`);
+      // Surface `result.reason` even on the success path — handlers can return
+      // ok:true with a reason like `side_charge_skipped` or
+      // `ignored_unknown_subscription`, which look identical to a real DB
+      // upsert in the log otherwise.
+      console.info(
+        `[paddle-webhook] Handled ${event.event_type} (${event.event_id})${result.reason ? `: ${result.reason}` : ""}`,
+      );
     }
 
     // Always 200 once the signature is verified — Paddle retries on non-2xx and we
