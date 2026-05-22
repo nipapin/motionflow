@@ -112,7 +112,8 @@ function parseFlags(argv) {
 async function fetchPaddleTransaction(id) {
   const apiKey = process.env.PADDLE_API_KEY;
   if (!apiKey) throw new Error("PADDLE_API_KEY not configured");
-  const url = `${getPaddleBaseUrl()}/transactions/${encodeURIComponent(id)}?include=custom_data`;
+  // custom_data is a top-level field on the transaction — not an `include` value.
+  const url = `${getPaddleBaseUrl()}/transactions/${encodeURIComponent(id)}`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${apiKey}` },
   });
