@@ -7,6 +7,7 @@ import {
   Infinity as InfinityIcon,
 } from "lucide-react";
 import type { SubscriptionListItem } from "@/lib/subscriptions";
+import { SubscriptionBrandMark } from "@/components/subscription-brand-mark";
 import { SubscriptionTokenCopy } from "@/components/subscription-token-copy";
 
 interface SubscriptionCardProps {
@@ -89,17 +90,11 @@ export function SubscriptionCard({ item, userEmail }: SubscriptionCardProps) {
         {/* ── Summary (left / top) ── */}
         <div className="flex flex-col items-center justify-center border-b border-blue-500/10 p-5 text-center sm:p-7 lg:border-b-0 lg:p-8">
           <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-muted">
-            {item.icon ? (
-              <img
-                src={item.icon}
-                alt={item.subsFor}
-                width={40}
-                height={40}
-                className={`h-10 w-10 object-contain${item.invertIcon ? " dark:invert" : ""}`}
-              />
-            ) : (
-              <Sparkles className="h-8 w-8 text-muted-foreground" />
-            )}
+            <SubscriptionBrandMark
+              icon={item.icon}
+              alt={item.subsFor}
+              invertIcon={item.invertIcon}
+            />
           </div>
           <h3 className="mb-4 max-w-full wrap-break-word text-lg font-medium leading-snug">
             <a

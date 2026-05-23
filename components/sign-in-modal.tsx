@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Mail, Lock, Eye, EyeOff, User } from "lucide-react";
 import {
   Dialog,
@@ -16,14 +17,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { useAuth, type AuthUser } from "@/components/auth-provider";
 
-function authUserFromLoginPayload(u: { id: number; email: string; name: string }): AuthUser {
-  return {
-    ...u,
-    oauthPasswordOnly: false,
-    canChangePassword: true,
-  };
-}
-
 type Mode = "signin" | "signup";
 
 interface SignInModalProps {
@@ -35,7 +28,7 @@ interface SignInModalProps {
 }
 
 type AuthJson =
-  | { success: true; user: { id: number; email: string; name: string } }
+  | { success: true; user: AuthUser }
   | { success: false; message?: string; errors?: Record<string, string[] | undefined> };
 
 export function SignInModal({
@@ -44,6 +37,7 @@ export function SignInModal({
   onAuthSuccess,
   initialMode = "signin",
 }: SignInModalProps) {
+  const router = useRouter();
   const { refresh } = useAuth();
   const [mode, setMode] = useState<Mode>(initialMode);
   const [showPassword, setShowPassword] = useState(false);
@@ -103,7 +97,8 @@ export function SignInModal({
       });
       const data = (await res.json()) as AuthJson;
       if (data.success) {
-        await refresh(authUserFromLoginPayload(data.user));
+        await refresh(data.user);
+        router.refresh();
         onAuthSuccess?.();
         handleOpenChange(false);
       } else {
@@ -136,7 +131,8 @@ export function SignInModal({
       });
       const data = (await res.json()) as AuthJson;
       if (data.success) {
-        await refresh(authUserFromLoginPayload(data.user));
+        await refresh(data.user);
+        router.refresh();
         onAuthSuccess?.();
         handleOpenChange(false);
       } else {

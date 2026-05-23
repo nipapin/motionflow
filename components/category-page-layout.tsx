@@ -8,7 +8,8 @@ import { ProductGrid } from "@/components/product-grid";
 import { SignInModal } from "@/components/sign-in-modal";
 import { SubscriptionModal } from "@/components/subscription-modal";
 import type { Product } from "@/lib/product-types";
-import { productMatchesSearch, productPopularityScore } from "@/lib/product-ui";
+import { productMatchesSearch, productMatchesSidebarCategory, productPopularityScore } from "@/lib/product-ui";
+import { startMarketplaceDownload } from "@/lib/open-marketplace-download";
 
 function titleCaseSlug(slug: string): string {
   return slug
@@ -55,12 +56,11 @@ export function CategoryPageLayout({
   initialHasMore = false,
 }: CategoryPageLayoutProps) {
   const { user } = useAuth();
-  const { searchQuery } = useAppChrome();
+  const { searchQuery, searchCategory } = useAppChrome();
   const [sortBy, setSortBy] = useState("popular");
   const [selectedSubCategory, setSelectedSubCategory] = useState("");
   const [signInOpen, setSignInOpen] = useState(false);
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
-
   const [allProducts, setAllProducts] = useState(initialProducts);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -76,12 +76,26 @@ export function CategoryPageLayout({
 
   const isLoggedIn = !!user;
 
-  const handleDownload = () => {
+  const handleDownload = async (product: Product) => {
     if (!isLoggedIn) {
       setSignInOpen(true);
-    } else {
-      setSubscriptionOpen(true);
+      return;
     }
+    try {
+      const res = await fetch(`/api/me/can-download?itemId=${product.id}`);
+      if (!res.ok) {
+        setSubscriptionOpen(true);
+        return;
+      }
+      const data = (await res.json()) as { canDownload?: boolean };
+      if (data.canDownload) {
+        void startMarketplaceDownload(product.id);
+        return;
+      }
+    } catch (e) {
+      console.error("[category handleDownload]", e);
+    }
+    setSubscriptionOpen(true);
   };
 
   const selectedSlug = useMemo(() => {
@@ -93,6 +107,9 @@ export function CategoryPageLayout({
   }, [selectedSubCategory, subCategoryMap]);
 
   const filteredProducts = allProducts.filter((product) => {
+    if (searchQuery && !productMatchesSidebarCategory(product, searchCategory)) {
+      return false;
+    }
     if (selectedSlug && !productMatchesSubCategory(product, selectedSlug)) return false;
     if (searchQuery && !productMatchesSearch(product, searchQuery)) return false;
     return true;

@@ -9,14 +9,19 @@ import {
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
+import { SignInModal } from "@/components/sign-in-modal";
 
 export type AuthUser = {
   id: number;
   email: string;
   name: string;
   oauthPasswordOnly?: boolean;
+  hasGoogleLinked?: boolean;
   canChangePassword?: boolean;
+  canUnlinkGoogle?: boolean;
 };
+
+type SignInMode = "signin" | "signup";
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -27,6 +32,11 @@ type AuthContextValue = {
    */
   refresh: (fallbackIfNull?: AuthUser) => Promise<void>;
   signOut: () => Promise<void>;
+  /**
+   * Open the global sign-in modal. Use this anywhere instead of redirecting
+   * to a `/login` route — there is no such route in this app.
+   */
+  openSignIn: (mode?: SignInMode) => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -40,6 +50,8 @@ export function AuthProvider({
 }) {
   const [user, setUser] = useState<AuthUser | null>(initialUser ?? null);
   const [loading, setLoading] = useState(!initialUser);
+  const [signInOpen, setSignInOpen] = useState(false);
+  const [signInMode, setSignInMode] = useState<SignInMode>("signin");
 
   const refresh = useCallback(async (fallbackIfNull?: AuthUser) => {
     try {
@@ -90,9 +102,20 @@ export function AuthProvider({
     }
   }, []);
 
+  const openSignIn = useCallback((mode: SignInMode = "signin") => {
+    setSignInMode(mode);
+    setSignInOpen(true);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, refresh, signOut }}>
+    <AuthContext.Provider value={{ user, loading, refresh, signOut, openSignIn }}>
       {children}
+      <SignInModal
+        open={signInOpen}
+        onOpenChange={setSignInOpen}
+        initialMode={signInMode}
+        onAuthSuccess={() => setSignInOpen(false)}
+      />
     </AuthContext.Provider>
   );
 }

@@ -9,14 +9,12 @@ const TABLE = "subscription_downloads";
 export interface DownloadRow {
   id: number;
   itemId: number;
-  purchaseCode: string | null;
   createdAt: string | null;
 }
 
 type DlRow = RowDataPacket & {
   id: number;
   item_id: number;
-  purchase_code: string | null;
   created_at: string | null;
 };
 
@@ -37,19 +35,23 @@ export async function getDownloadsForUser(userId: number): Promise<DownloadsForU
   try {
     const pool = getPool();
     const [rows] = await pool.execute<DlRow[]>(
-      `SELECT id, item_id, purchase_code, created_at
-       FROM \`${TABLE}\`
-       WHERE user_id = ?
-       ORDER BY id DESC
+      `SELECT sd.id, sd.item_id, sd.created_at
+       FROM \`${TABLE}\` sd
+       INNER JOIN (
+         SELECT item_id, MAX(id) AS mid
+         FROM \`${TABLE}\`
+         WHERE user_id = ?
+         GROUP BY item_id
+       ) latest ON latest.item_id = sd.item_id AND latest.mid = sd.id
+       WHERE sd.user_id = ?
+       ORDER BY sd.id DESC
        LIMIT ${DOWNLOAD_LIST_LIMIT}`,
-      [userId],
+      [userId, userId],
     );
 
     const downloads: DownloadRow[] = rows.map((r) => ({
       id: Number(r.id),
       itemId: Number(r.item_id),
-      purchaseCode:
-        r.purchase_code != null && r.purchase_code !== "" ? String(r.purchase_code) : null,
       createdAt: r.created_at ? String(r.created_at) : null,
     }));
 

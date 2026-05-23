@@ -1,142 +1,380 @@
 "use client";
 
-import { useState } from "react";
-import { Video, Download, RefreshCw, Play, Pause, Clock, Film, Coins, Trash2, X } from "lucide-react";
+import { useState, useEffect, useCallback, type FormEvent } from "react";
+import {
+  Video,
+  Download,
+  RefreshCw,
+  Ratio,
+  Palette,
+  ImageIcon,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { CircularLoader } from "@/components/ui/circular-loader";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { useAuth } from "@/components/auth-provider";
+import { CreatorAiGateModal } from "@/components/creator-ai-gate-modal";
+import { SignInModal } from "@/components/sign-in-modal";
+import { useCreatorAiGateAfterSignIn } from "@/hooks/use-creator-ai-gate-after-sign-in";
+import {
+  useGenerations,
+  normalizeGenerationStatus,
+  type GenerationStatus,
+} from "@/hooks/use-generations";
+import { useExtraGenerationsPurchase } from "@/hooks/use-extra-generations-purchase";
+import { AiToolPageHeader } from "@/components/ai-tool-page-header";
+import { BuyExtraGenerationsDialog } from "@/components/buy-extra-generations-dialog";
+import {
+  CREATOR_AI_REQUIRED_CODE,
+  GENERATION_LIMIT_REACHED_CODE,
+  getAiGenerateBlockReason,
+} from "@/lib/ai-generation-gate";
+import { downloadUrlAsFile } from "@/lib/download-url-as-file";
+import { replicateFileUrlToDisplaySrc } from "@/lib/replicate-file-display-url";
+import { VideoLightbox } from "@/components/video-generator/video-lightbox";
+import { RecentVideosList } from "@/components/video-generator/recent-videos-list";
+import { FirstFrameDialog } from "@/components/video-generator/first-frame-dialog";
+import { triggerClasses } from "@/components/video-generator/styles";
 
-const durationOptions = [
-  { id: "3s", label: "3 sec", cost: 5 },
-  { id: "5s", label: "5 sec", cost: 8 },
-  { id: "10s", label: "10 sec", cost: 15 },
+const TARGET_RESOLUTION = "720" as const;
+const VIDEO_DURATION_SEC = 5;
+
+const aspectRatios = [
+  { id: "16:9", label: "16:9 — Widescreen" },
+  { id: "9:16", label: "9:16 — Portrait" },
+  { id: "1:1", label: "1:1 — Square" },
 ];
 
-const qualityOptions = [
-  { id: "720p", label: "720p", multiplier: 1 },
-  { id: "1080p", label: "1080p", multiplier: 1.5 },
-  { id: "4k", label: "4K", multiplier: 2 },
-];
+export interface RecentVideo {
+  id: string;
+  url: string;
+  aspectRatio: string;
+  prompt: string;
+  style: string;
+  durationSec: string;
+  audioEnabled: boolean;
+  firstFrameUrl?: string;
+  lastFrameUrl?: string;
+}
 
-const stylePresets = [
+export const stylePresets = [
   { id: "cinematic", label: "Cinematic" },
   { id: "anime", label: "Anime" },
   { id: "realistic", label: "Realistic" },
   { id: "artistic", label: "Artistic" },
 ];
 
-interface VideoHistory {
+type ApiGenerationRecord = {
   id: string;
-  prompt: string;
-  style: string;
-  duration: string;
-  quality: string;
-  thumbnail: string;
-  timestamp: Date;
+  status: string;
+  settings: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+  error_message: string | null;
+  created_at: string;
+};
+
+const KNOWN_VIDEO_STYLES = new Set(stylePresets.map((s) => s.id));
+const KNOWN_VIDEO_RATIOS = new Set(aspectRatios.map((r) => r.id));
+
+function recordsToRecentVideos(rows: ApiGenerationRecord[]): RecentVideo[] {
+  const out: RecentVideo[] = [];
+  for (const row of rows) {
+    if (row.status !== "ok" || !row.result) continue;
+    const url = row.result.video;
+    if (typeof url !== "string" || !url) continue;
+    const s = row.settings;
+    const aspectRatio =
+      typeof s.aspect_ratio === "string" && KNOWN_VIDEO_RATIOS.has(s.aspect_ratio)
+        ? s.aspect_ratio
+        : "16:9";
+    const style =
+      typeof s.style === "string" && KNOWN_VIDEO_STYLES.has(s.style)
+        ? s.style
+        : "realistic";
+    const durationSec = String(
+      typeof s.duration === "number" ? s.duration : VIDEO_DURATION_SEC,
+    );
+    const audioEnabled =
+      typeof s.audio_enabled === "boolean" ? s.audio_enabled : true;
+    const firstFrameUrl =
+      typeof s.first_frame_url === "string" ? s.first_frame_url : undefined;
+    const lastFrameUrl =
+      typeof s.last_frame_url === "string" ? s.last_frame_url : undefined;
+    out.push({
+      id: row.id,
+      url,
+      aspectRatio,
+      prompt: typeof s.prompt === "string" ? s.prompt : "",
+      style,
+      durationSec,
+      audioEnabled,
+      firstFrameUrl,
+      lastFrameUrl,
+    });
+  }
+  return out;
 }
 
-const mockHistory: VideoHistory[] = [
-  {
-    id: "1",
-    prompt: "A drone shot flying over mountains at sunset",
-    style: "cinematic",
-    duration: "5s",
-    quality: "1080p",
-    thumbnail: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=256&h=144&fit=crop",
-    timestamp: new Date(Date.now() - 3600000),
-  },
-  {
-    id: "2",
-    prompt: "Ocean waves crashing on a rocky shore",
-    style: "realistic",
-    duration: "3s",
-    quality: "1080p",
-    thumbnail: "https://images.unsplash.com/photo-1505142468610-359e7d316be0?w=256&h=144&fit=crop",
-    timestamp: new Date(Date.now() - 86400000),
-  },
-  {
-    id: "3",
-    prompt: "A samurai walking through cherry blossoms",
-    style: "anime",
-    duration: "5s",
-    quality: "720p",
-    thumbnail: "https://images.unsplash.com/photo-1522383225653-ed111181a951?w=256&h=144&fit=crop",
-    timestamp: new Date(Date.now() - 172800000),
-  },
-];
-
 export function VideoGenerator() {
+  const { user } = useAuth();
+  const {
+    status: generations,
+    loading: generationsLoading,
+    error: generationsError,
+    authenticated,
+    setStatus: setGenerationsStatus,
+    refresh: refreshGenerations,
+  } = useGenerations();
+
+  const {
+    buyOpen,
+    setBuyOpen,
+    openBuyDialog,
+    selectedCount,
+    setSelectedCount,
+    continuePurchase,
+    checkoutLoading,
+    purchaseDisabled,
+  } = useExtraGenerationsPurchase({ onSuccess: refreshGenerations });
+
+  const [signInOpen, setSignInOpen] = useState(false);
+  const [creatorAiGateOpen, setCreatorAiGateOpen] = useState(false);
+  const [creatorAiVariant, setCreatorAiVariant] = useState<
+    "subscribe" | "upgrade"
+  >("subscribe");
+
+  const { markGuestWantedGenerate } = useCreatorAiGateAfterSignIn(
+    user,
+    generations,
+    generationsLoading,
+    signInOpen,
+    setCreatorAiGateOpen,
+    setCreatorAiVariant,
+  );
+
   const [prompt, setPrompt] = useState("");
-  const [selectedDuration, setSelectedDuration] = useState("5s");
-  const [selectedQuality, setSelectedQuality] = useState("1080p");
-  const [selectedStyle, setSelectedStyle] = useState("cinematic");
+  const [selectedAspectRatio, setSelectedAspectRatio] = useState("16:9");
+  const [selectedStyle, setSelectedStyle] = useState("realistic");
+  const [audioEnabled, setAudioEnabled] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedVideo, setGeneratedVideo] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [credits, setCredits] = useState(100);
-  const [history, setHistory] = useState<VideoHistory[]>(mockHistory);
   const [lightboxVideo, setLightboxVideo] = useState<string | null>(null);
+  const [mainVideoDownloadLoading, setMainVideoDownloadLoading] =
+    useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [recentVideos, setRecentVideos] = useState<RecentVideo[]>([]);
 
-  const baseCost = durationOptions.find(d => d.id === selectedDuration)?.cost || 8;
-  const qualityMultiplier = qualityOptions.find(q => q.id === selectedQuality)?.multiplier || 1;
-  const totalCost = Math.round(baseCost * qualityMultiplier);
+  const refreshRecentVideos = useCallback(async () => {
+    if (!user) {
+      setRecentVideos([]);
+      return;
+    }
+    try {
+      const res = await fetch(
+        "/api/me/generation-records?tool=video&limit=5",
+        { credentials: "include", cache: "no-store" },
+      );
+      if (!res.ok) return;
+      const data = (await res.json()) as { items?: ApiGenerationRecord[] };
+      setRecentVideos(recordsToRecentVideos(data.items ?? []).slice(0, 2));
+    } catch {
+      /* ignore */
+    }
+  }, [user]);
 
-  const handleGenerate = async () => {
-    if (!prompt.trim() || credits < totalCost) return;
-    
+  useEffect(() => {
+    void refreshRecentVideos();
+  }, [refreshRecentVideos]);
+
+  const deleteRecentVideo = useCallback(
+    async (id: string) => {
+      setRecentVideos((prev) => prev.filter((it) => it.id !== id));
+      try {
+        await fetch(`/api/me/generation-records/${id}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+      } catch {
+        void refreshRecentVideos();
+      }
+    },
+    [refreshRecentVideos],
+  );
+
+  const repeatRecentVideo = useCallback((item: RecentVideo) => {
+    setPrompt(item.prompt);
+    setSelectedStyle(item.style);
+    setSelectedAspectRatio(item.aspectRatio);
+    setAudioEnabled(item.audioEnabled);
+    setFirstFrameUrl(item.firstFrameUrl ?? null);
+    setLastFrameUrl(item.lastFrameUrl ?? null);
+    setErrorMessage(null);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, []);
+
+  /**
+   * Runs the generation gate check and triggers the appropriate UI response.
+   * Returns true if the caller is clear to proceed, false if blocked.
+   */
+  const checkGenerationGate = useCallback((): boolean => {
+    const block = getAiGenerateBlockReason(user, generations, generationsLoading);
+    if (block === "sign_in") {
+      markGuestWantedGenerate();
+      setSignInOpen(true);
+      return false;
+    }
+    if (block === "needs_creator_ai") {
+      setCreatorAiVariant(
+        generations?.plan === "creator" ? "upgrade" : "subscribe",
+      );
+      setCreatorAiGateOpen(true);
+      return false;
+    }
+    if (block === "limit") {
+      openBuyDialog();
+      return false;
+    }
+    return true;
+  }, [
+    user,
+    generations,
+    generationsLoading,
+    markGuestWantedGenerate,
+    setSignInOpen,
+    setCreatorAiVariant,
+    setCreatorAiGateOpen,
+    openBuyDialog,
+  ]);
+
+  const handle403CreatorAiGate = useCallback(
+    (responsePlan?: string): void => {
+      void refreshGenerations();
+      setCreatorAiVariant(responsePlan === "creator" ? "upgrade" : "subscribe");
+      setCreatorAiGateOpen(true);
+    },
+    [refreshGenerations, setCreatorAiVariant, setCreatorAiGateOpen],
+  );
+
+  const syncGenerations = useCallback(
+    (genStatus?: GenerationStatus): void => {
+      if (genStatus) {
+        setGenerationsStatus(genStatus);
+      } else {
+        refreshGenerations();
+      }
+    },
+    [setGenerationsStatus, refreshGenerations],
+  );
+
+  const [firstFrameUrl, setFirstFrameUrl] = useState<string | null>(null);
+  const [lastFrameUrl, setLastFrameUrl] = useState<string | null>(null);
+  const [framePickerSlot, setFramePickerSlot] = useState<"first" | "last" | null>(
+    null,
+  );
+
+  const handleGenerate = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setErrorMessage(null);
+
+    if (!prompt.trim() || isGenerating || generationsLoading) {
+      return;
+    }
+
+    if (!checkGenerationGate()) return;
+
     setIsGenerating(true);
-    setCredits(prev => prev - totalCost);
-    
-    // Simulate generation
-    setTimeout(() => {
-      const newVideo = "https://images.unsplash.com/photo-1536240478700-b869070f9279?w=800&h=450&fit=crop";
-      setGeneratedVideo(newVideo);
-      
-      // Add to history
-      setHistory(prev => [{
-        id: Date.now().toString(),
-        prompt,
-        style: selectedStyle,
-        duration: selectedDuration,
-        quality: selectedQuality,
-        thumbnail: newVideo,
-        timestamp: new Date(),
-      }, ...prev]);
-      
-      setIsGenerating(false);
-    }, 3000);
-  };
 
-  const removeFromHistory = (id: string) => {
-    setHistory(prev => prev.filter(h => h.id !== id));
+    try {
+      const res = await fetch("/api/generations/video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: prompt.trim(),
+          style: selectedStyle,
+          aspect_ratio: selectedAspectRatio,
+          duration: VIDEO_DURATION_SEC,
+          target_resolution: TARGET_RESOLUTION,
+          audio_enabled: audioEnabled,
+          ...(firstFrameUrl ? { first_frame_url: firstFrameUrl } : {}),
+          ...(lastFrameUrl ? { last_frame_url: lastFrameUrl } : {}),
+        }),
+      });
+
+      const data = (await res.json().catch(() => ({}))) as {
+        video?: string;
+        error?: string;
+        code?: string;
+        plan?: string;
+        generations?: GenerationStatus;
+        record_id?: string;
+      } & Partial<GenerationStatus>;
+
+      if (res.status === 403 && data.code === CREATOR_AI_REQUIRED_CODE) {
+        handle403CreatorAiGate(data.plan);
+        return;
+      }
+
+      if (res.status === 402 && data.code === GENERATION_LIMIT_REACHED_CODE) {
+        syncGenerations(normalizeGenerationStatus(data));
+        openBuyDialog();
+        return;
+      }
+
+      if (!res.ok) {
+        syncGenerations(data.generations);
+        throw new Error(data.error || `Request failed (${res.status})`);
+      }
+
+      const url = data.video;
+      if (!url) {
+        throw new Error("No video returned");
+      }
+
+      syncGenerations(data.generations);
+
+      setGeneratedVideo(url);
+      void refreshRecentVideos();
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to generate video";
+      setErrorMessage(message);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   return (
     <div className="max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-semibold text-foreground mb-2 tracking-tight">AI Video Generation</h1>
-          <p className="text-muted-foreground">Create stunning videos from text descriptions using AI</p>
-        </div>
-        
-        {/* Credits Display */}
-        <div className="flex items-center gap-3 px-5 py-3 rounded-xl border border-blue-500/30 bg-card/50">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-            <Coins className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Available Credits</p>
-            <p className="text-xl font-semibold text-foreground">{credits}</p>
-          </div>
-        </div>
-      </div>
+      <AiToolPageHeader
+        title="AI Video Generation"
+        description="Create stunning videos from text descriptions using AI"
+        status={generations}
+        loading={generationsLoading}
+        authenticated={authenticated}
+        error={generationsError}
+      />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Panel - Controls */}
-        <div className="lg:col-span-1 space-y-6">
-          {/* Prompt Input */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
+        <form onSubmit={handleGenerate} className="lg:col-span-1 space-y-3 lg:space-y-6">
           <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
-            <label className="text-sm font-medium text-foreground mb-3 block">Video Prompt</label>
+            <label
+              htmlFor="video-prompt"
+              className="text-sm font-medium text-foreground mb-3 block"
+            >
+              Video Prompt
+            </label>
             <textarea
+              id="video-prompt"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="Describe the video you want to create... (e.g., 'A drone shot flying over mountains at sunset')"
@@ -144,93 +382,170 @@ export function VideoGenerator() {
             />
           </div>
 
-          {/* Style */}
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
-            <label className="text-sm font-medium text-foreground mb-3 block">Style</label>
-            <div className="grid grid-cols-2 gap-2">
-              {stylePresets.map((style) => (
-                <button
-                  key={style.id}
-                  type="button"
-                  onClick={() => setSelectedStyle(style.id)}
-                  className={cn(
-                    "px-3 py-2.5 rounded-xl text-sm font-medium smooth border",
-                    selectedStyle === style.id
-                      ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white border-transparent shadow-lg shadow-blue-500/25"
-                      : "bg-background/50 text-muted-foreground hover:text-foreground border-blue-500/20 hover:border-blue-500/40"
-                  )}
-                >
-                  {style.label}
-                </button>
-              ))}
+          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5 space-y-5">
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">Frames (optional)</p>
+                <p className="text-xs text-muted-foreground">
+                  Optional reference images for the first and last frames. PNG, JPEG, or WebP.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="relative mx-auto w-full max-w-[180px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setErrorMessage(null);
+                      setFramePickerSlot("first");
+                    }}
+                    className="flex aspect-square w-full cursor-pointer flex-col overflow-hidden rounded-xl border border-blue-500/30 bg-background/35 text-left transition-colors hover:border-blue-500/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
+                  >
+                    <div className="relative flex min-h-0 flex-1 flex-col">
+                      {firstFrameUrl ? (
+                        <img
+                          src={replicateFileUrlToDisplaySrc(firstFrameUrl)}
+                          alt="First frame"
+                          className="h-full w-full flex-1 object-cover"
+                        />
+                      ) : (
+                        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-3 text-muted-foreground/70">
+                          <ImageIcon className="h-8 w-8" />
+                          <span className="text-xs font-medium text-foreground/90 text-center leading-snug">
+                            First frame
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                  {firstFrameUrl ? (
+                    <button
+                      type="button"
+                      aria-label="Clear first frame"
+                      className="absolute right-1 top-1 z-10 h-7 w-7 cursor-pointer rounded-full border border-blue-500/35 bg-background/80 p-0 text-muted-foreground leading-none backdrop-blur-sm transition-colors hover:text-foreground"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFirstFrameUrl(null);
+                      }}
+                    >
+                      <X className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2" />
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="relative mx-auto w-full max-w-[180px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setErrorMessage(null);
+                      setFramePickerSlot("last");
+                    }}
+                    className="flex aspect-square w-full cursor-pointer flex-col overflow-hidden rounded-xl border border-blue-500/30 bg-background/35 text-left transition-colors hover:border-blue-500/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
+                  >
+                    <div className="relative flex min-h-0 flex-1 flex-col">
+                      {lastFrameUrl ? (
+                        <img
+                          src={replicateFileUrlToDisplaySrc(lastFrameUrl)}
+                          alt="Last frame"
+                          className="h-full w-full flex-1 object-cover"
+                        />
+                      ) : (
+                        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-3 text-muted-foreground/70">
+                          <ImageIcon className="h-8 w-8" />
+                          <span className="text-xs font-medium text-foreground/90 text-center leading-snug">
+                            Last frame
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                  {lastFrameUrl ? (
+                    <button
+                      type="button"
+                      aria-label="Clear last frame"
+                      className="absolute right-1 top-1 z-10 h-7 w-7 cursor-pointer rounded-full border border-blue-500/35 bg-background/80 p-0 text-muted-foreground leading-none backdrop-blur-sm transition-colors hover:text-foreground"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setLastFrameUrl(null);
+                      }}
+                    >
+                      <X className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2" />
+                    </button>
+                  ) : null}
+                </div>
+              </div>
             </div>
+
+            <div>
+              <label
+                htmlFor="video-style"
+                className="text-sm font-medium text-foreground mb-3 flex items-center gap-2"
+              >
+                <Palette className="w-4 h-4 text-blue-400" />
+                Style
+              </label>
+              <Select value={selectedStyle} onValueChange={setSelectedStyle}>
+                <SelectTrigger id="video-style" className={triggerClasses}>
+                  <SelectValue placeholder="Select style" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stylePresets.map((style) => (
+                    <SelectItem key={style.id} value={style.id}>
+                      {style.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <label
+                htmlFor="video-aspect"
+                className="text-sm font-medium text-foreground mb-3 flex items-center gap-2"
+              >
+                <Ratio className="w-4 h-4 text-blue-400" />
+                Aspect ratio
+              </label>
+              <Select
+                value={selectedAspectRatio}
+                onValueChange={setSelectedAspectRatio}
+              >
+                <SelectTrigger id="video-aspect" className={triggerClasses}>
+                  <SelectValue placeholder="Select aspect ratio" />
+                </SelectTrigger>
+                <SelectContent>
+                  {aspectRatios.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between rounded-xl border border-blue-500/30 bg-background/40 p-3">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Audio</p>
+                  <p className="text-xs text-muted-foreground">
+                    Generate video with sound
+                  </p>
+                </div>
+                <Switch
+                  id="video-audio"
+                  checked={audioEnabled}
+                  onCheckedChange={setAudioEnabled}
+                  aria-label="Toggle video audio"
+                />
+              </div>
+            </div>
+
           </div>
 
-          {/* Duration */}
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
-            <label className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
-              <Clock className="w-4 h-4 text-blue-400" />
-              Duration
-            </label>
-            <div className="flex gap-2">
-              {durationOptions.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => setSelectedDuration(option.id)}
-                  className={cn(
-                    "flex-1 px-3 py-2.5 rounded-xl text-sm font-medium smooth border flex flex-col items-center gap-1",
-                    selectedDuration === option.id
-                      ? "bg-blue-500/10 border-blue-500/50 text-foreground"
-                      : "bg-background/50 border-blue-500/20 text-muted-foreground hover:border-blue-500/40"
-                  )}
-                >
-                  <span>{option.label}</span>
-                  <span className="text-xs opacity-60">{option.cost} cr</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Quality */}
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
-            <label className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
-              <Film className="w-4 h-4 text-blue-400" />
-              Quality
-            </label>
-            <div className="flex gap-2">
-              {qualityOptions.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => setSelectedQuality(option.id)}
-                  className={cn(
-                    "flex-1 px-3 py-2.5 rounded-xl text-sm font-medium smooth border flex flex-col items-center gap-1",
-                    selectedQuality === option.id
-                      ? "bg-blue-500/10 border-blue-500/50 text-foreground"
-                      : "bg-background/50 border-blue-500/20 text-muted-foreground hover:border-blue-500/40"
-                  )}
-                >
-                  <span>{option.label}</span>
-                  <span className="text-xs opacity-60">x{option.multiplier}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Cost Summary */}
-          <div className="rounded-xl bg-blue-500/10 border border-blue-500/20 p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Generation cost:</span>
-              <span className="text-lg font-semibold text-foreground">{totalCost} credits</span>
-            </div>
-          </div>
-
-          {/* Generate Button */}
           <Button
-            onClick={handleGenerate}
-            disabled={!prompt.trim() || isGenerating || credits < totalCost}
-            className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl font-medium smooth shadow-lg shadow-blue-500/25 disabled:opacity-50"
+            type="submit"
+            disabled={!prompt.trim() || isGenerating || generationsLoading}
+            className="w-full h-12 bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl font-medium smooth shadow-lg shadow-blue-500/25 disabled:opacity-50"
           >
             {isGenerating ? (
               <>
@@ -245,58 +560,77 @@ export function VideoGenerator() {
             )}
           </Button>
 
-          {credits < totalCost && !isGenerating && (
-            <p className="text-sm text-red-400 text-center">Not enough credits. Please purchase more.</p>
+          {errorMessage && (
+            <p className="text-sm text-red-400 text-center">{errorMessage}</p>
           )}
+        </form>
 
-          {isGenerating && (
-            <div className="rounded-xl bg-blue-500/10 border border-blue-500/20 p-4">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-                <span className="text-sm text-foreground font-medium">Processing...</span>
-              </div>
-              <p className="text-xs text-muted-foreground">This may take a few minutes depending on the video duration and quality selected.</p>
-            </div>
-          )}
-        </div>
+        <FirstFrameDialog
+          open={framePickerSlot !== null}
+          onOpenChange={(open) => {
+            if (!open) setFramePickerSlot(null);
+          }}
+          dialogTitle={
+            framePickerSlot === "last"
+              ? "Choose last frame (optional)"
+              : "Choose first frame (optional)"
+          }
+          generateDescription={
+            framePickerSlot === "last"
+              ? "Creates an image and uses it as the last-frame reference."
+              : "Creates a still using one image generation, then uses it as the first frame."
+          }
+          onFrameSelected={(url) => {
+            if (framePickerSlot === "last") {
+              setLastFrameUrl(url);
+            } else {
+              setFirstFrameUrl(url);
+            }
+            setFramePickerSlot(null);
+          }}
+          userId={user?.id}
+          checkGate={checkGenerationGate}
+          onCreatorAiGate={handle403CreatorAiGate}
+          syncGenerations={syncGenerations}
+          onError={setErrorMessage}
+          generationsLoading={generationsLoading}
+        />
 
-        {/* Right Panel - Generated Video & History */}
         <div className="lg:col-span-2 space-y-6">
           <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5 min-h-[350px]">
-            <h3 className="text-lg font-medium text-foreground mb-4">Generated Video</h3>
+            <h3 className="text-lg font-medium text-foreground mb-4">
+              Generated Video
+            </h3>
             {generatedVideo ? (
               <div className="space-y-4">
-                <div 
-                  className="relative rounded-xl overflow-hidden border border-blue-500/20 aspect-video bg-black cursor-pointer"
-                  onClick={() => setLightboxVideo(generatedVideo)}
-                >
-                  <img src={generatedVideo} alt="Generated video preview" className="w-full h-full object-cover" />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <button
-                      type="button"
-                      onClick={() => setIsPlaying(!isPlaying)}
-                      className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center hover:bg-white/30 smooth"
-                    >
-                      {isPlaying ? (
-                        <Pause className="w-8 h-8 text-white" />
-                      ) : (
-                        <Play className="w-8 h-8 text-white ml-1" />
-                      )}
-                    </button>
-                  </div>
-                  {/* Progress bar */}
-                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
-                    <div className="h-full bg-blue-500 w-1/3" />
-                  </div>
+                <div className="flex justify-center">
+                  <video
+                    src={replicateFileUrlToDisplaySrc(generatedVideo)}
+                    controls
+                    controlsList="nodownload"
+                    playsInline
+                    className="block max-w-full h-auto max-h-[420px] w-auto rounded-xl border border-blue-500/20"
+                  />
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-muted-foreground">
-                    <span className="text-foreground font-medium">Duration:</span> {selectedDuration.replace('s', ' seconds')} | 
-                    <span className="text-foreground font-medium ml-2">Quality:</span> {selectedQuality}
-                  </div>
-                  <Button className="bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-lg">
-                    <Download className="w-4 h-4 mr-2" />
+                <div className="flex flex-wrap items-center justify-end gap-3">
+                  <Button
+                    type="button"
+                    disabled={mainVideoDownloadLoading}
+                    className="bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-lg disabled:opacity-60"
+                    onClick={() =>
+                      void downloadUrlAsFile(
+                        replicateFileUrlToDisplaySrc(generatedVideo),
+                        "motionflow-video",
+                        { onLoadingChange: setMainVideoDownloadLoading },
+                      )
+                    }
+                  >
+                    {mainVideoDownloadLoading ? (
+                      <CircularLoader className="w-4 h-4 mr-2 text-white" />
+                    ) : (
+                      <Download className="w-4 h-4 mr-2" />
+                    )}
                     Download Video
                   </Button>
                 </div>
@@ -306,102 +640,53 @@ export function VideoGenerator() {
                 <div className="w-20 h-20 rounded-2xl bg-blue-500/10 flex items-center justify-center mb-4">
                   <Video className="w-10 h-10 text-blue-400" />
                 </div>
-                <h3 className="text-lg font-medium text-foreground mb-2">No video generated yet</h3>
-                <p className="text-muted-foreground max-w-sm">Enter a prompt and click generate to create AI-powered videos</p>
+                <h3 className="text-lg font-medium text-foreground mb-2">
+                  No video generated yet
+                </h3>
+                <p className="text-muted-foreground max-w-sm">
+                  Enter a prompt and click generate to create AI-powered videos
+                </p>
               </div>
             )}
           </div>
 
-          {/* History */}
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
-            <h3 className="text-lg font-medium text-foreground mb-4">Previous Generations</h3>
-            {history.length > 0 ? (
-              <div className="space-y-3">
-                {history.map((item) => (
-                  <div key={item.id} className="flex items-center gap-4 p-3 rounded-xl border border-blue-500/20 bg-background/30 hover:border-blue-500/40 smooth group">
-                    <div 
-                      className="relative w-24 h-14 rounded-lg overflow-hidden shrink-0 cursor-pointer hover:opacity-80 smooth"
-                      onClick={() => setLightboxVideo(item.thumbnail)}
-                    >
-                      <img 
-                        src={item.thumbnail} 
-                        alt={item.prompt} 
-                        className="w-full h-full object-cover"
-                      />
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                        <Play className="w-4 h-4 text-white" />
-                      </div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-foreground truncate">{item.prompt}</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {stylePresets.find(s => s.id === item.style)?.label} | {item.duration} | {item.quality} | {item.timestamp.toLocaleTimeString()}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        type="button"
-                        className="p-2 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 smooth"
-                      >
-                        <Download className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeFromHistory(item.id)}
-                        className="p-2 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 smooth"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">No previous generations</p>
-            )}
-          </div>
+          {user && recentVideos.length > 0 ? (
+            <RecentVideosList
+              videos={recentVideos}
+              onOpenLightbox={(url) => setLightboxVideo(url)}
+              onRepeat={repeatRecentVideo}
+              onDelete={deleteRecentVideo}
+            />
+          ) : null}
         </div>
       </div>
 
-      {/* Lightbox Modal */}
+      <SignInModal
+        open={signInOpen}
+        onOpenChange={setSignInOpen}
+        onAuthSuccess={() => setSignInOpen(false)}
+      />
+      <CreatorAiGateModal
+        open={creatorAiGateOpen}
+        onOpenChange={setCreatorAiGateOpen}
+        variant={creatorAiVariant}
+      />
+
+      <BuyExtraGenerationsDialog
+        open={buyOpen}
+        onOpenChange={setBuyOpen}
+        selectedCount={selectedCount}
+        onSelectCount={setSelectedCount}
+        onContinue={continuePurchase}
+        continueLoading={checkoutLoading}
+        continueDisabled={purchaseDisabled}
+      />
+
       {lightboxVideo && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
-          onClick={() => setLightboxVideo(null)}
-        >
-          <button
-            onClick={() => setLightboxVideo(null)}
-            className="absolute top-6 right-6 p-2 text-white/70 hover:text-white smooth"
-          >
-            <X className="w-8 h-8" />
-          </button>
-          <div 
-            className="relative max-w-5xl w-full mx-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="relative aspect-video rounded-2xl overflow-hidden border border-blue-500/30 bg-black">
-              <img 
-                src={lightboxVideo} 
-                alt="Generated video" 
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <button
-                  type="button"
-                  className="w-20 h-20 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center hover:bg-white/30 smooth"
-                >
-                  <Play className="w-10 h-10 text-white ml-1" />
-                </button>
-              </div>
-            </div>
-            <div className="flex justify-center mt-4">
-              <Button className="bg-white text-black hover:bg-white/90 rounded-xl shadow-lg">
-                <Download className="w-4 h-4 mr-2" />
-                Download Video
-              </Button>
-            </div>
-          </div>
-        </div>
+        <VideoLightbox
+          videoUrl={lightboxVideo}
+          onClose={() => setLightboxVideo(null)}
+        />
       )}
     </div>
   );

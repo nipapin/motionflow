@@ -20,7 +20,7 @@ const softwareCategories = [
   "After Effects",
   "Premiere Pro",
   "DaVinci Resolve",
-  "Illustrator",
+  // "Illustrator",
   "Stock Music",
   "Sound FX",
 ];
@@ -28,7 +28,7 @@ const softwareCategories = [
 interface ProductGridProps {
   products: Product[];
   title?: string;
-  onDownload?: () => void;
+  onDownload?: (product: Product) => void;
   showCategoryFilter?: boolean;
   selectedSoftware?: string;
   onSoftwareChange?: (software: string) => void;
@@ -108,7 +108,7 @@ export function ProductGrid({
       )}
 
       {templateProducts.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-5">
           {templateProducts.map((product) => (
             <ProductCard 
               key={product.id} 

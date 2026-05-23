@@ -114,6 +114,14 @@ function rowToProduct(row: RowDataPacket): Product | null {
  * Table defaults to `marketplace_items`; override with `DB_MARKET_ITEMS_TABLE`.
  */
 export async function getMarketItems(): Promise<Product[]> {
+  return getMarketItemsByAuthorId(6);
+}
+
+/** Public published items for a specific author (`access = 1`). */
+export async function getMarketItemsByAuthorId(authorId: number, limit?: number): Promise<Product[]> {
+  const normalizedAuthorId = Number(authorId);
+  if (!Number.isFinite(normalizedAuthorId)) return [];
+
   const pool = getMysqlPool();
   if (!pool) return [];
 
@@ -121,19 +129,20 @@ export async function getMarketItems(): Promise<Product[]> {
   if (connection && connection !== "mysql" && connection !== "mariadb") return [];
 
   const table = sanitizedTableName();
-  const limit = Math.min(
-    Math.max(Number(process.env.DB_MARKET_ITEMS_LIMIT ?? DEFAULT_LIMIT) || DEFAULT_LIMIT, 1),
+  const envLimit = Number(process.env.DB_MARKET_ITEMS_LIMIT ?? DEFAULT_LIMIT) || DEFAULT_LIMIT;
+  const cappedLimit = Math.min(
+    Math.max(Number(limit ?? envLimit) || DEFAULT_LIMIT, 1),
     500
   );
 
   try {
     const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT * FROM \`${table}\` WHERE author_id = 6 AND access = 1 ORDER BY id DESC LIMIT ?`,
-      [limit]
+      `SELECT * FROM \`${table}\` WHERE author_id = ? AND access = 1 ORDER BY id DESC LIMIT ?`,
+      [normalizedAuthorId, cappedLimit]
     );
     return rows.map(rowToProduct).filter((p): p is Product => p != null);
   } catch (err) {
-    console.error("[getMarketItems] MySQL query failed:", err);
+    console.error("[getMarketItemsByAuthorId] MySQL query failed:", err);
     return [];
   }
 }
@@ -246,14 +255,19 @@ export interface HomeSection {
 
 const HOME_SECTIONS: { title: string; slugs: string[] }[] = [
   { title: "Most Popular Templates", slugs: ["after-effects", "premiere-pro", "davinci-resolve"] },
-  { title: "Most Popular Graphics", slugs: ["illustrator"] },
+  // { title: "Most Popular Graphics", slugs: ["illustrator"] },
   { title: "Most Popular Stock Audio", slugs: ["stock-audio"] },
   { title: "Most Popular Sound FX", slugs: ["sound-fx"] },
 ];
 
+const ITEM_POPULARITIES_TABLE = "item_popularities";
+/** Official marketplace rankings in `item_popularities.valuer_id`. */
+const HOME_POPULARITY_VALUER_ID = 6;
+const HOME_SECTION_MIN_ITEMS = 1;
+
 /**
- * Single query: uses UNION ALL with per-group LIMIT 6 to fetch all home
- * sections in one round-trip, then splits results by slug group.
+ * One UNION ALL round-trip per home section: top 6 by `item_popularities.ranking`
+ * (valuer_id = 6). Sections with fewer than 6 ranked items are omitted.
  */
 export async function getHomeSections(): Promise<HomeSection[]> {
   const pool = getMysqlPool();
@@ -261,20 +275,20 @@ export async function getHomeSections(): Promise<HomeSection[]> {
 
   const table = sanitizedTableName();
 
-  const allSlugs = HOME_SECTIONS.flatMap((s) => s.slugs);
-  const slugSet = new Set(allSlugs.map((s) => s.toLowerCase()));
-
   const unions = HOME_SECTIONS.map(({ slugs }) => {
     const placeholders = slugs.map(() => "?").join(",");
-    return `(SELECT * FROM \`${table}\` WHERE LOWER(index_category_slug) IN (${placeholders}) AND author_id = 6 AND access = 1 ORDER BY id DESC LIMIT 6)`;
+    return `(SELECT m.* FROM \`${table}\` m
+      INNER JOIN \`${ITEM_POPULARITIES_TABLE}\` ip ON ip.item_id = m.id AND ip.valuer_id = ?
+      WHERE LOWER(m.index_category_slug) IN (${placeholders}) AND m.author_id = 6 AND m.access = 1
+      ORDER BY ip.ranking DESC, m.id DESC
+      LIMIT 6)`;
   });
 
   const sql = unions.join(" UNION ALL ");
-  const params = HOME_SECTIONS.flatMap((s) => s.slugs);
+  const params = HOME_SECTIONS.flatMap((s) => [HOME_POPULARITY_VALUER_ID, ...s.slugs]);
 
   try {
     const [rows] = await pool.query<RowDataPacket[]>(sql, params);
-
     const slugToSection = new Map<string, number>();
     HOME_SECTIONS.forEach((section, i) => {
       for (const slug of section.slugs) {
@@ -295,7 +309,7 @@ export async function getHomeSections(): Promise<HomeSection[]> {
     return HOME_SECTIONS.map((section, i) => ({
       title: section.title,
       items: buckets[i],
-    })).filter((s) => s.items.length > 0);
+    })).filter((s) => s.items.length >= HOME_SECTION_MIN_ITEMS);
   } catch (err) {
     console.error("[getHomeSections]", err);
     return [];
