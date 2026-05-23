@@ -39,6 +39,7 @@ const creatorFeatures = [
   "After Effects, Premiere Pro & DaVinci Resolve templates",
   "Stock music & sound FX library",
   "Commercial license",
+  "Fast support 27/7",
   "5 AI generations / month",
 ];
 
@@ -47,6 +48,7 @@ const ultimateFeatures = [
   "After Effects, Premiere Pro & DaVinci Resolve templates",
   "Stock music & sound FX library",
   "Commercial license",
+  "Fast support 27/7",
   "100 AI generations / month",
   "AI Image & Video Generation",
   "Text to Speech & Speech to Text",
