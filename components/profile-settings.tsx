@@ -23,6 +23,11 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+
+/** Matches contact form field borders (`contact-page-client.tsx`). */
+const profileInputClass =
+  "bg-blue-950/50 border-blue-500/20 hover:border-blue-500/30 focus-visible:border-blue-500/50 focus-visible:ring-blue-500/30 rounded-xl";
 
 type AuthUserPayload = {
   id: number;
@@ -210,7 +215,7 @@ export function ProfileSettings() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoComplete="username"
-              className="max-w-md bg-foreground/5 border-transparent"
+              className={cn(profileInputClass, "max-w-md")}
             />
           </div>
           <Button
@@ -243,7 +248,7 @@ export function ProfileSettings() {
               onChange={(e) => setEmail(e.target.value)}
               disabled={hasGoogleLinked}
               autoComplete="email"
-              className="max-w-md bg-foreground/5 border-transparent disabled:opacity-70"
+              className={cn(profileInputClass, "max-w-md disabled:opacity-70")}
             />
           </div>
           {!hasGoogleLinked && (
@@ -256,7 +261,7 @@ export function ProfileSettings() {
                   value={emailPassword}
                   onChange={(e) => setEmailPassword(e.target.value)}
                   autoComplete="current-password"
-                  className="max-w-md bg-foreground/5 border-transparent"
+                  className={cn(profileInputClass, "max-w-md")}
                 />
               </div>
               <Button
@@ -337,7 +342,7 @@ export function ProfileSettings() {
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 autoComplete="current-password"
-                className="bg-foreground/5 border-transparent"
+                className={profileInputClass}
               />
             </div>
             <div className="space-y-2">
@@ -348,7 +353,7 @@ export function ProfileSettings() {
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 autoComplete="new-password"
-                className="bg-foreground/5 border-transparent"
+                className={profileInputClass}
               />
             </div>
             <div className="space-y-2">
@@ -359,7 +364,7 @@ export function ProfileSettings() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 autoComplete="new-password"
-                className="bg-foreground/5 border-transparent"
+                className={profileInputClass}
               />
             </div>
             <Button

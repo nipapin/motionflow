@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, Loader2, AlertCircle } from "lucide-react";
+import { Check, Loader2, AlertCircle, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { usePaddle } from "@/lib/paddle";
 import { useAuth } from "@/components/auth-provider";
 import type { ActiveSubscriptionSummary, PricingBillingPeriod, PricingTier } from "@/lib/subscriptions";
+import { AI_TOOLS } from "@/lib/ai-tools";
 
 type PlanId = PricingTier;
 type BillingPeriod = PricingBillingPeriod;
@@ -34,25 +35,92 @@ const TIER_LABELS: Record<PlanId, string> = {
   creator_ai: "Creator + AI",
 };
 
-const creatorFeatures = [
-  "Unlimited downloads",
-  "After Effects, Premiere Pro & DaVinci Resolve templates",
-  "Stock music & sound FX library",
-  "Commercial license",
-  "Fast support 27/7",
-  "5 AI generations / month",
+type PlanIncludeIcon = "check" | "sparkle";
+
+type PlanIncludeItem = {
+  icon: PlanIncludeIcon;
+  bold: string;
+  text?: string;
+  bullets?: string[];
+};
+
+const CREATOR_INCLUDES: PlanIncludeItem[] = [
+  {
+    icon: "check",
+    bold: "Unlimited downloads of our creative library:",
+    bullets: [
+      "After Effects, Premiere Pro & DaVinci Resolve templates",
+      "Stock music & sound effects",
+      "Image and video footages",
+    ],
+  },
+  {
+    icon: "sparkle",
+    bold: "5 AI generations per month",
+  },
+  {
+    icon: "check",
+    bold: "Commercial license",
+    text: " for all creative assets and AI generations",
+  },
+  {
+    icon: "check",
+    bold: "Fast support 27/7",
+  },
 ];
 
-const ultimateFeatures = [
-  "Unlimited downloads",
-  "After Effects, Premiere Pro & DaVinci Resolve templates",
-  "Stock music & sound FX library",
-  "Commercial license",
-  "Fast support 27/7",
-  "100 AI generations / month",
-  "AI Image & Video Generation",
-  "Text to Speech & Speech to Text",
+/** Pricing copy: "Video Gen" → "Video Generation" (sidebar keeps short names). */
+function planAiToolLabel(name: string): string {
+  return name.replace(/\bGen\b/g, "Generation");
+}
+
+const CREATOR_AI_INCLUDES: PlanIncludeItem[] = [
+  {
+    icon: "check",
+    bold: "Everything in Creator",
+  },
+  {
+    icon: "sparkle",
+    bold: "100 AI generations per month",
+    bullets: AI_TOOLS.map((tool) => planAiToolLabel(tool.name)),
+  },
 ];
+
+function PlanIncludesList({ items }: { items: PlanIncludeItem[] }) {
+  return (
+    <div className="mt-8 border-t border-blue-500/15 pt-6">
+      <p className="mb-4 text-sm font-medium text-foreground">Includes:</p>
+      <ul className="space-y-4">
+        {items.map((item) => (
+          <li key={`${item.bold}-${item.text ?? ""}`} className="flex gap-3">
+            <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center">
+              {item.icon === "sparkle" ? (
+                <Sparkles className="h-4 w-4 text-blue-400" aria-hidden />
+              ) : (
+                <div className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500/20">
+                  <Check className="h-3 w-3 text-blue-400" aria-hidden />
+                </div>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm leading-snug text-foreground">
+                <span className="font-semibold">{item.bold}</span>
+                {item.text ? <span className="font-normal">{item.text}</span> : null}
+              </p>
+              {item.bullets && item.bullets.length > 0 && (
+                <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-muted-foreground marker:text-muted-foreground/50">
+                  {item.bullets.map((bullet) => (
+                    <li key={bullet}>{bullet}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 interface PricingPageClientProps {
   currentUser: { id: number; email: string } | null;
@@ -330,27 +398,27 @@ export function PricingPageClient({ currentUser, currentSubscription }: PricingP
     monthly: number;
     yearly: number;
     yearlyMonthly: number;
-    features: string[];
+    includes: PlanIncludeItem[];
     isFeatured: boolean;
   }> = [
     {
       id: "creator",
       title: TIER_LABELS.creator,
-      description: "Full access to the template and audio library",
+      description: "Templates, music, sound effects, and starter AI access",
       monthly: monthlyPrice,
       yearly: yearlyPrice,
       yearlyMonthly: yearlyMonthlyPrice,
-      features: creatorFeatures,
+      includes: CREATOR_INCLUDES,
       isFeatured: false,
     },
     {
       id: "creator_ai",
       title: TIER_LABELS.creator_ai,
-      description: "Full library access plus all AI tools",
+      description: "Everything in Creator, plus the full AI toolkit",
       monthly: ultimateMonthly,
       yearly: ultimateYearly,
       yearlyMonthly: ultimateYearlyMonthly,
-      features: ultimateFeatures,
+      includes: CREATOR_AI_INCLUDES,
       isFeatured: true,
     },
   ];
@@ -517,16 +585,7 @@ export function PricingPageClient({ currentUser, currentSubscription }: PricingP
                 isScheduledTarget={isScheduledTarget}
               />
 
-              <ul className="space-y-3">
-                {plan.features.map((feature) => (
-                  <li key={feature} className="flex items-center gap-3 text-sm">
-                    <div className="w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
-                      <Check className="w-3 h-3 text-blue-400" />
-                    </div>
-                    <span className="text-foreground">{feature}</span>
-                  </li>
-                ))}
-              </ul>
+              <PlanIncludesList items={plan.includes} />
             </div>
           );
         })}

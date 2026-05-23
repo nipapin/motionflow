@@ -188,7 +188,7 @@ export function ContactPageClient() {
     }
 
     const inputBase =
-        "w-full rounded-xl border bg-foreground/[0.04] px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/50 transition-all";
+        "w-full rounded-xl border bg-blue-950/50 px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/50 transition-all";
     const okBorder = "border-blue-500/20 hover:border-blue-500/30";
     const errBorder = "border-red-500/60";
 
@@ -258,7 +258,7 @@ export function ContactPageClient() {
                         id="requestType"
                         aria-label="Type of request"
                         className={cn(
-                            "w-full h-12 rounded-xl border bg-foreground/[0.04] px-4 text-sm text-foreground transition-all data-placeholder:text-muted-foreground/60 focus-visible:ring-2 focus-visible:ring-blue-500/30 focus-visible:border-blue-500/50",
+                            "w-full h-12 rounded-xl border bg-blue-950/50 px-4 text-sm text-foreground transition-all data-placeholder:text-muted-foreground/60 focus-visible:ring-2 focus-visible:ring-blue-500/30 focus-visible:border-blue-500/50",
                             fieldErrors.requestType ? errBorder : okBorder,
                         )}
                     >
@@ -344,7 +344,7 @@ export function ContactPageClient() {
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isSending}
-                        className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-blue-500/20 bg-foreground/[0.04] text-sm text-foreground hover:bg-blue-500/10 hover:border-blue-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-blue-500/20 bg-blue-950/50 text-sm text-foreground hover:bg-blue-500/10 hover:border-blue-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <Paperclip className="w-4 h-4" />
                         {attachment ? "Replace file" : "Choose file"}
