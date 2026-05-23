@@ -253,10 +253,26 @@ export interface HomeSection {
   items: Product[];
 }
 
-const HOME_SECTIONS: { title: string; slugs: string[] }[] = [
+const HOME_SECTION_ITEM_LIMIT = 6;
+
+type HomeSectionConfig = {
+  title: string;
+  slugs: string[];
+  /** Rows fetched before optional dedupe (defaults to {@link HOME_SECTION_ITEM_LIMIT}). */
+  fetchLimit?: number;
+  /** Keep one item per underlying audio file / track name. */
+  dedupeAudio?: boolean;
+};
+
+const HOME_SECTIONS: HomeSectionConfig[] = [
   { title: "Most Popular Templates", slugs: ["after-effects", "premiere-pro", "davinci-resolve"] },
   // { title: "Most Popular Graphics", slugs: ["illustrator"] },
-  { title: "Most Popular Stock Audio", slugs: ["stock-audio"] },
+  {
+    title: "Most Popular Stock Audio",
+    slugs: ["stock-audio"],
+    fetchLimit: 36,
+    dedupeAudio: true,
+  },
   { title: "Most Popular Sound FX", slugs: ["sound-fx"] },
 ];
 
@@ -264,6 +280,29 @@ const ITEM_POPULARITIES_TABLE = "item_popularities";
 /** Official marketplace rankings in `item_popularities.valuer_id`. */
 const HOME_POPULARITY_VALUER_ID = 6;
 const HOME_SECTION_MIN_ITEMS = 1;
+
+/** Same track may exist as multiple marketplace rows — key by file, demo, then title. */
+function homeSectionProductKey(product: Product): string {
+  const main = product.files?.main?.trim();
+  if (main) return `file:${main.toLowerCase()}`;
+  const demo = product.demo_url?.trim();
+  if (demo) return `demo:${demo.toLowerCase()}`;
+  const name = product.name.trim().toLowerCase().replace(/\s+/g, " ");
+  return `name:${name}`;
+}
+
+function dedupeHomeSectionProducts(products: Product[], limit: number): Product[] {
+  const seen = new Set<string>();
+  const out: Product[] = [];
+  for (const product of products) {
+    const key = homeSectionProductKey(product);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(product);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
 
 /**
  * One UNION ALL round-trip per home section: top 6 by `item_popularities.ranking`
@@ -275,13 +314,14 @@ export async function getHomeSections(): Promise<HomeSection[]> {
 
   const table = sanitizedTableName();
 
-  const unions = HOME_SECTIONS.map(({ slugs }) => {
+  const unions = HOME_SECTIONS.map(({ slugs, fetchLimit }) => {
     const placeholders = slugs.map(() => "?").join(",");
+    const limit = fetchLimit ?? HOME_SECTION_ITEM_LIMIT;
     return `(SELECT m.* FROM \`${table}\` m
       INNER JOIN \`${ITEM_POPULARITIES_TABLE}\` ip ON ip.item_id = m.id AND ip.valuer_id = ?
       WHERE LOWER(m.index_category_slug) IN (${placeholders}) AND m.author_id = 6 AND m.access = 1
       ORDER BY ip.ranking DESC, m.id DESC
-      LIMIT 6)`;
+      LIMIT ${limit})`;
   });
 
   const sql = unions.join(" UNION ALL ");
@@ -306,10 +346,13 @@ export async function getHomeSections(): Promise<HomeSection[]> {
       if (idx != null) buckets[idx].push(p);
     }
 
-    return HOME_SECTIONS.map((section, i) => ({
-      title: section.title,
-      items: buckets[i],
-    })).filter((s) => s.items.length >= HOME_SECTION_MIN_ITEMS);
+    return HOME_SECTIONS.map((section, i) => {
+      let items = buckets[i];
+      if (section.dedupeAudio) {
+        items = dedupeHomeSectionProducts(items, HOME_SECTION_ITEM_LIMIT);
+      }
+      return { title: section.title, items };
+    }).filter((s) => s.items.length >= HOME_SECTION_MIN_ITEMS);
   } catch (err) {
     console.error("[getHomeSections]", err);
     return [];
