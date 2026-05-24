@@ -7,7 +7,8 @@
     "dev": "next dev",
     "lint": "eslint .",
     "start": "next start",
-    "deploy": "git pull && npm install && npm run build && pm2 reload all"
+    "deploy:pm2": "pm2 reload ecosystem.config.cjs --update-env || pm2 start ecosystem.config.cjs",
+    "deploy": "git pull && npm ci && npm run build && npm run deploy:pm2"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1034.0",
