@@ -442,27 +442,6 @@ export function PricingPageClient({ currentUser, currentSubscription }: PricingP
           Get unlimited access to all templates, music, and sound effects. Cancel anytime.
         </p>
 
-        {/* Social proof strip */}
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-sm">
-          <div className="flex items-center gap-2">
-            <div className="flex">
-              {[0, 1, 2, 3, 4].map((i) => (
-                <Star key={i} className="h-4 w-4 fill-amber-400 text-amber-400" aria-hidden />
-              ))}
-            </div>
-            <span className="text-muted-foreground">
-              <span className="font-semibold text-foreground">4.9/5</span> from creators
-            </span>
-          </div>
-          <span className="hidden sm:inline h-4 w-px bg-blue-500/20" aria-hidden />
-          <span className="text-muted-foreground">
-            <span className="font-semibold text-foreground">12,000+</span> assets &amp; templates
-          </span>
-          <span className="hidden sm:inline h-4 w-px bg-blue-500/20" aria-hidden />
-          <span className="text-muted-foreground">
-            <span className="font-semibold text-foreground">6</span> AI tools included
-          </span>
-        </div>
       </div>
 
       {/* Scheduled change banner */}
