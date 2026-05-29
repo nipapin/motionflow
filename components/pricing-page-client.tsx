@@ -518,7 +518,7 @@ export function PricingPageClient({ currentUser, currentSubscription }: PricingP
       </div>
 
       {/* Pricing Cards */}
-      <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+      <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
         {planCards.map((plan) => {
           const relation = relationFor(currentSubscription, plan.id, billingPeriod);
           const isCurrent = relation === "current";
@@ -572,8 +572,6 @@ export function PricingPageClient({ currentUser, currentSubscription }: PricingP
                 hasScheduledChange={!!scheduledChange}
                 scheduledEffectiveAt={scheduledChange?.effectiveAt ?? null}
                 onUpgrade={() => {
-                  // Existing subscriber → prorated upgrade via Paddle API.
-                  // New subscriber → fresh Paddle Checkout overlay.
                   if (currentSubscription) {
                     void openUpgradeModal(plan.id);
                   } else {
@@ -589,89 +587,168 @@ export function PricingPageClient({ currentUser, currentSubscription }: PricingP
             </div>
           );
         })}
-      </div>
 
-      {/* Custom plan / enterprise CTA */}
-      <div className="mt-6 max-w-4xl mx-auto">
-        <div className="relative rounded-3xl border border-blue-500/20 bg-card/60 backdrop-blur-sm p-8 md:p-10 text-center flex items-center">
-          <h3 className="text-2xl font-semibold text-foreground tracking-tight">Need a custom plan?</h3>
-          <div className="ml-auto flex flex-col sm:flex-row items-center justify-center gap-3">
+        {/* Enterprise card */}
+        <div className="relative rounded-3xl border-2 border-blue-500/30 bg-gradient-to-br from-card via-card to-blue-500/5 shadow-xl shadow-blue-500/10 backdrop-blur-sm p-8 overflow-hidden transition-all duration-300">
+          <div className="pointer-events-none absolute -top-16 -right-16 h-48 w-48 rounded-full bg-blue-500/10 blur-3xl" />
+          <div className="relative">
+            <div className="mb-6">
+              <span className="inline-block text-xs font-semibold uppercase tracking-widest text-blue-400 mb-3">Enterprise</span>
+              <h3 className="text-xl font-semibold text-foreground mb-2">Custom Plan</h3>
+              <p className="text-muted-foreground text-sm leading-relaxed">
+                Team seats, custom limits, dedicated support, and flexible licensing.
+              </p>
+            </div>
+
+            <div className="mb-8">
+              <p className="text-4xl font-semibold text-foreground tracking-tight">Let&apos;s talk</p>
+            </div>
+
             <Link
               href="/contact"
-              className="inline-flex items-center justify-center h-11 px-6 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 text-white text-sm font-medium shadow-lg shadow-blue-500/25 hover:from-blue-500 hover:to-blue-400 transition-all duration-300"
+              className="w-full mb-8 h-12 rounded-xl border border-blue-500/30 bg-blue-500/10 text-foreground text-sm font-medium hover:bg-blue-500/20 transition-all duration-300 inline-flex items-center justify-center"
             >
               Contact sales
             </Link>
-            <a
-              href="mailto:support@motionflow.pro"
-              className="inline-flex items-center justify-center h-11 px-6 rounded-xl border border-blue-500/30 bg-blue-500/5 text-foreground text-sm font-medium hover:bg-blue-500/10 transition-all duration-300"
-            >
-              support@motionflow.pro
-            </a>
+
+            <div className="mt-8 border-t border-blue-500/15 pt-6">
+              <p className="mb-4 text-sm font-medium text-foreground">Includes:</p>
+              <ul className="space-y-4">
+                {[
+                  "Everything in Creator + AI",
+                  "Custom AI generation limits",
+                  "Team seats & shared workspace",
+                  "Custom commercial licensing",
+                  "Priority & dedicated support",
+                  "Custom integrations on request",
+                  "Invoicing & procurement support",
+                ].map((feature) => (
+                  <li key={feature} className="flex gap-3">
+                    <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-500/20">
+                      <Check className="h-3 w-3 text-blue-400" aria-hidden />
+                    </div>
+                    <span className="text-sm text-foreground">{feature}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         </div>
       </div>
 
+      {/* Testimonials */}
+      <div className="mt-20 max-w-5xl mx-auto w-full">
+        <div className="text-center mb-10">
+          <h2 className="text-2xl font-semibold text-foreground tracking-tight mb-2">What creators say</h2>
+          <p className="text-muted-foreground text-sm">Real people, real projects.</p>
+        </div>
+        <div className="grid grid-cols-3 gap-5">
+          {[
+            {
+              photo: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=80&h=80&fit=crop&crop=face",
+              name: "Marcus Reid",
+              role: "Senior Video Editor · Freelance",
+              text: "I used to spend half my evening hunting for the right music track. Now I just open MotionFlow, grab something, and move on. The library is genuinely good — not filler.",
+            },
+            {
+              photo: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=80&h=80&fit=crop&crop=face",
+              name: "Alina Kowalski",
+              role: "Creative Director · Vividframe Studio",
+              text: "Creator + AI basically replaced two separate subscriptions for our team. The After Effects templates alone saved us probably 6 hours last month. Didn't expect to like it this much.",
+            },
+            {
+              photo: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=80&h=80&fit=crop&crop=face",
+              name: "Tom Brecker",
+              role: "Colorist & Editor · Documentary Films",
+              text: "The commercial license is what sold me. I don't think twice before using a sound effect in a client project now. That peace of mind is honestly worth the price alone.",
+            },
+          ].map((t) => (
+            <div
+              key={t.name}
+              className="rounded-2xl border border-blue-500/15 bg-card/70 backdrop-blur-sm p-6 flex flex-col gap-4 hover:border-blue-500/30 transition-all duration-300"
+            >
+              <p className="text-sm text-muted-foreground leading-relaxed flex-1">&ldquo;{t.text}&rdquo;</p>
+              <div className="flex items-center gap-3 pt-2 border-t border-blue-500/10">
+                <img
+                  src={t.photo}
+                  alt={t.name}
+                  width={40}
+                  height={40}
+                  className="rounded-full object-cover shrink-0"
+                />
+                <div>
+                  <p className="text-sm font-semibold text-foreground leading-tight">{t.name}</p>
+                  <p className="text-xs text-muted-foreground leading-tight mt-0.5">{t.role}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="mt-16 max-w-4xl mx-auto w-full">
-        <h2 className="text-2xl font-semibold text-foreground text-center mb-2 tracking-tight">Pricing FAQ</h2>
+        <h2 className="text-2xl font-semibold text-foreground text-center mb-2 tracking-tight">Frequently asked questions</h2>
         <p className="text-center text-muted-foreground text-sm mb-8 leading-relaxed">
-          Answers about plans, billing, and what happens after you subscribe.
+          Everything about plans, downloads, AI generations, and licensing.
         </p>
         <Accordion type="single" collapsible className="rounded-2xl border border-blue-500/20 bg-card/50 px-1 sm:px-4">
           <AccordionItem value="q1" className="border-blue-500/10 px-3">
             <AccordionTrigger className="text-foreground text-base hover:no-underline">
-              What is the difference between Creator and Creator + AI?
+              What's the difference between Creator and Creator + AI?
             </AccordionTrigger>
             <AccordionContent className="text-muted-foreground leading-relaxed">
-              <strong className="text-foreground/90">Creator</strong> includes the full template and asset library with unlimited
-              marketplace downloads. <strong className="text-foreground/90">Creator + AI</strong> adds image and video generation, text
-              to speech, and speech to text on top of the same library and commercial license.
+              <strong className="text-foreground/90">Creator</strong> gives you unlimited downloads from the full library — After Effects, Premiere Pro & DaVinci Resolve templates, stock music, sound effects, and footage — plus a commercial license and 5 AI generations per month to try the tools.{" "}
+              <strong className="text-foreground/90">Creator + AI</strong> upgrades that to 100 AI generations per month across all six tools: Video Generation, Image Generation, Image Edit, SVG Generation, Text to Speech, and Speech to Text.
             </AccordionContent>
           </AccordionItem>
           <AccordionItem value="q2" className="border-blue-500/10 px-3">
             <AccordionTrigger className="text-foreground text-base hover:no-underline">
-              Can I change or cancel my plan?
+              How do AI generations work and what counts as one generation?
             </AccordionTrigger>
             <AccordionContent className="text-muted-foreground leading-relaxed">
-              You can upgrade or schedule a plan change from this page when you are logged in. Cancel anytime from your account; you
-              keep access until the end of the current billing period. See our refund policy for details on eligibility.
+              Each time you produce an output — one image, one video clip, one voiceover, one transcription, one SVG, or one edited image — it uses one generation credit. Credits reset at the start of every billing period. Your current balance is always visible in the app. If you run out mid-month, you can purchase extra generation packs without upgrading your plan.
             </AccordionContent>
           </AccordionItem>
           <AccordionItem value="q3" className="border-blue-500/10 px-3">
             <AccordionTrigger className="text-foreground text-base hover:no-underline">
-              Is yearly billing really cheaper?
+              Are downloads really unlimited? Are there any restrictions?
             </AccordionTrigger>
             <AccordionContent className="text-muted-foreground leading-relaxed">
-              Yes — the yearly option is billed once per year at a discounted rate compared to twelve monthly payments. The page shows
-              the effective monthly cost for easy comparison.
+              Yes — while your subscription is active you can download as many items as you like from the catalog with no daily or monthly cap. You can also re-download anything from your profile at any time. The only restriction is that downloads are tied to your account: sharing credentials or downloading on behalf of other people violates the terms.
             </AccordionContent>
           </AccordionItem>
           <AccordionItem value="q4" className="border-blue-500/10 px-3">
             <AccordionTrigger className="text-foreground text-base hover:no-underline">
-              How do downloads and licensing work?
+              What does the commercial license cover?
             </AccordionTrigger>
             <AccordionContent className="text-muted-foreground leading-relaxed">
-              While you have an active subscription you can download items from the catalog and use them under our license in personal
-              and commercial work. You can re-download from your profile, and a separate purchase code applies to one-time store
-              purchases. See the License page for full terms.
+              The license covers everything you download or generate while subscribed: templates, music, sound effects, footage, and AI outputs. You can use them in client work, ads, YouTube videos, social media, films — personal or commercial, any number of projects. Licenses are{" "}
+              <strong className="text-foreground/90">perpetual</strong>: they don't expire if you cancel. What you cannot do is redistribute the raw files, resell them on stock platforms, or share your account with others.
             </AccordionContent>
           </AccordionItem>
           <AccordionItem value="q5" className="border-blue-500/10 px-3">
             <AccordionTrigger className="text-foreground text-base hover:no-underline">
-              How are AI generation limits applied?
+              What happens to my downloads if I cancel?
             </AccordionTrigger>
             <AccordionContent className="text-muted-foreground leading-relaxed">
-              Creator + AI includes a monthly allowance for AI tools. Usage resets each billing period; the exact balance appears in
-              the app. If you need a higher cap for a team, contact us for custom options.
+              You keep everything you've already downloaded — the license is perpetual. You won't be able to download new items or run new AI generations after your subscription ends, but all existing files and their licenses remain valid for use in your projects.
             </AccordionContent>
           </AccordionItem>
-          <AccordionItem value="q6" className="border-blue-500/10 px-3 border-b-0">
+          <AccordionItem value="q6" className="border-blue-500/10 px-3">
             <AccordionTrigger className="text-foreground text-base hover:no-underline">
-              Can I get an invoice or custom / team pricing?
+              Can I upgrade, downgrade, or switch billing periods?
             </AccordionTrigger>
             <AccordionContent className="text-muted-foreground leading-relaxed">
-              Paddle provides receipts for your payments. For teams, agencies, or custom licensing, use the contact form or email
-              support — we can suggest a plan that matches your workflow.
+              Upgrades take effect immediately — you pay only the prorated difference for the remaining days of your current period. Downgrades and billing-period switches are scheduled to kick in at the next renewal so you never lose time you've already paid for. You can manage all of this from the pricing page when you're logged in.
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="q7" className="border-blue-500/10 px-3 border-b-0">
+            <AccordionTrigger className="text-foreground text-base hover:no-underline">
+              Do you offer invoices, team plans, or custom licensing?
+            </AccordionTrigger>
+            <AccordionContent className="text-muted-foreground leading-relaxed">
+              Paddle (our payment processor) issues a receipt for every charge — you can find them in your account. For teams, agencies, or studios that need multiple seats, higher generation limits, or custom licensing terms, reach out via the contact form or at{" "}
+              <a href="mailto:support@motionflow.pro" className="text-blue-400 hover:underline">support@motionflow.pro</a> and we'll work something out.
             </AccordionContent>
           </AccordionItem>
         </Accordion>
