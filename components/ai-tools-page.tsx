@@ -225,26 +225,21 @@ export function AiToolsPage({ previews }: AiToolsPageProps) {
       </div>
 
       {/* Generation limits */}
-      <section className="mx-auto mt-20 max-w-3xl sm:mt-28">
-        <h2 className="mb-2 text-center text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+      <section className="mx-auto mt-20 max-w-2xl sm:mt-28 text-center">
+        <h2 className="mb-2 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
           How many generations do you get?
         </h2>
-        <p className="mb-10 text-center text-sm text-muted-foreground">
+        <p className="mb-8 text-sm text-muted-foreground">
           Creator + AI plan · resets every billing cycle
         </p>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {GENERATION_LIMITS.map(({ tool, limit, note }) => (
-            <div
-              key={tool}
-              className="rounded-2xl border border-blue-500/15 bg-card/60 p-4 backdrop-blur-sm"
-            >
-              <p className="mb-1 text-sm font-semibold text-foreground">{tool}</p>
-              <p className="text-base font-bold text-blue-400">{limit}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">{note}</p>
-            </div>
-          ))}
+        <div className="rounded-2xl border border-blue-500/20 bg-card/60 px-8 py-8 backdrop-blur-sm">
+          <p className="text-4xl font-bold text-blue-400 sm:text-5xl">100</p>
+          <p className="mt-2 text-lg font-semibold text-foreground">generations / month</p>
+          <p className="mt-3 text-sm text-muted-foreground max-w-sm mx-auto">
+            Shared across all AI tools — VideoGen, ImageGen, ImageEdit, SvgGen, VoiceGen, and SpeechToText.
+          </p>
         </div>
-        <p className="mt-4 text-center text-xs text-muted-foreground">
+        <p className="mt-4 text-xs text-muted-foreground">
           Need more?{" "}
           <Link href="/pricing" className="text-blue-400 hover:text-blue-300 transition-colors">
             Purchase extra generation packs
