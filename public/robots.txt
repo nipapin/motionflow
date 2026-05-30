@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /profile/
+Disallow: /account
+Disallow: /l/
+
+Sitemap: https://motionflow.pro/sitemap.xml

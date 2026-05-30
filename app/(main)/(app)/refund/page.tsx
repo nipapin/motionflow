@@ -1,8 +1,11 @@
-"use client";
-
-import { useRouter } from "next/navigation";
 import Link from "next/link";
+import type { Metadata } from "next";
 import { ArrowLeft } from "lucide-react";
+
+export const metadata: Metadata = {
+  title: "Refund Policy | Motion Flow",
+  description: "Motion Flow refund conditions and process",
+};
 
 const sections = [
   {
@@ -53,8 +56,6 @@ We will review your request and respond within 2 business days.`,
 ];
 
 export default function RefundPolicyPage() {
-  const router = useRouter();
-
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
       <div className="fixed inset-0 pointer-events-none">
@@ -64,13 +65,13 @@ export default function RefundPolicyPage() {
       </div>
 
       <div className="relative max-w-3xl mx-auto px-6 py-12">
-        <button
-          onClick={() => router.back()}
+        <Link
+          href="/"
           className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-12"
         >
           <ArrowLeft className="w-4 h-4" />
           Back
-        </button>
+        </Link>
 
         <div className="mb-12">
           <h1 className="text-4xl md:text-5xl font-semibold text-foreground mb-4 tracking-tight">

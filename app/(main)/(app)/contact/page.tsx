@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { ContactPageClient } from "@/components/contact-page-client";
 
 export const metadata: Metadata = {
-    title: "Contact us — MotionFlow",
+    title: "Contact us — Motion Flow",
     description:
         "Have a question, business offer or feedback? Send us a message and we'll get back to you within 24 hours.",
 };

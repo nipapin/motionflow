@@ -6,6 +6,7 @@ import { AccountSidebar } from "@/components/account-sidebar";
 export const metadata: Metadata = {
   title: "Account",
   description: "Manage your Motion Flow profile and account pages.",
+  robots: { index: false, follow: false },
 };
 
 export const dynamic = "force-dynamic";

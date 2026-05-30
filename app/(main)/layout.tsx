@@ -22,8 +22,23 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Motion Flow - Video Templates & Audio Assets",
-  description: "Premium video templates for After Effects, Premiere Pro, DaVinci Resolve and royalty-free music & sound effects",
+  metadataBase: new URL("https://motionflow.pro"),
+  title: {
+    default: "Motion Flow — After Effects, Premiere Pro & DaVinci Templates",
+    template: "%s | Motion Flow",
+  },
+  description:
+    "Download thousands of premium templates for After Effects, Premiere Pro & DaVinci Resolve. Royalty-free music, sound effects, and AI creative tools — one subscription.",
+  openGraph: {
+    siteName: "Motion Flow",
+    type: "website",
+    locale: "en_US",
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "Motion Flow" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    images: ["/og-image.png"],
+  },
   icons: {
     icon: [
       {
