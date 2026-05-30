@@ -10,7 +10,43 @@ import type { AiToolPreviewsMap } from "@/lib/ai-tools-previews";
 import { AI_TOOLS, LABS_CTA_IMAGES, LABS_HERO_WORDS, type AiToolCategory, type AiToolItem } from "@/lib/ai-tools";
 import { cn } from "@/lib/utils";
 
-const HERO_FEATURES = ["Latest AI models", "Commercial use", "Always-evolving tools"] as const;
+const HERO_FEATURES = ["No extra subscriptions needed", "Commercial license included", "6 tools, one plan"] as const;
+
+const GENERATION_LIMITS = [
+  { tool: "VideoGen", limit: "100 generations / mo", note: "Creator + AI plan" },
+  { tool: "ImageGen", limit: "100 generations / mo", note: "Creator + AI plan" },
+  { tool: "ImageEdit", limit: "100 generations / mo", note: "Creator + AI plan" },
+  { tool: "SvgGen", limit: "100 generations / mo", note: "Creator + AI plan" },
+  { tool: "VoiceGen", limit: "100 generations / mo", note: "Creator + AI plan" },
+  { tool: "SpeechToText", limit: "Unlimited", note: "All plans" },
+] as const;
+
+const FAQ_ITEMS = [
+  {
+    q: "Can I use AI-generated content commercially?",
+    a: "Yes. Everything you generate on Motion Flow — images, videos, voiceovers, SVGs — comes with a commercial license. You can use outputs in client work, ads, YouTube, social media and monetized content without any attribution required.",
+  },
+  {
+    q: "How many generations do I get per month?",
+    a: "The Creator + AI plan includes 100 AI generations per billing cycle, shared across all tools. If you need more, you can purchase extra generation packs (50 or 200 credits) at any time from your account.",
+  },
+  {
+    q: "What AI models does Motion Flow use?",
+    a: "We integrate the latest generation models for each category — video, image, audio — and update them as better models become available. You always get access to the most capable version without changing your plan.",
+  },
+  {
+    q: "Do I keep my AI generations after canceling?",
+    a: "Yes. Files you've already generated and downloaded are yours to keep permanently. Unused monthly credits expire with your subscription, but downloaded outputs remain under your commercial license.",
+  },
+  {
+    q: "Is there a free trial for AI tools?",
+    a: "AI tools are available on the Creator + AI plan. We offer a 7-day full refund if you haven't downloaded more than 5 assets, so you can try everything risk-free.",
+  },
+  {
+    q: "Can I generate content in multiple languages with VoiceGen and SpeechToText?",
+    a: "Yes. VoiceGen supports multiple languages and accents for text-to-speech. SpeechToText can transcribe audio in a wide range of languages with high accuracy.",
+  },
+] as const;
 
 const CATEGORY_ICONS: Record<AiToolCategory, LucideIcon> = {
   Video: Clapperboard,
@@ -118,7 +154,10 @@ function RotatingHeadline() {
   }, []);
 
   return (
-    <h1 className="relative inline-block text-4xl font-bold tracking-tight text-foreground sm:text-5xl lg:text-6xl lg:leading-[1.1]">
+    <h1
+      aria-label="Generate AI video, images, voice and graphics"
+      className="relative inline-block text-4xl font-bold tracking-tight text-foreground sm:text-5xl lg:text-6xl lg:leading-[1.1]"
+    >
       <span
         className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-[2em] w-full min-w-[18rem] max-w-[32rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-500/20 blur-3xl sm:min-w-[22rem]"
         aria-hidden
@@ -184,6 +223,58 @@ export function AiToolsPage({ previews }: AiToolsPageProps) {
           <ToolCard key={tool.href} tool={tool} preview={previews[tool.href]} />
         ))}
       </div>
+
+      {/* Generation limits */}
+      <section className="mx-auto mt-20 max-w-3xl sm:mt-28">
+        <h2 className="mb-2 text-center text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+          How many generations do you get?
+        </h2>
+        <p className="mb-10 text-center text-sm text-muted-foreground">
+          Creator + AI plan · resets every billing cycle
+        </p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {GENERATION_LIMITS.map(({ tool, limit, note }) => (
+            <div
+              key={tool}
+              className="rounded-2xl border border-blue-500/15 bg-card/60 p-4 backdrop-blur-sm"
+            >
+              <p className="mb-1 text-sm font-semibold text-foreground">{tool}</p>
+              <p className="text-base font-bold text-blue-400">{limit}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{note}</p>
+            </div>
+          ))}
+        </div>
+        <p className="mt-4 text-center text-xs text-muted-foreground">
+          Need more?{" "}
+          <Link href="/pricing" className="text-blue-400 hover:text-blue-300 transition-colors">
+            Purchase extra generation packs
+          </Link>{" "}
+          (50 or 200 credits) anytime.
+        </p>
+      </section>
+
+      {/* FAQ */}
+      <section className="mx-auto mt-20 max-w-3xl sm:mt-28">
+        <h2 className="mb-10 text-center text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+          Frequently asked questions
+        </h2>
+        <div className="space-y-4">
+          {FAQ_ITEMS.map(({ q, a }) => (
+            <details
+              key={q}
+              className="group rounded-2xl border border-blue-500/15 bg-card/60 backdrop-blur-sm open:border-blue-500/30"
+            >
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-4 text-sm font-semibold text-foreground select-none">
+                {q}
+                <span className="shrink-0 text-blue-400 transition-transform duration-200 group-open:rotate-45">
+                  +
+                </span>
+              </summary>
+              <p className="px-6 pb-5 text-sm leading-relaxed text-muted-foreground">{a}</p>
+            </details>
+          ))}
+        </div>
+      </section>
 
       <section className="mx-auto mt-20 max-w-3xl text-center sm:mt-28">
         <h2 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Not yet subscribed?</h2>
