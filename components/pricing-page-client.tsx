@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, Loader2, AlertCircle, Sparkles } from "lucide-react";
+import { Check, Loader2, AlertCircle, Sparkles, Star, ShieldCheck, Zap, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -425,11 +425,23 @@ export function PricingPageClient({ currentUser, currentSubscription }: PricingP
 
   return (
     <div className="relative max-w-5xl mx-auto px-6 py-12">
+      {/* Decorative background glow */}
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-blue-500/10 rounded-full blur-[120px]" />
+        <div className="absolute top-1/3 right-0 w-[450px] h-[450px] bg-purple-500/8 rounded-full blur-[120px]" />
+        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-cyan-500/8 rounded-full blur-[100px]" />
+      </div>
+
       <div className="text-center mb-8">
+        <div className="inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/5 px-4 py-1.5 mb-6 backdrop-blur-sm">
+          <Sparkles className="h-3.5 w-3.5 text-blue-400" aria-hidden />
+          <span className="text-xs font-medium text-foreground">One subscription. Templates, assets &amp; AI tools.</span>
+        </div>
         <h1 className="text-4xl md:text-5xl font-semibold text-foreground mb-4 text-balance tracking-tight">Plans and Pricing</h1>
         <p className="text-muted-foreground text-lg max-w-2xl mx-auto text-pretty leading-relaxed">
           Get unlimited access to all templates, music, and sound effects. Cancel anytime.
         </p>
+
       </div>
 
       {/* Scheduled change banner */}
@@ -636,6 +648,29 @@ export function PricingPageClient({ currentUser, currentSubscription }: PricingP
         </div>
       </div>
 
+      {/* Guarantees strip */}
+      <div className="mt-10 max-w-5xl mx-auto">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { icon: Zap, title: "Instant access", text: "Start downloading the moment you subscribe." },
+            { icon: ShieldCheck, title: "Perpetual license", text: "Keep everything you download — forever." },
+            { icon: RefreshCw, title: "Cancel anytime", text: "No contracts. Manage your plan in a click." },
+            { icon: Check, title: "Secure checkout", text: "Payments handled securely by Paddle." },
+          ].map((item) => (
+            <div
+              key={item.title}
+              className="rounded-2xl border border-blue-500/15 bg-card/60 backdrop-blur-sm p-5 text-center md:text-left transition-all duration-300 hover:border-blue-500/30"
+            >
+              <div className="mx-auto md:mx-0 mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-blue-500/10">
+                <item.icon className="h-4.5 w-4.5 text-blue-400" aria-hidden />
+              </div>
+              <p className="text-sm font-semibold text-foreground mb-1">{item.title}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{item.text}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Testimonials */}
       <div className="mt-20 max-w-5xl mx-auto w-full">
         <div className="text-center mb-10">
@@ -667,6 +702,11 @@ export function PricingPageClient({ currentUser, currentSubscription }: PricingP
               key={t.name}
               className="rounded-2xl border border-blue-500/15 bg-card/70 backdrop-blur-sm p-6 flex flex-col gap-4 hover:border-blue-500/30 transition-all duration-300"
             >
+              <div className="flex gap-0.5">
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <Star key={i} className="h-3.5 w-3.5 fill-amber-400 text-amber-400" aria-hidden />
+                ))}
+              </div>
               <p className="text-sm text-muted-foreground leading-relaxed flex-1">&ldquo;{t.text}&rdquo;</p>
               <div className="flex items-center gap-3 pt-2 border-t border-blue-500/10">
                 <img
@@ -752,6 +792,28 @@ export function PricingPageClient({ currentUser, currentSubscription }: PricingP
             </AccordionContent>
           </AccordionItem>
         </Accordion>
+      </div>
+
+      {/* Closing CTA */}
+      <div className="mt-20 max-w-4xl mx-auto w-full">
+        <div className="relative overflow-hidden rounded-3xl border-2 border-blue-500/30 bg-gradient-to-br from-card via-card to-blue-500/5 shadow-xl shadow-blue-500/10 backdrop-blur-sm p-10 md:p-14 text-center">
+          <div className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 h-56 w-56 rounded-full bg-blue-500/10 blur-3xl" />
+          <div className="relative">
+            <h2 className="text-3xl md:text-4xl font-semibold text-foreground tracking-tight mb-4 text-balance">
+              Ready to create without limits?
+            </h2>
+            <p className="text-muted-foreground text-base max-w-xl mx-auto mb-8 text-pretty leading-relaxed">
+              Join thousands of editors and motion designers. Unlimited downloads, AI tools, and a commercial license — all in one subscription.
+            </p>
+            <a
+              href="#creator-ai"
+              className="inline-flex items-center justify-center gap-2 h-12 px-8 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 text-white text-sm font-semibold shadow-lg shadow-blue-500/25 hover:from-blue-500 hover:to-blue-400 transition-all duration-300"
+            >
+              <Sparkles className="h-4 w-4" aria-hidden />
+              Get started today
+            </a>
+          </div>
+        </div>
       </div>
 
       {/* Downgrade confirmation modal */}

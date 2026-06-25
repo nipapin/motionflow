@@ -1,7 +1,11 @@
-"use client";
-
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import type { Metadata } from "next";
 import { ArrowLeft, Check, X } from "lucide-react";
+
+export const metadata: Metadata = {
+  title: "License Agreement | Motion Flow",
+  description: "What you can and cannot do with Motion Flow assets",
+};
 
 const allowed = [
   "Use in personal and commercial projects (videos, films, ads, social media, presentations).",
@@ -40,7 +44,7 @@ const sections = [
   {
     title: "4. Attribution",
     content:
-      "Attribution is not required, but is always appreciated. If you'd like to credit Motion Flow, you can link back to motionflow.studio.",
+      "Attribution is not required, but is always appreciated. If you'd like to credit Motion Flow, you can link back to motionflow.pro.",
   },
   {
     title: "5. License Duration",
@@ -55,8 +59,6 @@ const sections = [
 ];
 
 export default function LicensePage() {
-  const router = useRouter();
-
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
       <div className="fixed inset-0 pointer-events-none">
@@ -66,13 +68,13 @@ export default function LicensePage() {
       </div>
 
       <div className="relative max-w-3xl mx-auto px-6 py-12">
-        <button
-          onClick={() => router.back()}
+        <Link
+          href="/"
           className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-12"
         >
           <ArrowLeft className="w-4 h-4" />
           Back
-        </button>
+        </Link>
 
         <div className="mb-12">
           <h1 className="text-4xl md:text-5xl font-semibold text-foreground mb-4 tracking-tight">
@@ -142,6 +144,19 @@ export default function LicensePage() {
               </p>
             </div>
           ))}
+
+          <div className="mt-12 rounded-2xl border border-blue-500/20 bg-card/80 backdrop-blur-sm p-6">
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              This license is subject to our{" "}
+              <Link
+                href="/terms"
+                className="text-blue-400 hover:text-blue-300 transition-colors"
+              >
+                Terms of Use
+              </Link>
+              .
+            </p>
+          </div>
         </div>
       </div>
     </div>

@@ -1,7 +1,11 @@
-"use client";
-
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import type { Metadata } from "next";
 import { ArrowLeft } from "lucide-react";
+
+export const metadata: Metadata = {
+  title: "Terms of Use | Motion Flow",
+  description: "Terms governing your use of Motion Flow",
+};
 
 const sections = [
   {
@@ -52,7 +56,7 @@ const sections = [
   {
     title: "9. Governing Law",
     content:
-      "These Terms of Use are governed by and construed in accordance with applicable laws. Any disputes arising from these terms shall be resolved through binding arbitration or in courts of competent jurisdiction.",
+      "These Terms of Use are governed by the laws of the State of Delaware, United States, excluding its conflict of law principles. Any disputes arising from or relating to these terms shall first be attempted to be resolved through good-faith negotiation. If unresolved, disputes shall be submitted to binding arbitration under the rules of the American Arbitration Association, conducted in English. Nothing in this clause prevents either party from seeking injunctive or other equitable relief in any court of competent jurisdiction.",
   },
   {
     title: "10. Contact",
@@ -62,8 +66,6 @@ const sections = [
 ];
 
 export default function TermsPage() {
-  const router = useRouter();
-
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
       <div className="fixed inset-0 pointer-events-none">
@@ -73,13 +75,13 @@ export default function TermsPage() {
       </div>
 
       <div className="relative max-w-3xl mx-auto px-6 py-12">
-        <button
-          onClick={() => router.back()}
+        <Link
+          href="/"
           className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-12"
         >
           <ArrowLeft className="w-4 h-4" />
           Back
-        </button>
+        </Link>
 
         <div className="mb-12">
           <h1 className="text-4xl md:text-5xl font-semibold text-foreground mb-4 tracking-tight">
@@ -92,9 +94,18 @@ export default function TermsPage() {
 
         <div className="space-y-10">
           <p className="text-muted-foreground leading-relaxed">
-            Welcome to Motion Flow. These Terms of Use govern your access to and
-            use of our website, applications, and services. Please read them
-            carefully before using our platform.
+            We built Motion Flow to make professional-grade creative assets
+            accessible to everyone — from solo filmmakers to studio teams. These
+            Terms of Use set out the rules that keep the platform fair and
+            sustainable for all users. We&apos;ve done our best to write them in
+            plain language, but if anything is unclear, reach out at{" "}
+            <a
+              href="mailto:support@motionflow.pro"
+              className="text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              support@motionflow.pro
+            </a>
+            .
           </p>
 
           {sections.map((section) => (
@@ -107,6 +118,26 @@ export default function TermsPage() {
               </p>
             </div>
           ))}
+
+          <div className="mt-12 rounded-2xl border border-blue-500/20 bg-card/80 backdrop-blur-sm p-6">
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              See also:{" "}
+              <Link
+                href="/license"
+                className="text-blue-400 hover:text-blue-300 transition-colors"
+              >
+                License Agreement
+              </Link>{" "}
+              and{" "}
+              <Link
+                href="/refund"
+                className="text-blue-400 hover:text-blue-300 transition-colors"
+              >
+                Refund Policy
+              </Link>
+              .
+            </p>
+          </div>
         </div>
       </div>
     </div>

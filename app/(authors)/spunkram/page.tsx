@@ -3,6 +3,7 @@ import { Hero } from "@/components/Hero";
 import { Logos } from "@/components/Logos";
 import { Projects } from "@/components/Projects";
 import { Showcase } from "@/components/Showcase";
+import { Testimonials } from "@/components/Testimonials";
 import { Pricing } from "@/components/Pricing";
 import { FAQ } from "@/components/FAQ";
 import { Contact } from "@/components/Contact";
@@ -49,6 +50,7 @@ export default async function HomePage() {
         <Logos />
         <Projects projects={projects} />
         <Showcase />
+        <Testimonials />
         <Pricing />
         <FAQ />
         <Contact />
