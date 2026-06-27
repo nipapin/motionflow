@@ -1,7 +1,10 @@
 import "server-only";
 import mysql from "mysql2/promise";
 
-const globalPool = globalThis as unknown as { __mysqlPool?: mysql.Pool };
+const globalPool = globalThis as unknown as {
+  __mysqlPool?: mysql.Pool;
+  __mysqlPoolKey?: string;
+};
 
 function stripEnvQuotes(value: string | undefined): string | undefined {
   if (value == null) return undefined;
@@ -12,7 +15,25 @@ function stripEnvQuotes(value: string | undefined): string | undefined {
   return t;
 }
 
+function poolConfigKey(): string {
+  return [
+    process.env.DB_HOST,
+    process.env.DB_PORT ?? "3306",
+    process.env.DB_USERNAME,
+    stripEnvQuotes(process.env.DB_PASSWORD),
+    process.env.DB_DATABASE,
+  ].join("|");
+}
+
 export function getPool(): mysql.Pool {
+  const key = poolConfigKey();
+
+  if (globalPool.__mysqlPool && globalPool.__mysqlPoolKey !== key) {
+    void globalPool.__mysqlPool.end();
+    globalPool.__mysqlPool = undefined;
+    globalPool.__mysqlPoolKey = undefined;
+  }
+
   if (!globalPool.__mysqlPool) {
     const host = process.env.DB_HOST;
     const user = process.env.DB_USERNAME;
@@ -30,6 +51,7 @@ export function getPool(): mysql.Pool {
       waitForConnections: true,
       connectionLimit: 10,
     });
+    globalPool.__mysqlPoolKey = key;
   }
   return globalPool.__mysqlPool;
 }
