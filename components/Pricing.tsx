@@ -156,11 +156,6 @@ export function Pricing() {
               }`}
             >
               Yearly
-              {libraryTier?.savings && (
-                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-white/10 text-white border border-white/10 light:border-black/10">
-                  {libraryTier.savings}
-                </span>
-              )}
             </button>
           </div>
         </div>
@@ -197,7 +192,7 @@ export function Pricing() {
                       </h3>
                       <p className="mt-1 text-sm text-muted">{billingNote}</p>
                     </div>
-                    {billing === "yearly" && tier.savings && !tier.highlight && (
+                    {billing === "yearly" && tier.savings && (
                       <span className="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-brand-500/10 text-brand-500 border border-brand-500/25">
                         {tier.savings}
                       </span>

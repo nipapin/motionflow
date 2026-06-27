@@ -83,7 +83,7 @@ export type SpunkramSubscriptionTier = {
 export const spunkramSubscriptionTiers: SpunkramSubscriptionTier[] = [
   {
     id: "library",
-    name: "Spunkram Library",
+    name: "Editor",
     monthlyPrice: 14.9,
     yearlyPrice: 119,
     savings: "−33%",
@@ -97,13 +97,13 @@ export const spunkramSubscriptionTiers: SpunkramSubscriptionTier[] = [
   },
   {
     id: "ai_toolkit",
-    name: "AI Toolkit",
+    name: "Editor AI",
     monthlyPrice: 19.9,
-    yearlyPrice: 202.8,
-    savings: "−15%",
+    yearlyPrice: 190.8,
+    savings: "−20%",
     highlight: true,
     features: [
-      "Everything in Spunkram Library",
+      "Everything in Editor",
       "Full access to AI Tools",
       "Image, video & audio generation",
       "Commercial license",
@@ -116,7 +116,7 @@ export const spunkramSubscriptionTiers: SpunkramSubscriptionTier[] = [
 export const plans: Plan[] = [
   {
     id: "monthly",
-    name: "Spunkram Library",
+    name: "Editor",
     period: "month",
     price: 14.9,
     priceSuffix: "/mo",
@@ -126,7 +126,7 @@ export const plans: Plan[] = [
   },
   {
     id: "yearly",
-    name: "Spunkram Library",
+    name: "Editor",
     period: "year",
     price: 119,
     priceSuffix: "/yr",
