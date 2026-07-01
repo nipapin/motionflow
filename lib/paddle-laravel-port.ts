@@ -900,18 +900,32 @@ export function isMarketplaceOneTimeSale(txn: LaravelPaddleTransaction): boolean
  * of `upsertFromTransaction` to fill in `author_earn`, `system_tax` and net
  * `amount` consistently with the Laravel writer.
  *
- * Formula (per line):
- *   unitPrice  = items[i].price.unit_price.amount / 100
- *   systemTax  = unitPrice * 5/100 + 0.5
- *   netIncome  = unitPrice - systemTax
- *   authorEarn = (netIncome * 0.9) / 2     (only meaningful for author subscriptions)
+ * Formula (per line) — mirrors the post-launch Laravel fix that reads the
+ * transaction's actual line totals (which reflect discounts/promo codes)
+ * instead of the catalog `price.unit_price`:
+ *   unitSubtotal = (line.unit_totals.subtotal ?? price.unit_price.amount) / 100
+ *   unitTotal    = (line.unit_totals.total ?? unitSubtotal) / 100
+ *   discount     = line.totals.discount / 100
+ *   systemTax    = unitTotal * 5/100 + 0.5
+ *   netIncome    = (unitSubtotal - discount) - systemTax
+ *   authorEarn   = (netIncome * 0.9) / 2     (only meaningful for author subscriptions)
  */
 export function computeSubscriptionMoneyFromTransaction(
   item: LaravelPaddleItem | undefined,
+  line?: {
+    unit_totals?: { subtotal?: string | number; total?: string | number } | null;
+    totals?: { discount?: string | number } | null;
+  } | null,
 ): { unitPrice: number; systemTax: number; netIncome: number; authorEarn: number } {
-  const unitPrice = minorToMajor(item?.price?.unit_price?.amount ?? null);
-  const systemTax = round(unitPrice * (PADDLE_TXN_TAX_PERCENT / 100) + PADDLE_TXN_TAX_FLAT, 2);
-  const netIncome = round(unitPrice - systemTax, 2);
+  const subtotalCents = line?.unit_totals?.subtotal ?? item?.price?.unit_price?.amount ?? null;
+  const totalCents = line?.unit_totals?.total ?? subtotalCents;
+  const discountCents = line?.totals?.discount ?? null;
+
+  const unitPrice = minorToMajor(subtotalCents);
+  const discount = minorToMajor(discountCents);
+  const unitTotal = minorToMajor(totalCents);
+  const systemTax = round(unitTotal * (PADDLE_TXN_TAX_PERCENT / 100) + PADDLE_TXN_TAX_FLAT, 2);
+  const netIncome = round(unitPrice - discount - systemTax, 2);
   const authorEarn = calculateAuthorEarnForSubscription(netIncome);
   return { unitPrice, systemTax, netIncome, authorEarn };
 }
@@ -965,4 +979,115 @@ export function pickAuthorIdForSubscriptionTransaction(
     return txnAuthorId;
   }
   return null;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Author subscription balance reversal (cancel / past_due / refund)         */
+/* -------------------------------------------------------------------------- */
+
+interface CreditedSubscriptionRow extends RowDataPacket {
+  id: number;
+  author_id: number;
+  author_earn: number | string | null;
+  author_balance_credited_for_payment_id: string | null;
+}
+
+/**
+ * Port of `SubscriptionSystem::reverseAuthorBalancesForSubscriptionTermination`.
+ * Called on `subscription.canceled` / `subscription.past_due` (NOT `.paused` —
+ * Laravel only reverses on those two; a paused subscription can still resume).
+ *
+ * Reverses at most once per author per subscription (Laravel dedupes by
+ * `unique('author_id')` on the newest row). We additionally guard on
+ * `author_balance_credited_for_payment_id` being set, so a redelivered
+ * cancel/past_due webhook can't double-decrement the same credit.
+ */
+export async function reverseAuthorBalanceForSubscriptionTermination(
+  subscriptionId: string,
+): Promise<void> {
+  if (!subscriptionId) return;
+  const pool = getPool();
+  const [rows] = await pool.execute<CreditedSubscriptionRow[]>(
+    `SELECT id, author_id, author_earn, author_balance_credited_for_payment_id
+       FROM \`${SUBSCRIPTIONS_TABLE}\`
+      WHERE subscription_id = ? AND author_id > 0 AND status IN (1, -1)
+      ORDER BY id DESC`,
+    [subscriptionId],
+  );
+
+  const seenAuthors = new Set<number>();
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    for (const row of rows) {
+      const authorId = Number(row.author_id);
+      if (seenAuthors.has(authorId)) continue;
+      seenAuthors.add(authorId);
+
+      if (!row.author_balance_credited_for_payment_id) continue; // never credited (or already reversed)
+      const earn = round(Number(row.author_earn ?? 0), 2);
+      if (earn <= 0) continue;
+
+      await decrementUserBalance(conn, authorId, earn);
+      await conn.execute<ResultSetHeader>(
+        `UPDATE \`${SUBSCRIPTIONS_TABLE}\`
+            SET \`author_balance_credited_for_payment_id\` = NULL, \`updated_at\` = NOW()
+          WHERE \`id\` = ?`,
+        [row.id],
+      );
+    }
+    await conn.commit();
+  } catch (err) {
+    try { await conn.rollback(); } catch { /* ignore */ }
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+/**
+ * Port of `SubscriptionSystem::reverseAuthorBalancesForRefundedSubscriptionPayment`.
+ * Called on `adjustment.updated` for the refunded transaction id — reverses the
+ * author's credited earn for every still-active `subscription_systems` row tied
+ * to that Paddle payment id and zeroes the row out (mirrors Laravel setting
+ * `author_earn = 0`, `author_balance_credited_for_payment_id = null`, `status = 0`).
+ */
+export async function reverseAuthorBalanceForRefundedSubscriptionPayment(
+  paymentId: string,
+): Promise<void> {
+  if (!paymentId) return;
+  const pool = getPool();
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.execute<CreditedSubscriptionRow[]>(
+      `SELECT id, author_id, author_earn, author_balance_credited_for_payment_id
+         FROM \`${SUBSCRIPTIONS_TABLE}\`
+        WHERE payment_id = ? AND author_id > 0 AND status = 1
+        FOR UPDATE`,
+      [paymentId],
+    );
+
+    for (const row of rows) {
+      const earn = round(Number(row.author_earn ?? 0), 2);
+      if (earn > 0 && row.author_balance_credited_for_payment_id) {
+        await decrementUserBalance(conn, Number(row.author_id), earn);
+      }
+      await conn.execute<ResultSetHeader>(
+        `UPDATE \`${SUBSCRIPTIONS_TABLE}\`
+            SET \`author_earn\` = 0,
+                \`author_balance_credited_for_payment_id\` = NULL,
+                \`status\` = 0,
+                \`updated_at\` = NOW()
+          WHERE \`id\` = ?`,
+        [row.id],
+      );
+    }
+    await conn.commit();
+  } catch (err) {
+    try { await conn.rollback(); } catch { /* ignore */ }
+    throw err;
+  } finally {
+    conn.release();
+  }
 }

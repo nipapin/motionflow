@@ -20,6 +20,8 @@ import {
   isMarketplaceOneTimeSale,
   pickAuthorIdForSubscriptionTransaction,
   computeSubscriptionMoneyFromTransaction,
+  reverseAuthorBalanceForSubscriptionTermination,
+  reverseAuthorBalanceForRefundedSubscriptionPayment,
 } from "@/lib/paddle-laravel-port";
 
 const SUBSCRIPTIONS_TABLE = "subscription_systems";
@@ -110,6 +112,9 @@ interface PaddleTxnLineItem {
   id?: string;
   price_id?: string;
   quantity?: number;
+  /** Actual per-unit amounts for this line (reflect discounts/promo codes). */
+  unit_totals?: { subtotal?: string | number; total?: string | number } | null;
+  totals?: { discount?: string | number } | null;
 }
 
 interface PaddleTxnPayment {
@@ -718,6 +723,7 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
   const subscriptionMoney = authorId
     ? computeSubscriptionMoneyFromTransaction(
         (txn.items?.[0] as unknown as LaravelPaddleItem | undefined) ?? undefined,
+        txn.details?.line_items?.[0] ?? undefined,
       )
     : null;
   const amount = subscriptionMoney ? subscriptionMoney.netIncome : subtotalFromTotals;
@@ -808,6 +814,38 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
          \`updated_at\`     = NOW()`,
       insertParams,
     );
+
+    // Credit the third-party author's balance for this subscription payment.
+    // 1:1 port of the `handleSubscription` / `handleTransaction` balance-credit
+    // step added alongside the reverse-on-cancel logic. Guarded by
+    // `author_balance_credited_for_payment_id` so a redelivered webhook for the
+    // same Paddle payment (transaction) id never double-credits.
+    if (authorId && authorEarn && authorEarn > 0) {
+      interface CreditRow extends RowDataPacket {
+        id: number;
+        author_balance_credited_for_payment_id: string | null;
+      }
+      const [creditRows] = await conn.execute<CreditRow[]>(
+        `SELECT id, author_balance_credited_for_payment_id
+           FROM \`${SUBSCRIPTIONS_TABLE}\`
+          WHERE subscription_id = ? AND author_id = ?
+          LIMIT 1`,
+        [rowSubscriptionId, authorId],
+      );
+      const creditRow = creditRows[0];
+      if (creditRow && creditRow.author_balance_credited_for_payment_id !== paymentId) {
+        await conn.execute<ResultSetHeader>(
+          `UPDATE \`users\` SET \`balance\` = \`balance\` + ? WHERE \`id\` = ?`,
+          [authorEarn, authorId],
+        );
+        await conn.execute<ResultSetHeader>(
+          `UPDATE \`${SUBSCRIPTIONS_TABLE}\`
+              SET \`author_balance_credited_for_payment_id\` = ?
+            WHERE \`id\` = ?`,
+          [paymentId, creditRow.id],
+        );
+      }
+    }
 
     // currency stamp for analytics — kept in a separate column historically;
     // we don't have one in the schema, so we just log it.
@@ -1243,6 +1281,26 @@ export async function handlePaddleEvent(
   ) {
     const sub = asSubscription(event.data);
     if (!sub) return { handled: false, reason: "missing_subscription_id" };
+
+    // 1:1 port of `GatewayPaddle::webhook`: reverse the author's credited
+    // earn on cancel/past_due (NOT on pause — a paused subscription can still
+    // resume, so its credited balance is left alone). Awaited (not
+    // fire-and-forget) since this affects money, but failures are logged and
+    // don't block the status update below.
+    if (
+      event.event_type === "subscription.canceled" ||
+      event.event_type === "subscription.past_due"
+    ) {
+      try {
+        await reverseAuthorBalanceForSubscriptionTermination(sub.id);
+      } catch (err) {
+        console.error(
+          `[paddle] reverseAuthorBalanceForSubscriptionTermination threw for ${sub.id}:`,
+          err,
+        );
+      }
+    }
+
     const result = await markSubscriptionCanceled(sub);
     // Fire-and-forget: if this cancellation was the tail end of a scheduled
     // downgrade, bill the customer for the chosen target plan via the
@@ -1307,6 +1365,18 @@ export async function handlePaddleEvent(
         skipped += 1;
       }
     }
+    // 1:1 port of `GatewayPaddle::webhook` adjustment.updated branch's
+    // trailing call to `SubscriptionSystem::reverseAuthorBalancesForRefundedSubscriptionPayment`
+    // — reverses any author-subscription balance credited for this transaction.
+    try {
+      await reverseAuthorBalanceForRefundedSubscriptionPayment(transactionId);
+    } catch (err) {
+      console.error(
+        `[paddle] reverseAuthorBalanceForRefundedSubscriptionPayment threw for ${transactionId}:`,
+        err,
+      );
+    }
+
     return {
       handled: true,
       reason: `adjustment_refunded:${refunded}_skipped:${skipped}`,
