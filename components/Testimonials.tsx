@@ -1,10 +1,3 @@
-const stats: Array<{ value: string; label: string }> = [
-  { value: "120+", label: "Ready-to-use projects" },
-  { value: "50k+", label: "Downloads inside Pr & Ae" },
-  { value: "4.9/5", label: "Average creator rating" },
-  { value: "24/7", label: "Fast support" },
-];
-
 const reviews: Array<{
   photo: string;
   name: string;
@@ -65,29 +58,7 @@ export function Testimonials() {
           </h2>
         </div>
 
-        {/* Stats strip */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {stats.map((s) => (
-            <div
-              key={s.label}
-              className="card relative overflow-hidden rounded-2xl border border-brand-500/25"
-            >
-              <div
-                className="card-sheen-pricing pointer-events-none absolute inset-0 z-0"
-                aria-hidden="true"
-              />
-              <div className="relative z-[1] p-5 sm:p-6">
-                <div className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground tabular-nums">
-                  {s.value}
-                </div>
-                <div className="mt-1 text-sm text-muted">{s.label}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Reviews grid */}
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {reviews.map((r) => (
             <div
               key={r.name}

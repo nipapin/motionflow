@@ -68,40 +68,73 @@ export type Plan = {
   cta: string;
 };
 
-export const plans: Plan[] = [
+export type SpunkramSubscriptionTierId = "library" | "ai_toolkit";
+
+export type SpunkramSubscriptionTier = {
+  id: SpunkramSubscriptionTierId;
+  name: string;
+  monthlyPrice: number;
+  yearlyPrice: number;
+  savings?: string;
+  highlight?: boolean;
+  features: string[];
+};
+
+export const spunkramSubscriptionTiers: SpunkramSubscriptionTier[] = [
   {
-    id: "monthly",
-    name: "Monthly",
-    period: "month",
-    price: 19.9,
-    priceSuffix: "/mo",
-    description: "Unlock every project — cancel anytime.",
+    id: "library",
+    name: "Editor",
+    monthlyPrice: 14.9,
+    yearlyPrice: 119,
+    savings: "−33%",
     features: [
-      `Instant access to all ${projects.length} projects`,
+      "Access to all existing packs",
       "Every new pack included for free",
       "Commercial license",
       "Updates included",
       "Cancel in 1 click",
     ],
-    cta: "Unlock all projects",
+  },
+  {
+    id: "ai_toolkit",
+    name: "Editor AI",
+    monthlyPrice: 19.9,
+    yearlyPrice: 190.8,
+    savings: "−20%",
+    highlight: true,
+    features: [
+      "Everything in Editor",
+      "Full access to AI Tools",
+      "Image, video & audio generation",
+      "Commercial license",
+      "Cancel in 1 click",
+    ],
+  },
+];
+
+/** Legacy billing-period rows used by the projects subscription banner. */
+export const plans: Plan[] = [
+  {
+    id: "monthly",
+    name: "Editor",
+    period: "month",
+    price: 14.9,
+    priceSuffix: "/mo",
+    description: "Unlock every pack — cancel anytime.",
+    features: spunkramSubscriptionTiers[0].features,
+    cta: "Unlock all packs",
   },
   {
     id: "yearly",
-    name: "Yearly",
+    name: "Editor",
     period: "year",
-    price: 191,
+    price: 119,
     priceSuffix: "/yr",
-    description: "Best deal — save 20% compared to monthly.",
+    description: "Best deal — save 33% compared to monthly.",
     highlight: true,
-    savings: "−20%",
-    features: [
-      "Everything in Monthly",
-      "Priority 24/7 support",
-      "Early access to new releases",
-      "Exclusive templates",
-      "Discounts on partner services",
-    ],
-    cta: "Unlock all projects",
+    savings: "−33%",
+    features: spunkramSubscriptionTiers[0].features,
+    cta: "Unlock all packs",
   },
 ];
 

@@ -50,8 +50,8 @@ export default async function HomePage() {
         <Logos />
         <Projects projects={projects} />
         <Showcase />
-        <Testimonials />
         <Pricing />
+        <Testimonials />
         <FAQ />
         <Contact />
       </main>
