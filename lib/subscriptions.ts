@@ -141,6 +141,20 @@ function resolveSubscriptionPresentation(r: SubRow): {
     };
   }
 
+  // Known third-party author (e.g. Premiere Gal, Spunkram): their own
+  // name/icon/link take precedence over `paddle_product_name`, which just
+  // holds whatever raw title the author's Paddle catalog product happens to
+  // have and is not meant to be user-facing branding.
+  const knownAuthorKey = r.author_id != null && r.author_id in TITLES ? r.author_id : null;
+  if (knownAuthorKey != null) {
+    return {
+      subsFor: TITLES[knownAuthorKey],
+      icon: ICONS[knownAuthorKey] ?? ICONS[""],
+      productPage: PRODUCT_PAGES[knownAuthorKey] ?? PRODUCT_PAGES[""],
+      invertIcon: false,
+    };
+  }
+
   const paddlePid = r.paddle_product_id?.trim() ?? "";
   if (paddlePid && PADDLE_PRODUCT_TITLES[paddlePid]) {
     const icon = PADDLE_PRODUCT_ICONS[paddlePid] ?? PADDLE_PRODUCT_ICONS[""];
