@@ -7,11 +7,22 @@ export function proxy(request: NextRequest) {
   const host = request.headers.get("host")?.toLowerCase() ?? "";
   const isSpunkramHost =
     host === "spunkramv2.motionflow.pro" || host.startsWith("spunkramv2.motionflow.pro:");
+  const isPremiereGalHost = false;
+    //host === "premieregal.motionflow.pro" || host.startsWith("premieregal.motionflow.pro:");
 
   // Demo: route a specific subdomain into a dedicated Next.js page.
   if (isSpunkramHost && (pathname === "/" || pathname.startsWith("/item/"))) {
     const url = request.nextUrl.clone();
     url.pathname = pathname === "/" ? "/spunkram" : `/spunkram${pathname}`;
+    return NextResponse.rewrite(url);
+  }
+
+  if (
+    isPremiereGalHost &&
+    (pathname === "/" || pathname === "/showcase" || pathname.startsWith("/download/"))
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = pathname === "/" ? "/premiere-gal" : `/premiere-gal${pathname}`;
     return NextResponse.rewrite(url);
   }
 
@@ -29,5 +40,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/item/:path*", "/profile/:path*"],
+  matcher: ["/", "/item/:path*", "/profile/:path*", "/showcase", "/download/:path*"],
 };

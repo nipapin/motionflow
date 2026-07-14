@@ -1,0 +1,95 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+  The shared `Header` component (components/header.tsx) is built against the main
+  site's Tailwind tokens. Premiere Gal's own page is MUI-themed and light-by-default
+  (see ./theme.ts), so we bridge just the tokens Header/shadcn primitives touch,
+  mirroring the approach in app/(authors)/spunkram/globals.css but with the Gal
+  Toolkit MAX palette instead of Spunkram's violet one.
+*/
+
+/* Drive Tailwind's `dark:` variant off MUI's own color-scheme attribute instead of
+   a `.dark` class or `prefers-color-scheme` — without this, Header's dark: classes
+   (e.g. the logo's `invert dark:invert-0`) never match the page's actual theme. */
+@custom-variant dark (&:is([data-mui-color-scheme="dark"] *));
+
+:root {
+  --background: #ffffff;
+  --foreground: rgba(0, 0, 0, 0.87);
+  --card: #f0f1f9;
+  --card-foreground: rgba(0, 0, 0, 0.87);
+  --popover: #ffffff;
+  --popover-foreground: rgba(0, 0, 0, 0.87);
+  --primary: #6c14cf;
+  --primary-foreground: #ffffff;
+  --secondary: #f0f1f9;
+  --secondary-foreground: rgba(0, 0, 0, 0.87);
+  /* Channel form (not hex) — components/author-header-nav-popovers.tsx uses rgb(var(--muted)). */
+  --muted: 102 95 114;
+  --muted-foreground: #665f72;
+  --accent: #f0f1f9;
+  --accent-foreground: rgba(0, 0, 0, 0.87);
+  --destructive: #d32f2f;
+  --destructive-foreground: #ffffff;
+  --border: #e5e6f3;
+  --input: #e5e6f3;
+  --ring: #de7abe;
+  --radius: 0.75rem;
+  --brand-400: #a970e0;
+  --brand-500: #6c14cf;
+}
+
+/* Dark-mode bridge values, mirroring premiereGalTheme's dark palette (./theme.ts)
+   so the header background actually matches the rest of the page instead of
+   staying on its light-mode default. */
+[data-mui-color-scheme="dark"] {
+  --background: #111015;
+  --foreground: #ffffff;
+  --card: #14121a;
+  --card-foreground: #ffffff;
+  --popover: #14121a;
+  --popover-foreground: #ffffff;
+  --secondary: #14121a;
+  --secondary-foreground: #ffffff;
+  --muted: 255 255 255;
+  --muted-foreground: rgba(255, 255, 255, 0.7);
+  --accent: #1e1b26;
+  --accent-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.12);
+  --input: rgba(255, 255, 255, 0.12);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-brand-400: var(--brand-400);
+  --color-brand-500: var(--brand-500);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* Header's "Stock Assets"/"AI Tools" dropdowns are Radix popovers portaled to
+   <body>; their default z-50 sits below this page's sticky Gal Toolkit MAX
+   sub-header (zIndex 99), so the sub-header covers them open. */
+[data-radix-popper-content-wrapper] {
+  z-index: 300 !important;
+}

@@ -1,0 +1,17 @@
+div.MuiBox-root::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+div.MuiBox-root::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+div.MuiBox-root::-webkit-scrollbar-thumb {
+  background: #de7abe;
+  border-radius: 999px;
+}
+
+div.MuiBox-root::-webkit-scrollbar-thumb:hover {
+  background: #c864a8;
+}
