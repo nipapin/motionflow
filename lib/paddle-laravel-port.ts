@@ -916,7 +916,7 @@ export function computeSubscriptionMoneyFromTransaction(
     unit_totals?: { subtotal?: string | number; total?: string | number } | null;
     totals?: { discount?: string | number } | null;
   } | null,
-): { unitPrice: number; systemTax: number; netIncome: number; authorEarn: number } {
+): { unitPrice: number; systemTax: number; netIncome: number; authorEarn: number; discount: number } {
   const subtotalCents = line?.unit_totals?.subtotal ?? item?.price?.unit_price?.amount ?? null;
   const totalCents = line?.unit_totals?.total ?? subtotalCents;
   const discountCents = line?.totals?.discount ?? null;
@@ -927,7 +927,7 @@ export function computeSubscriptionMoneyFromTransaction(
   const systemTax = round(unitTotal * (PADDLE_TXN_TAX_PERCENT / 100) + PADDLE_TXN_TAX_FLAT, 2);
   const netIncome = round(unitPrice - discount - systemTax, 2);
   const authorEarn = calculateAuthorEarnForSubscription(netIncome);
-  return { unitPrice, systemTax, netIncome, authorEarn };
+  return { unitPrice, systemTax, netIncome, authorEarn, discount };
 }
 
 /**
@@ -1090,4 +1090,132 @@ export async function reverseAuthorBalanceForRefundedSubscriptionPayment(
   } finally {
     conn.release();
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Payment ledger (subscription_payments) + GoHighLevel event data lookups   */
+/* -------------------------------------------------------------------------- */
+
+const SUBSCRIPTION_PAYMENTS_TABLE = "subscription_payments";
+
+/**
+ * Port of `SubscriptionPayment::recordPayment`. One row per real charge
+ * (initial purchase or renewal) — `subscription_systems` only keeps a single
+ * mutable row per subscription, so this is the only place that can answer
+ * "was this subscriber active in month X" or "which consecutive month is
+ * this" once a renewal has happened. Idempotent on `payment_id`.
+ *
+ * @returns the row's `period_number` (1 = first payment for this subscription_id).
+ */
+export async function recordSubscriptionPayment(params: {
+  subscriptionSystemId: number | null;
+  buyerId: number;
+  authorId: number;
+  subscriptionId: string;
+  paymentId: string;
+  plan: string;
+  type: "personal" | "commercial";
+  amount: number;
+  amountSummary: number;
+  authorEarn: number | null;
+  systemTax: number | null;
+  discount: number;
+}): Promise<number> {
+  const pool = getPool();
+
+  interface ExistingRow extends RowDataPacket {
+    period_number: number;
+  }
+  const [existingRows] = await pool.execute<ExistingRow[]>(
+    `SELECT period_number FROM \`${SUBSCRIPTION_PAYMENTS_TABLE}\` WHERE payment_id = ? LIMIT 1`,
+    [params.paymentId],
+  );
+  if (existingRows[0]) return existingRows[0].period_number;
+
+  interface MaxRow extends RowDataPacket {
+    max_period: number | null;
+  }
+  const [maxRows] = await pool.execute<MaxRow[]>(
+    `SELECT MAX(period_number) AS max_period FROM \`${SUBSCRIPTION_PAYMENTS_TABLE}\` WHERE subscription_id = ?`,
+    [params.subscriptionId],
+  );
+  const periodNumber = (maxRows[0]?.max_period ?? 0) + 1;
+
+  const discount = round(params.discount, 2);
+  const amountSummaryNetOfDiscount = round(params.amountSummary - discount, 2);
+
+  await pool.execute<ResultSetHeader>(
+    `INSERT INTO \`${SUBSCRIPTION_PAYMENTS_TABLE}\`
+       (\`subscription_system_id\`, \`buyer_id\`, \`author_id\`, \`subscription_id\`,
+        \`payment_id\`, \`plan\`, \`type\`, \`amount\`, \`amount_summary\`,
+        \`author_earn\`, \`system_tax\`, \`discount\`, \`period_number\`,
+        \`created_at\`, \`updated_at\`)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+    [
+      params.subscriptionSystemId,
+      params.buyerId,
+      params.authorId,
+      params.subscriptionId,
+      params.paymentId,
+      params.plan,
+      params.type,
+      params.amount,
+      amountSummaryNetOfDiscount,
+      params.authorEarn,
+      params.systemTax,
+      discount,
+      periodNumber,
+    ],
+  );
+
+  return periodNumber;
+}
+
+export interface GhlSubscriptionInfo {
+  authorId: number;
+  buyerId: number;
+  plan: string;
+  email: string;
+  name: string | null;
+}
+
+/**
+ * Look up buyer/plan info for a GoHighLevel forward, keyed by `subscription_id`
+ * (cancellation) or `payment_id` (refund). Read BEFORE the corresponding
+ * mutation (termination / refund reversal) so we still have the data
+ * afterwards — those mutations don't touch `author_id`/`buyer_id`/`plan`, but
+ * reading first keeps this in lockstep with the Laravel port's ordering.
+ */
+export async function lookupSubscriptionForGhl(
+  by: { subscriptionId: string } | { paymentId: string },
+): Promise<GhlSubscriptionInfo | null> {
+  interface Row extends RowDataPacket {
+    author_id: number;
+    buyer_id: number;
+    plan: string;
+    email: string;
+    name: string | null;
+  }
+  const pool = getPool();
+  const column = "subscriptionId" in by ? "subscription_id" : "payment_id";
+  const value = "subscriptionId" in by ? by.subscriptionId : by.paymentId;
+
+  const [rows] = await pool.execute<Row[]>(
+    `SELECT ss.author_id, ss.buyer_id, ss.plan, u.email, u.name
+       FROM \`${SUBSCRIPTIONS_TABLE}\` ss
+       JOIN \`${USERS_TABLE}\` u ON u.id = ss.buyer_id
+      WHERE ss.\`${column}\` = ? AND ss.author_id > 0
+      ORDER BY ss.id DESC
+      LIMIT 1`,
+    [value],
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    authorId: Number(row.author_id),
+    buyerId: Number(row.buyer_id),
+    plan: row.plan,
+    email: row.email,
+    name: row.name,
+  };
 }

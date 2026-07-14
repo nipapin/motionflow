@@ -22,11 +22,43 @@ import {
   computeSubscriptionMoneyFromTransaction,
   reverseAuthorBalanceForSubscriptionTermination,
   reverseAuthorBalanceForRefundedSubscriptionPayment,
+  recordSubscriptionPayment,
+  lookupSubscriptionForGhl,
 } from "@/lib/paddle-laravel-port";
+import { sendGhlEvent, type GhlEventType } from "@/lib/ghl-forwarder";
 
 const SUBSCRIPTIONS_TABLE = "subscription_systems";
 const EXTRA_GEN_CREDIT_EVENTS_TABLE = "paddle_extra_generation_credit_events";
 const PAYMENT_SYSTEM = "paddle";
+
+/** Port of Laravel `config('ghl_forward.author_id')` - the single author (premiere-gal / Gal Toolkit Max) CC360 cares about. */
+const GHL_FORWARD_AUTHOR_ID = Number(process.env.GHL_FORWARD_AUTHOR_ID ?? 4141);
+
+/**
+ * Port of `GatewayPaddle::forwardToGoHighLevel` - no-op unless `authorId`
+ * matches the single author configured for CC360 forwarding.
+ */
+async function forwardToGhl(
+  eventType: GhlEventType,
+  authorId: number,
+  email: string,
+  name: string | null,
+  plan: string | null,
+  amount: number | null = null,
+): Promise<void> {
+  if (GHL_FORWARD_AUTHOR_ID <= 0 || authorId !== GHL_FORWARD_AUTHOR_ID) return;
+
+  const [firstName, ...rest] = (name ?? "").split(" ");
+  await sendGhlEvent(eventType, {
+    tier: plan,
+    first_name: firstName || null,
+    last_name: rest.join(" ") || null,
+    email,
+    phone: null,
+    amount,
+    currency: "USD",
+  });
+}
 
 /**
  * Transaction origins that indicate a side-charge on an existing subscription
@@ -855,6 +887,65 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
       );
     }
 
+    // Record this payment in the ledger (one row per real charge, including
+    // renewals) so the Laravel earnings/subscribers dashboard can show which
+    // month-in-a-row this is and account for renewal income in the correct
+    // month. Port of `GatewayPaddle::handleSubscription`'s
+    // `SubscriptionPayment::recordPayment()` call. Only author-attributed
+    // subscriptions are ledgered — that's all the dashboard shows anyway.
+    if (authorId) {
+      try {
+        interface RowIdRow extends RowDataPacket {
+          id: number;
+        }
+        const [idRows] = await conn.execute<RowIdRow[]>(
+          `SELECT id FROM \`${SUBSCRIPTIONS_TABLE}\` WHERE subscription_id = ? AND author_id = ? LIMIT 1`,
+          [rowSubscriptionId, authorId],
+        );
+        // recordSubscriptionPayment() rounds this itself - no need to round here.
+        const discountRaw = txn.details?.line_items?.[0]?.totals?.discount;
+        const discount = subscriptionMoney
+          ? minorToMajor(discountRaw == null ? null : String(discountRaw))
+          : 0;
+
+        const periodNumber = await recordSubscriptionPayment({
+          subscriptionSystemId: idRows[0]?.id ?? null,
+          buyerId: userId,
+          authorId,
+          subscriptionId: rowSubscriptionId,
+          paymentId,
+          plan,
+          type: "personal",
+          amount,
+          amountSummary,
+          authorEarn,
+          systemTax,
+          discount,
+        });
+
+        // CC360 wants a "purchase" event only for the first payment of a
+        // subscription, not every renewal - period_number === 1 is exactly
+        // that. Lifetime is always a single one-off purchase (never renews).
+        if (periodNumber === 1 || plan === "lifetime") {
+          const ghlPlan = plan === "annual" ? "yearly" : plan === "monthly" ? "monthly" : plan === "lifetime" ? "lifetime" : null;
+          if (ghlPlan) {
+            const ghlEventType: GhlEventType =
+              ghlPlan === "yearly" ? "yearly_purchase" : ghlPlan === "lifetime" ? "lifetime_purchase" : "monthly_purchase";
+            const [buyerRows] = await conn.execute<(RowDataPacket & { email: string; name: string | null })[]>(
+              `SELECT email, name FROM \`users\` WHERE id = ? LIMIT 1`,
+              [userId],
+            );
+            const buyer = buyerRows[0];
+            if (buyer) {
+              await forwardToGhl(ghlEventType, authorId, buyer.email, buyer.name, ghlPlan, amountSummary);
+            }
+          }
+        }
+      } catch (err) {
+        console.error(`[paddle] recordSubscriptionPayment/GHL forward threw for ${paymentId}:`, err);
+      }
+    }
+
     return { ok: true, buyerId: userId };
   } finally {
     if (lockKey) await releasePaddleLock(conn, lockKey);
@@ -1291,6 +1382,14 @@ export async function handlePaddleEvent(
       event.event_type === "subscription.canceled" ||
       event.event_type === "subscription.past_due"
     ) {
+      // Read before reversal/termination - neither mutation touches
+      // author_id/buyer_id/plan, but this keeps ordering identical to the
+      // Laravel port (`GatewayPaddle::webhook` looks the row up first too).
+      const ghlInfo = await lookupSubscriptionForGhl({ subscriptionId: sub.id }).catch((err) => {
+        console.error(`[paddle] lookupSubscriptionForGhl threw for ${sub.id}:`, err);
+        return null;
+      });
+
       try {
         await reverseAuthorBalanceForSubscriptionTermination(sub.id);
       } catch (err) {
@@ -1298,6 +1397,13 @@ export async function handlePaddleEvent(
           `[paddle] reverseAuthorBalanceForSubscriptionTermination threw for ${sub.id}:`,
           err,
         );
+      }
+
+      if (ghlInfo) {
+        const ghlPlan = ghlInfo.plan === "annual" ? "yearly" : ghlInfo.plan;
+        await forwardToGhl("cancellation", ghlInfo.authorId, ghlInfo.email, ghlInfo.name, ghlPlan).catch((err) => {
+          console.error(`[paddle] forwardToGhl(cancellation) threw for ${sub.id}:`, err);
+        });
       }
     }
 
@@ -1365,6 +1471,12 @@ export async function handlePaddleEvent(
         skipped += 1;
       }
     }
+    // Read before reversal - it zeroes out author_earn/status on the row.
+    const ghlInfo = await lookupSubscriptionForGhl({ paymentId: transactionId }).catch((err) => {
+      console.error(`[paddle] lookupSubscriptionForGhl threw for ${transactionId}:`, err);
+      return null;
+    });
+
     // 1:1 port of `GatewayPaddle::webhook` adjustment.updated branch's
     // trailing call to `SubscriptionSystem::reverseAuthorBalancesForRefundedSubscriptionPayment`
     // — reverses any author-subscription balance credited for this transaction.
@@ -1375,6 +1487,13 @@ export async function handlePaddleEvent(
         `[paddle] reverseAuthorBalanceForRefundedSubscriptionPayment threw for ${transactionId}:`,
         err,
       );
+    }
+
+    if (ghlInfo) {
+      const ghlPlan = ghlInfo.plan === "annual" ? "yearly" : ghlInfo.plan;
+      await forwardToGhl("refund", ghlInfo.authorId, ghlInfo.email, ghlInfo.name, ghlPlan).catch((err) => {
+        console.error(`[paddle] forwardToGhl(refund) threw for ${transactionId}:`, err);
+      });
     }
 
     return {
