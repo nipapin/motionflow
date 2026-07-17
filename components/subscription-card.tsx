@@ -145,7 +145,7 @@ export function SubscriptionCard({ item, userEmail }: SubscriptionCardProps) {
 
           <div className="mt-4 flex justify-stretch md:justify-end">
             <a
-              href="https://login.paddle.com/login"
+              href="https://paddle.net/verify-email"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex w-full items-center justify-center rounded-[10px] border border-border px-5 py-2.5 text-sm font-semibold text-muted-foreground smooth hover:border-muted-foreground/40 hover:bg-muted/60 hover:text-foreground md:w-auto"

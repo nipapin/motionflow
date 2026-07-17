@@ -10,6 +10,8 @@ import { SubscriptionModal } from "@/components/subscription-modal";
 import { ImageGenerator } from "@/components/image-generator";
 import { ImageEditor } from "@/components/image-editor";
 import { VideoGenerator } from "@/components/video-generator";
+import { FootagesPromo } from "@/components/footages-promo";
+import { CtaBanner } from "@/components/cta-banner";
 import type { Product } from "@/lib/product-types";
 import { productMatchesSearch, productMatchesSidebarCategory } from "@/lib/product-ui";
 import { useAuth } from "@/components/auth-provider";
@@ -80,6 +82,8 @@ export default function Home({ sections }: HomePageProps) {
           {sections.map((section) => (
             <ProductGrid key={section.title} products={section.items} title={section.title} onDownload={handleDownload} />
           ))}
+          <FootagesPromo />
+          <CtaBanner />
         </>
       ) : (
         <>
