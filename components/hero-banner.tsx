@@ -31,8 +31,10 @@ export function HeroBanner({ onCategoryChange }: HeroBannerProps) {
             <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
             Unlimited Downloads
           </span>
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-semibold text-foreground mb-5 tracking-tight leading-[1.1] text-balance">
-            One creative space for your entire video workflow
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-semibold text-foreground mb-5 tracking-tight leading-[1.1]">
+            One creative space for
+            <br />
+            your entire video workflow
           </h1>
           <p className="text-muted-foreground mb-8 max-w-lg mx-auto xl:mx-0 text-pretty text-lg leading-relaxed">
             Discover professional templates, high-quality assets, and intelligent AI tools that help you create polished content faster.
