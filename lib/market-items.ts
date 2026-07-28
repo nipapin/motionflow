@@ -251,9 +251,11 @@ export async function getMarketItemsByIds(ids: number[]): Promise<Product[]> {
 export interface HomeSection {
   title: string;
   items: Product[];
+  /** "Browse all" link shown next to the section title on the home page. */
+  browseAllHref?: string;
 }
 
-const HOME_SECTION_ITEM_LIMIT = 6;
+const HOME_SECTION_ITEM_LIMIT = 9;
 
 type HomeSectionConfig = {
   title: string;
@@ -262,18 +264,25 @@ type HomeSectionConfig = {
   fetchLimit?: number;
   /** Keep one item per underlying audio file / track name. */
   dedupeAudio?: boolean;
+  /** "Browse all" link shown next to the section title on the home page. */
+  browseAllHref?: string;
 };
 
 const HOME_SECTIONS: HomeSectionConfig[] = [
-  { title: "Most Popular Templates", slugs: ["after-effects", "premiere-pro", "davinci-resolve"] },
+  {
+    title: "Most Popular Templates",
+    slugs: ["after-effects", "premiere-pro", "davinci-resolve"],
+    browseAllHref: "/after-effects",
+  },
   // { title: "Most Popular Graphics", slugs: ["illustrator"] },
   {
     title: "Most Popular Stock Audio",
     slugs: ["stock-audio"],
     fetchLimit: 36,
     dedupeAudio: true,
+    browseAllHref: "/stock-audio",
   },
-  { title: "Most Popular Sound FX", slugs: ["sound-fx"] },
+  { title: "Most Popular Sound FX", slugs: ["sound-fx"], browseAllHref: "/sound-fx" },
 ];
 
 const ITEM_POPULARITIES_TABLE = "item_popularities";
@@ -305,8 +314,8 @@ function dedupeHomeSectionProducts(products: Product[], limit: number): Product[
 }
 
 /**
- * One UNION ALL round-trip per home section: top 6 by `item_popularities.ranking`
- * (valuer_id = 6). Sections with fewer than 6 ranked items are omitted.
+ * One UNION ALL round-trip per home section: top 9 by `item_popularities.ranking`
+ * (valuer_id = 6). Sections with fewer than 9 ranked items are omitted.
  */
 export async function getHomeSections(): Promise<HomeSection[]> {
   const pool = getMysqlPool();
@@ -351,7 +360,7 @@ export async function getHomeSections(): Promise<HomeSection[]> {
       if (section.dedupeAudio) {
         items = dedupeHomeSectionProducts(items, HOME_SECTION_ITEM_LIMIT);
       }
-      return { title: section.title, items };
+      return { title: section.title, items, browseAllHref: section.browseAllHref };
     }).filter((s) => s.items.length >= HOME_SECTION_MIN_ITEMS);
   } catch (err) {
     console.error("[getHomeSections]", err);
