@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, type RefObject } from "react";
-import { ChevronDown } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, ChevronDown } from "lucide-react";
 import { ProductCard } from "./product-card";
 import type { Product } from "@/lib/product-types";
 import { productCategoryLabel, productKind, productSoftwareLabel } from "@/lib/product-ui";
@@ -34,6 +35,8 @@ interface ProductGridProps {
   onSoftwareChange?: (software: string) => void;
   sentinelRef?: RefObject<HTMLDivElement | null>;
   isLoadingMore?: boolean;
+  /** "Browse all" link shown next to the title. */
+  browseAllHref?: string;
 }
 
 export function ProductGrid({ 
@@ -45,6 +48,7 @@ export function ProductGrid({
   onSoftwareChange,
   sentinelRef,
   isLoadingMore,
+  browseAllHref,
 }: ProductGridProps) {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
@@ -103,6 +107,16 @@ export function ProductGrid({
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
+          )}
+
+          {browseAllHref && (
+            <Link
+              href={browseAllHref}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface/50 px-4 py-2 text-sm font-medium text-foreground transition hover:border-line-strong hover:bg-surface"
+            >
+              Browse all
+              <ArrowRight className="h-3.5 w-3.5 opacity-70" />
+            </Link>
           )}
         </div>
       )}
