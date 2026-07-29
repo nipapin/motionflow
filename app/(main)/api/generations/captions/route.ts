@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import Replicate from "replicate";
+import {
+  identityFromFormData,
+  requireCaptionsAccess,
+} from "@/lib/auth/resolve-captions-user";
 import { uploadBufferToR2 } from "@/lib/r2-storage";
 
 export const runtime = "nodejs";
@@ -88,12 +92,18 @@ function hasTranscription(output: unknown): boolean {
 async function transcribe(
     audioUrl: string,
     timestamp: WhisperTimestamp,
+    options: { language?: string; translate?: boolean },
 ): Promise<unknown> {
+    const language =
+        options.language && options.language.trim()
+            ? options.language.trim()
+            : "None";
+
     return replicate.run(CAPTIONS_MODEL, {
         input: {
             audio: audioUrl,
-            task: "transcribe",
-            language: "None",
+            task: options.translate ? "translate" : "transcribe",
+            language,
             batch_size: 24,
             timestamp,
             diarise_audio: false,
@@ -124,6 +134,16 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        const access = await requireCaptionsAccess(identityFromFormData(form));
+        if (!access.ok) return access.response;
+
+        console.info(
+            "[captions generation] user",
+            access.user.email,
+            access.user.id,
+            access.user.source,
+        );
+
         const file = form.get("file");
         if (!(file instanceof File)) {
             return NextResponse.json(
@@ -150,6 +170,26 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        const languageRaw = form.get("language");
+        const translateRaw = form.get("translateTo");
+        const language =
+            typeof languageRaw === "string" &&
+            languageRaw.trim() &&
+            languageRaw.trim().toLowerCase() !== "auto"
+                ? languageRaw.trim()
+                : undefined;
+        const translateTo =
+            typeof translateRaw === "string" &&
+            translateRaw.trim() &&
+            translateRaw.trim().toLowerCase() !== "off"
+                ? translateRaw.trim()
+                : undefined;
+        // Whisper "translate" task → English; non-English translateTo is best-effort via that path.
+        const whisperOpts = {
+            language,
+            translate: Boolean(translateTo),
+        };
+
         let audioUrl: string;
         try {
             const buf = Buffer.from(await file.arrayBuffer());
@@ -170,8 +210,8 @@ export async function POST(req: NextRequest) {
         let chunk: unknown;
         try {
             [words, chunk] = await Promise.all([
-                transcribe(audioUrl, "word"),
-                transcribe(audioUrl, "chunk"),
+                transcribe(audioUrl, "word", whisperOpts),
+                transcribe(audioUrl, "chunk", whisperOpts),
             ]);
         } catch (err) {
             console.error("[captions generation] replicate error:", err);

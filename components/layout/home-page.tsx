@@ -11,7 +11,7 @@ import { ImageGenerator } from "@/components/image-generator";
 import { ImageEditor } from "@/components/image-editor";
 import { VideoGenerator } from "@/components/video-generator";
 import { FootagesPromo } from "@/components/footages-promo";
-import { AiToolsPromo } from "@/components/ai-tools-promo";
+import { CtaBanner } from "@/components/cta-banner";
 import type { Product } from "@/lib/product-types";
 import { productMatchesSearch, productMatchesSidebarCategory } from "@/lib/product-ui";
 import { useAuth } from "@/components/auth-provider";
@@ -80,16 +80,10 @@ export default function Home({ sections }: HomePageProps) {
         <>
           <HeroBanner onCategoryChange={setActiveCategory} />
           {sections.map((section) => (
-            <ProductGrid
-              key={section.title}
-              products={section.items}
-              title={section.title}
-              onDownload={handleDownload}
-              browseAllHref={section.browseAllHref}
-            />
+            <ProductGrid key={section.title} products={section.items} title={section.title} onDownload={handleDownload} />
           ))}
           <FootagesPromo />
-          <AiToolsPromo />
+          <CtaBanner />
         </>
       ) : (
         <>

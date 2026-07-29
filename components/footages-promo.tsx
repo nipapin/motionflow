@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, Download } from "lucide-react";
+import { MasonryGrid } from "@/components/masonry-grid";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
@@ -11,6 +12,13 @@ import { useDownloadAsset } from "@/components/use-download-asset";
 import { cn } from "@/lib/utils";
 import type { FootagePhoto } from "@/app/(main)/api/stock/unsplash/route";
 import type { FootagePhotoDetail } from "@/app/(main)/api/stock/unsplash/[id]/route";
+
+const UTM = "?utm_source=motionflow&utm_medium=referral";
+
+function withUtm(url: string): string {
+  if (!url) return url;
+  return url.includes("?") ? `${url}&utm_source=motionflow&utm_medium=referral` : `${url}${UTM}`;
+}
 
 const QUERIES = [
   "aerial cityscape",
@@ -21,10 +29,6 @@ const QUERIES = [
   "desert dunes golden",
 ];
 
-const COLLAGE_COUNT = 5;
-/** First tile is the large hero cell; the rest fill the 2x2 grid beside it. */
-const COLLAGE_SPANS = ["col-span-2 row-span-2", "", "", "", ""];
-
 export function FootagesPromo() {
   const [photos, setPhotos] = useState<FootagePhoto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,62 +38,71 @@ export function FootagesPromo() {
   useEffect(() => {
     const query = QUERIES[Math.floor(Math.random() * QUERIES.length)];
     const page = Math.floor(Math.random() * 3) + 1;
-    fetch(`/api/stock/unsplash?q=${encodeURIComponent(query)}&per_page=${COLLAGE_COUNT}&page=${page}`)
+    fetch(`/api/stock/unsplash?q=${encodeURIComponent(query)}&per_page=15&page=${page}`)
       .then((r) => r.json())
       .then((data: { results?: FootagePhoto[] }) => {
-        setPhotos(data.results?.slice(0, COLLAGE_COUNT) ?? []);
+        setPhotos(data.results?.slice(0, 15) ?? []);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
   return (
-    <section className="mt-20 mb-12 sm:mt-28 lg:mt-36">
-      <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-[1fr_1.05fr] lg:gap-12">
-        {/* Copy */}
-        <div className="flex flex-col items-center text-center lg:items-start lg:pl-6 lg:text-left xl:pl-10">
-          <span className="mb-4 inline-flex w-fit items-center gap-2 rounded-full border border-blue-500/30 bg-foreground/5 px-3.5 py-1.5 text-xs font-medium text-foreground sm:mb-6 sm:px-4 sm:py-2 sm:text-sm">
-            <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse sm:h-2 sm:w-2" />
-            Stock Footages
-          </span>
-          <h2 className="mb-4 text-3xl font-semibold tracking-tight text-foreground sm:mb-5 sm:text-4xl lg:text-5xl">
-            Explore millions of
-            <br />
-            stunning photos & videos
-          </h2>
-          <p className="mb-8 max-w-lg text-pretty text-base leading-relaxed text-muted-foreground sm:mb-10 sm:text-lg">
-            Hand-picked, high-resolution visuals from creators around the world — ready to drop
-            into your next edit. Completely free, no attribution required.
-          </p>
-          <Link
-            href="/footages"
-            className="inline-flex items-center gap-2 rounded-full bg-linear-to-r from-blue-600 to-blue-500 px-7 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/25 smooth hover-lift hover:from-blue-500 hover:to-blue-400 sm:px-9 sm:py-4 sm:text-base"
-          >
-            Browse all
-            <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
-          </Link>
-        </div>
-
-        {/* Photo collage */}
-        <div className="grid aspect-[16/10] grid-cols-4 grid-rows-2 gap-3 sm:aspect-[2/1] lg:aspect-auto lg:h-[320px] lg:pr-6 xl:h-[360px] xl:pr-10">
-          {loading
-            ? Array.from({ length: COLLAGE_COUNT }).map((_, i) => (
-                <div
-                  key={i}
-                  className={cn("animate-pulse rounded-xl bg-surface-2", COLLAGE_SPANS[i])}
-                />
-              ))
-            : photos.map((photo, i) => (
-                <CollagePhotoTile
-                  key={photo.id}
-                  photo={photo}
-                  onOpen={() => setSelectedPhoto(photo)}
-                  priority={i < 2}
-                  className={COLLAGE_SPANS[i]}
-                />
-              ))}
-        </div>
+    <section className="mb-12">
+      {/* Header — matches ProductGrid style */}
+      <div className="mb-8 flex items-center justify-between">
+        <h2 className="text-2xl font-semibold tracking-tight text-foreground">
+          Stock Footages
+        </h2>
+        <Link
+          href="/footages"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface/50 px-4 py-2 text-sm font-medium text-foreground transition hover:border-line-strong hover:bg-surface"
+        >
+          Browse all
+          <ArrowRight className="h-3.5 w-3.5 opacity-70" />
+        </Link>
       </div>
+
+      {/* Grid */}
+      {loading ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          {Array.from({ length: 15 }).map((_, i) => (
+            <div
+              key={i}
+              className="aspect-[4/3] animate-pulse rounded-xl bg-surface-2"
+            />
+          ))}
+        </div>
+      ) : photos.length > 0 ? (
+        <div className="relative">
+          <MasonryGrid
+            items={photos}
+            getKey={(p) => p.id}
+            columnsClassName="columns-2 sm:columns-3 lg:columns-4 xl:columns-5"
+            gapClassName="gap-2 sm:gap-3 lg:gap-4"
+            itemSpacingClassName="mb-2 sm:mb-3 lg:mb-4"
+            renderItem={(photo, index) => (
+              <PromoPhotoCard
+                photo={photo}
+                onOpen={() => setSelectedPhoto(photo)}
+                onDownload={() =>
+                  void download({
+                    provider: "unsplash",
+                    kind: "image",
+                    id: photo.id,
+                    suggestedName: `motionflow-unsplash-${photo.id}.jpg`,
+                  })
+                }
+                isDownloading={isDownloading}
+                priority={index < 4}
+              />
+            )}
+          />
+          {/* Bottom fade */}
+          <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-20 h-[50%] bg-gradient-to-t from-background from-40% via-background/60 via-70% to-transparent" />
+        </div>
+      ) : null}
+
 
       {/* Full-screen photo modal */}
       <PhotoDetailModal
@@ -109,42 +122,88 @@ export function FootagesPromo() {
   );
 }
 
-function CollagePhotoTile({
+function PromoPhotoCard({
   photo,
   onOpen,
+  onDownload,
+  isDownloading,
   priority = false,
-  className,
 }: {
   photo: FootagePhoto;
   onOpen: () => void;
+  onDownload: () => void;
+  isDownloading: boolean;
   priority?: boolean;
-  className?: string;
 }) {
+  const intrinsicAspectRatio = photo.width && photo.height ? photo.width / photo.height : 4 / 3;
   const placeholderColor = photo.color ?? "#1f2937";
   const altText = photo.altDescription || photo.description || `Photo by ${photo.author.name}`;
 
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      aria-label={`Open details for photo by ${photo.author.name}`}
-      className={cn(
-        "group relative block h-full w-full cursor-pointer overflow-hidden rounded-xl border border-blue-500/30 bg-card/40 smooth hover-lift hover:border-2 hover:border-blue-500",
-        className,
-      )}
-      style={{ backgroundColor: placeholderColor }}
-    >
-      <Image
-        src={photo.urls.small}
-        alt={altText}
-        fill
-        unoptimized
-        priority={priority}
-        loading={priority ? "eager" : "lazy"}
-        sizes="(max-width: 1024px) 50vw, 25vw"
-        className="object-cover smooth group-hover:scale-[1.04]"
-      />
-    </button>
+    <div className="group relative overflow-hidden rounded-xl border border-border/50 bg-card/40 smooth hover:border-blue-500/40 hover:shadow-[0_0_0_1px_rgba(59,130,246,0.25)]">
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={`Open details for photo by ${photo.author.name}`}
+        className="relative block w-full cursor-pointer overflow-hidden text-left"
+      >
+        <div className="relative w-full" style={{ aspectRatio: String(intrinsicAspectRatio), backgroundColor: placeholderColor }}>
+          <Image
+            src={photo.urls.small}
+            alt={altText}
+            fill
+            unoptimized
+            priority={priority}
+            loading={priority ? "eager" : "lazy"}
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+            className="object-cover smooth group-hover:scale-[1.02]"
+          />
+          <div className="pointer-events-none absolute inset-0 bg-linear-to-t from-black/70 via-black/0 to-black/0 opacity-90" />
+        </div>
+      </button>
+
+      <div className="absolute inset-x-0 bottom-0 z-10 p-3 text-[11px] text-white/90">
+        <p className="inline-block max-w-full truncate rounded-md bg-black/35 px-3 py-1.5 backdrop-blur-sm whitespace-nowrap">
+          <span>Photo by </span>
+          <a
+            href={withUtm(photo.author.profileUrl)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2 hover:text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {photo.author.name}
+          </a>
+          {" "}
+          <span>on</span>
+          {" "}
+          <a
+            href={withUtm("https://unsplash.com")}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2 hover:text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            Unsplash
+          </a>
+        </p>
+      </div>
+
+      <Button
+        type="button"
+        size="icon"
+        variant="secondary"
+        onClick={(e) => {
+          e.stopPropagation();
+          onDownload();
+        }}
+        disabled={isDownloading}
+        className="absolute right-2 top-2 h-8 w-8 cursor-pointer rounded-full bg-black/60 text-white hover:bg-black/75"
+        aria-label={`Download photo by ${photo.author.name}`}
+      >
+        <Download className="h-4 w-4" />
+      </Button>
+    </div>
   );
 }
 
