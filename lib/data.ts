@@ -68,7 +68,7 @@ export type Plan = {
   cta: string;
 };
 
-export type SpunkramSubscriptionTierId = "library" | "ai_toolkit";
+export type SpunkramSubscriptionTierId = "free" | "library" | "ai_toolkit";
 
 export type SpunkramSubscriptionTier = {
   id: SpunkramSubscriptionTierId;
@@ -81,6 +81,13 @@ export type SpunkramSubscriptionTier = {
 };
 
 export const spunkramSubscriptionTiers: SpunkramSubscriptionTier[] = [
+  {
+    id: "free",
+    name: "Free Plan",
+    monthlyPrice: 0,
+    yearlyPrice: 0,
+    features: ["300+ free elements", "Stock footage", "Commercial license"],
+  },
   {
     id: "library",
     name: "Editor",
@@ -112,6 +119,9 @@ export const spunkramSubscriptionTiers: SpunkramSubscriptionTier[] = [
   },
 ];
 
+const editorTierFeatures =
+  spunkramSubscriptionTiers.find((t) => t.id === "library")?.features ?? [];
+
 /** Legacy billing-period rows used by the projects subscription banner. */
 export const plans: Plan[] = [
   {
@@ -121,7 +131,7 @@ export const plans: Plan[] = [
     price: 14.9,
     priceSuffix: "/mo",
     description: "Unlock every pack — cancel anytime.",
-    features: spunkramSubscriptionTiers[0].features,
+    features: editorTierFeatures,
     cta: "Unlock all packs",
   },
   {
@@ -133,7 +143,7 @@ export const plans: Plan[] = [
     description: "Best deal — save 33% compared to monthly.",
     highlight: true,
     savings: "−33%",
-    features: spunkramSubscriptionTiers[0].features,
+    features: editorTierFeatures,
     cta: "Unlock all packs",
   },
 ];

@@ -75,7 +75,6 @@ const aiToolsTabs: Array<ShowcaseTab & { id: AiToolsTabId }> = [
     description:
       "AI detects scene changes and inserts chapter points for easier navigation and exports.",
     posterSrc: "https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=1280&q=85&fit=crop",
-    locked: true,
   },
   {
     id: "voiceover",
@@ -84,7 +83,6 @@ const aiToolsTabs: Array<ShowcaseTab & { id: AiToolsTabId }> = [
     description:
       "Generate a natural-sounding voiceover from your script and sync it to the timeline automatically.",
     posterSrc: "https://images.unsplash.com/photo-1478737270239-2f02b77fc618?w=1280&q=85&fit=crop",
-    locked: true,
   },
 ];
 
@@ -405,8 +403,8 @@ export function Showcase() {
                   Edit faster with AI inside the extension
                 </h3>
                 <p className="mt-2 max-w-2xl text-sm text-muted lg:ml-auto">
-                  Smart tools that live in the same panel — generate subtitles today,
-                  with chapters and voiceover on the way.
+                  Smart tools that live in the same panel — generate subtitles,
+                  chapters, and voiceover in one click.
                 </p>
               </div>
             </div>

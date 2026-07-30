@@ -112,10 +112,10 @@ export function ProductGrid({
           {browseAllHref && (
             <Link
               href={browseAllHref}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface/50 px-4 py-2 text-sm font-medium text-foreground transition hover:border-line-strong hover:bg-surface"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-linear-to-r from-blue-600 to-blue-500 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-blue-500/25 smooth hover-lift hover:from-blue-500 hover:to-blue-400"
             >
               Browse all
-              <ArrowRight className="h-3.5 w-3.5 opacity-70" />
+              <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           )}
         </div>
