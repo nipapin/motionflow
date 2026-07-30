@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
     Check,
     Copy,
@@ -23,9 +23,11 @@ interface UploadedPdf {
     url: string;
     filename: string;
     size: number;
+    updatedAt: string;
 }
 
 interface UploadResponse {
+    id?: string | null;
     url?: string;
     filename?: string;
     size?: number;
@@ -33,10 +35,27 @@ interface UploadResponse {
     error?: string;
 }
 
+interface ListResponse {
+    items?: Array<{
+        id: string;
+        url: string;
+        filename: string;
+        size: number;
+        updated_at: string;
+    }>;
+    error?: string;
+}
+
 function formatBytes(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDate(iso: string): string {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
 function validatePdfFile(file: File): string | null {
@@ -83,17 +102,47 @@ export function PdfLinkPageClient() {
     const [dragOver, setDragOver] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
     const [results, setResults] = useState<UploadedPdf[]>([]);
+    const [listLoading, setListLoading] = useState(false);
     const inputId = useId();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [replacingId, setReplacingId] = useState<string | null>(null);
     const replaceInputRef = useRef<HTMLInputElement>(null);
-    const pendingReplaceUrlRef = useRef<string | null>(null);
+    const pendingReplaceRef = useRef<{ id: string; url: string } | null>(null);
 
-    const [manualReplaceUrl, setManualReplaceUrl] = useState("");
-    const [manualReplacing, setManualReplacing] = useState(false);
-    const manualReplaceInputRef = useRef<HTMLInputElement>(null);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
+
+    const refreshList = useCallback(async () => {
+        if (!user) {
+            setResults([]);
+            return;
+        }
+        setListLoading(true);
+        try {
+            const res = await fetch("/api/pdf-uploads", { credentials: "include", cache: "no-store" });
+            const data = (await res.json().catch(() => ({}))) as ListResponse;
+            if (!res.ok) throw new Error(data.error || "Failed to load your PDFs.");
+            setResults(
+                (data.items ?? []).map((item) => ({
+                    id: item.id,
+                    url: item.url,
+                    filename: item.filename,
+                    size: item.size,
+                    updatedAt: item.updated_at,
+                })),
+            );
+        } catch (err) {
+            console.error("[pdf-link] list failed:", err);
+        } finally {
+            setListLoading(false);
+        }
+    }, [user]);
+
+    useEffect(() => {
+        if (!authLoading) void refreshList();
+    }, [authLoading, refreshList]);
 
     const runUpload = useCallback(
         async (file: File | undefined, opts?: { replaceUrl?: string }) => {
@@ -129,32 +178,17 @@ export function PdfLinkPageClient() {
                     throw new Error(data.error || "Upload failed. Please try again.");
                 }
 
-                const url = data.url;
-                const entry: UploadedPdf = {
-                    id: url,
-                    url,
-                    filename: data.filename || file.name,
-                    size: data.size ?? file.size,
-                };
-
-                setResults((prev) => {
-                    const idx = prev.findIndex((r) => r.url === url);
-                    if (idx === -1) return [entry, ...prev];
-                    const next = [...prev];
-                    next[idx] = entry;
-                    return next;
-                });
-
-                toast.success(data.replaced ? "File replaced — the link stays the same" : "PDF uploaded — link is ready");
-                return entry;
+                toast.success(
+                    data.replaced ? "File replaced — the link stays the same" : "PDF uploaded — link is ready",
+                );
+                await refreshList();
             } catch (err) {
                 const message = err instanceof Error ? err.message : "Upload failed";
                 setError(message);
                 toast.error(message);
-                return undefined;
             }
         },
-        [user],
+        [refreshList, user],
     );
 
     const handleUploadNew = useCallback(
@@ -170,49 +204,48 @@ export function PdfLinkPageClient() {
     );
 
     const startReplace = useCallback((id: string, url: string) => {
-        pendingReplaceUrlRef.current = url;
+        pendingReplaceRef.current = { id, url };
         setReplacingId(id);
         replaceInputRef.current?.click();
     }, []);
 
     const handleReplaceFileChosen = useCallback(
         async (file: File | undefined) => {
-            const replaceUrl = pendingReplaceUrlRef.current;
-            if (!file || !replaceUrl) {
+            const target = pendingReplaceRef.current;
+            if (!file || !target) {
                 setReplacingId(null);
                 return;
             }
             try {
-                await runUpload(file, { replaceUrl });
+                await runUpload(file, { replaceUrl: target.url });
             } finally {
                 setReplacingId(null);
-                pendingReplaceUrlRef.current = null;
+                pendingReplaceRef.current = null;
             }
         },
         [runUpload],
     );
 
-    const handleManualReplaceFileChosen = useCallback(
-        async (file: File | undefined) => {
-            const url = manualReplaceUrl.trim();
-            if (!file) return;
-            if (!url) {
-                setError("Paste the link you want to update first.");
-                return;
-            }
-            setManualReplacing(true);
+    const removeResult = useCallback(
+        async (id: string) => {
+            setDeletingId(id);
             try {
-                await runUpload(file, { replaceUrl: url });
+                const res = await fetch(`/api/pdf-uploads/${id}`, {
+                    method: "DELETE",
+                    credentials: "include",
+                });
+                const data = (await res.json().catch(() => ({}))) as { error?: string };
+                if (!res.ok) throw new Error(data.error || "Failed to delete the PDF.");
+                setResults((prev) => prev.filter((r) => r.id !== id));
+            } catch (err) {
+                const message = err instanceof Error ? err.message : "Failed to delete the PDF.";
+                toast.error(message);
             } finally {
-                setManualReplacing(false);
+                setDeletingId(null);
             }
         },
-        [manualReplaceUrl, runUpload],
+        [],
     );
-
-    const removeResult = useCallback((id: string) => {
-        setResults((prev) => prev.filter((r) => r.id !== id));
-    }, []);
 
     return (
         <div className="space-y-8">
@@ -292,65 +325,79 @@ export function PdfLinkPageClient() {
 
             {error && <p className="text-center text-sm text-red-400">{error}</p>}
 
-            {results.length > 0 && (
+            {user && (listLoading || results.length > 0) && (
                 <div className="space-y-3">
                     <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                        Your links
+                        Your uploaded PDFs
                     </h2>
-                    <ul className="space-y-2">
-                        {results.map((r) => (
-                            <li
-                                key={r.id}
-                                className="flex flex-col gap-3 rounded-2xl border border-blue-500/20 bg-card/50 p-4 sm:flex-row sm:items-center sm:justify-between"
-                            >
-                                <div className="flex min-w-0 items-center gap-3">
-                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/10">
-                                        <FileText className="h-5 w-5 text-blue-400" />
+                    {listLoading && results.length === 0 ? (
+                        <div className="flex items-center justify-center gap-2 rounded-2xl border border-blue-500/20 bg-card/50 p-6 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Loading your PDFs…
+                        </div>
+                    ) : (
+                        <ul className="space-y-2">
+                            {results.map((r) => (
+                                <li
+                                    key={r.id}
+                                    className="flex flex-col gap-3 rounded-2xl border border-blue-500/20 bg-card/50 p-4 sm:flex-row sm:items-center sm:justify-between"
+                                >
+                                    <div className="flex min-w-0 items-center gap-3">
+                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/10">
+                                            <FileText className="h-5 w-5 text-blue-400" />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="truncate text-sm font-medium text-foreground" title={r.filename}>
+                                                {r.filename}
+                                            </p>
+                                            <a
+                                                href={r.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex items-center gap-1 truncate text-xs text-muted-foreground hover:text-blue-400"
+                                            >
+                                                <span className="truncate">{r.url}</span>
+                                                <ExternalLink className="h-3 w-3 shrink-0" />
+                                            </a>
+                                            <p className="text-[11px] text-muted-foreground/70">
+                                                {formatBytes(r.size)} · updated {formatDate(r.updatedAt)}
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div className="min-w-0">
-                                        <p className="truncate text-sm font-medium text-foreground" title={r.filename}>
-                                            {r.filename}
-                                        </p>
-                                        <a
-                                            href={r.url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="flex items-center gap-1 truncate text-xs text-muted-foreground hover:text-blue-400"
+                                    <div className="flex shrink-0 items-center gap-2 self-end sm:self-auto">
+                                        <CopyLinkButton url={r.url} />
+                                        <button
+                                            type="button"
+                                            onClick={() => startReplace(r.id, r.url)}
+                                            disabled={replacingId === r.id || deletingId === r.id}
+                                            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-transparent px-3 py-1.5 text-xs font-medium text-foreground smooth hover:bg-blue-500/10 disabled:opacity-60"
                                         >
-                                            <span className="truncate">{r.url}</span>
-                                            <ExternalLink className="h-3 w-3 shrink-0" />
-                                        </a>
-                                        <p className="text-[11px] text-muted-foreground/70">{formatBytes(r.size)}</p>
+                                            {replacingId === r.id ? (
+                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            ) : (
+                                                <RefreshCw className="h-3.5 w-3.5" />
+                                            )}
+                                            Replace file
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => void removeResult(r.id)}
+                                            disabled={deletingId === r.id || replacingId === r.id}
+                                            aria-label="Delete this PDF"
+                                            title="Delete this PDF"
+                                            className="rounded-lg p-1.5 text-muted-foreground smooth hover:bg-red-500/10 hover:text-red-400 disabled:opacity-60"
+                                        >
+                                            {deletingId === r.id ? (
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                            ) : (
+                                                <Trash2 className="h-4 w-4" />
+                                            )}
+                                        </button>
                                     </div>
-                                </div>
-                                <div className="flex shrink-0 items-center gap-2 self-end sm:self-auto">
-                                    <CopyLinkButton url={r.url} />
-                                    <button
-                                        type="button"
-                                        onClick={() => startReplace(r.id, r.url)}
-                                        disabled={replacingId === r.id}
-                                        className="inline-flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-transparent px-3 py-1.5 text-xs font-medium text-foreground smooth hover:bg-blue-500/10 disabled:opacity-60"
-                                    >
-                                        {replacingId === r.id ? (
-                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                        ) : (
-                                            <RefreshCw className="h-3.5 w-3.5" />
-                                        )}
-                                        Replace file
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => removeResult(r.id)}
-                                        aria-label="Remove from this list"
-                                        title="Remove from this list"
-                                        className="rounded-lg p-1.5 text-muted-foreground smooth hover:bg-red-500/10 hover:text-red-400"
-                                    >
-                                        <Trash2 className="h-4 w-4" />
-                                    </button>
-                                </div>
-                            </li>
-                        ))}
-                    </ul>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
                 </div>
             )}
 
@@ -364,55 +411,6 @@ export function PdfLinkPageClient() {
                     e.target.value = "";
                 }}
             />
-
-            <div className="rounded-3xl border border-blue-500/20 bg-card/50 p-6">
-                <h2 className="mb-1 text-base font-semibold text-foreground">
-                    Update the file behind an existing link
-                </h2>
-                <p className="mb-4 text-sm text-muted-foreground">
-                    Paste a link you generated earlier (even in a previous visit) and upload a new PDF — the link itself
-                    won&apos;t change, so any shortcut you made keeps working.
-                </p>
-                <div className="flex flex-col gap-3 sm:flex-row">
-                    <input
-                        type="url"
-                        value={manualReplaceUrl}
-                        onChange={(e) => setManualReplaceUrl(e.target.value)}
-                        placeholder="https://cdn.motionflow.pro/pdf/…"
-                        disabled={manualReplacing}
-                        className="w-full flex-1 rounded-xl border border-blue-500/20 bg-input/30 px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/50"
-                    />
-                    <button
-                        type="button"
-                        disabled={manualReplacing || !manualReplaceUrl.trim()}
-                        onClick={() => {
-                            if (!user) {
-                                setSignInOpen(true);
-                                return;
-                            }
-                            manualReplaceInputRef.current?.click();
-                        }}
-                        className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-linear-to-r from-blue-600 to-blue-500 px-4 py-2.5 text-sm font-medium text-white smooth hover:from-blue-500 hover:to-blue-400 disabled:opacity-50"
-                    >
-                        {manualReplacing ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                            <RefreshCw className="h-4 w-4" />
-                        )}
-                        Choose new PDF
-                    </button>
-                </div>
-                <input
-                    ref={manualReplaceInputRef}
-                    type="file"
-                    accept="application/pdf,.pdf"
-                    className="sr-only"
-                    onChange={(e) => {
-                        void handleManualReplaceFileChosen(e.target.files?.[0]);
-                        e.target.value = "";
-                    }}
-                />
-            </div>
 
             <div className="rounded-3xl border border-blue-500/20 bg-card/80 p-8 backdrop-blur-sm">
                 <h2 className="mb-4 text-xl font-semibold text-foreground">
@@ -443,11 +441,10 @@ export function PdfLinkPageClient() {
                 </div>
                 <p className="mt-6 text-xs leading-relaxed text-muted-foreground/80">
                     The link points directly to your file and stays the same, so the shortcut will keep working even after
-                    you replace the PDF behind it — use the “Replace file” action above whenever you need to update the
-                    document. Double-clicking the shortcut opens the PDF in your browser instead of a local app, which is
-                    handy for quick access from any of your devices without keeping a local copy. Note that the “Your
-                    links” list above is only kept for this browsing session — copy any links you need before navigating
-                    away, since you can always paste them back in later to replace the file.
+                    you replace the PDF behind it. Come back to this page anytime and use “Replace file” next to the entry
+                    in “Your uploaded PDFs” to swap its content — no need to paste the link anywhere, the list remembers it
+                    for you. Double-clicking the shortcut opens the PDF in your browser instead of a local app, which is
+                    handy for quick access from any of your devices without keeping a local copy.
                 </p>
             </div>
 

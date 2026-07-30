@@ -34,6 +34,7 @@ export const GENERATION_TOOLS = [
   "video",
   "tts",
   "stt",
+  "captions",
 ] as const;
 export type GenerationTool = (typeof GENERATION_TOOLS)[number];
 

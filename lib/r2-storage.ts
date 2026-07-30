@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 /**
  * Cloudflare R2 storage helpers.
@@ -240,6 +240,13 @@ export async function uploadBufferToR2(
         url: r2PublicUrlForKey(key),
         contentType: opts.contentType,
     };
+}
+
+/** Permanently delete an object from the public R2 bucket. */
+export async function deleteR2Object(key: string): Promise<void> {
+    const client = getR2Client();
+    const bucket = getR2Bucket();
+    await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
 }
 
 /**

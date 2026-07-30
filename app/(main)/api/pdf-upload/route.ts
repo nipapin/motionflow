@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { r2KeyFromPublicUrl, uploadBufferToR2 } from "@/lib/r2-storage";
+import { upsertPdfUpload } from "@/lib/pdf-uploads";
 
 export const runtime = "nodejs";
 
@@ -106,6 +107,7 @@ export async function POST(req: NextRequest) {
             };
 
         let url: string;
+        let key: string;
         try {
             const result = await uploadBufferToR2(buf, {
                 contentType: "application/pdf",
@@ -115,6 +117,7 @@ export async function POST(req: NextRequest) {
                 cacheControl: PDF_CACHE_CONTROL,
             });
             url = result.url;
+            key = result.key;
         } catch (err) {
             console.error("[pdf-upload] R2 upload failed:", err);
             return NextResponse.json(
@@ -123,7 +126,23 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        let id: string | null = null;
+        try {
+            id = await upsertPdfUpload({
+                userId: user.id,
+                key,
+                url,
+                filename: file.name,
+                size: file.size,
+            });
+        } catch (err) {
+            // The file itself is already stored — don't fail the request just
+            // because it couldn't be added to the persisted list.
+            console.error("[pdf-upload] failed to persist upload record:", err);
+        }
+
         return NextResponse.json({
+            id,
             url,
             filename: file.name,
             size: file.size,

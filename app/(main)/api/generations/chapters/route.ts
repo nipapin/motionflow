@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Replicate from "replicate";
+import { LANGUAGE_NAMES } from "@/lib/generation-languages";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -28,18 +29,6 @@ type Section = { topic: string; time: number };
 /** Что генерировать за этот вызов — "all" на первой генерации, остальное на точечный Regenerate. */
 type Target = "all" | "titles" | "chapters" | "description" | "tags";
 const TARGETS: Target[] = ["all", "titles", "chapters", "description", "tags"];
-
-// код с панели (совпадает со списком Translate → ... в UI) -> имя для промпта.
-// Держим белым списком, а не произвольной строкой — меньше риска prompt injection
-// через язык и гарантия, что модель понимает точное название языка.
-const LANGUAGE_NAMES: Record<string, string> = {
-    en: "English",
-    ru: "Russian",
-    es: "Spanish",
-    de: "German",
-    fr: "French",
-    tr: "Turkish",
-};
 
 type ChaptersResponse = {
     titles?: string[];
