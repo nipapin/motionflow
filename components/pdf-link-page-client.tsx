@@ -7,6 +7,7 @@ import {
     ExternalLink,
     FileText,
     Loader2,
+    RefreshCw,
     Trash2,
     UploadCloud,
 } from "lucide-react";
@@ -24,10 +25,26 @@ interface UploadedPdf {
     size: number;
 }
 
+interface UploadResponse {
+    url?: string;
+    filename?: string;
+    size?: number;
+    replaced?: boolean;
+    error?: string;
+}
+
 function formatBytes(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function validatePdfFile(file: File): string | null {
+    const looksLikePdf =
+        file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    if (!looksLikePdf) return "Please choose a PDF file.";
+    if (file.size > MAX_BYTES) return `PDF must be under ${MAX_BYTES / (1024 * 1024)} MB.`;
+    return null;
 }
 
 function CopyLinkButton({ url }: { url: string }) {
@@ -70,8 +87,16 @@ export function PdfLinkPageClient() {
     const inputId = useId();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    const [replacingId, setReplacingId] = useState<string | null>(null);
+    const replaceInputRef = useRef<HTMLInputElement>(null);
+    const pendingReplaceUrlRef = useRef<string | null>(null);
+
+    const [manualReplaceUrl, setManualReplaceUrl] = useState("");
+    const [manualReplacing, setManualReplacing] = useState(false);
+    const manualReplaceInputRef = useRef<HTMLInputElement>(null);
+
     const runUpload = useCallback(
-        async (file: File | undefined) => {
+        async (file: File | undefined, opts?: { replaceUrl?: string }) => {
             if (!file) return;
 
             if (!user) {
@@ -79,30 +104,22 @@ export function PdfLinkPageClient() {
                 return;
             }
 
-            const looksLikePdf =
-                file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-            if (!looksLikePdf) {
-                setError("Please choose a PDF file.");
-                return;
-            }
-            if (file.size > MAX_BYTES) {
-                setError(`PDF must be under ${MAX_BYTES / (1024 * 1024)} MB.`);
+            const validationError = validatePdfFile(file);
+            if (validationError) {
+                setError(validationError);
+                toast.error(validationError);
                 return;
             }
 
             setError(null);
-            setUploading(true);
 
             try {
                 const body = new FormData();
                 body.append("file", file);
+                if (opts?.replaceUrl) body.append("replaceUrl", opts.replaceUrl);
+
                 const res = await fetch("/api/pdf-upload", { method: "POST", body });
-                const data = (await res.json().catch(() => ({}))) as {
-                    url?: string;
-                    filename?: string;
-                    size?: number;
-                    error?: string;
-                };
+                const data = (await res.json().catch(() => ({}))) as UploadResponse;
 
                 if (!res.ok || !data.url) {
                     if (res.status === 401) {
@@ -112,25 +129,85 @@ export function PdfLinkPageClient() {
                     throw new Error(data.error || "Upload failed. Please try again.");
                 }
 
-                setResults((prev) => [
-                    {
-                        id: `${data.url}-${Date.now()}`,
-                        url: data.url as string,
-                        filename: data.filename || file.name,
-                        size: data.size ?? file.size,
-                    },
-                    ...prev,
-                ]);
-                toast.success("PDF uploaded — link is ready");
+                const url = data.url;
+                const entry: UploadedPdf = {
+                    id: url,
+                    url,
+                    filename: data.filename || file.name,
+                    size: data.size ?? file.size,
+                };
+
+                setResults((prev) => {
+                    const idx = prev.findIndex((r) => r.url === url);
+                    if (idx === -1) return [entry, ...prev];
+                    const next = [...prev];
+                    next[idx] = entry;
+                    return next;
+                });
+
+                toast.success(data.replaced ? "File replaced — the link stays the same" : "PDF uploaded — link is ready");
+                return entry;
             } catch (err) {
                 const message = err instanceof Error ? err.message : "Upload failed";
                 setError(message);
                 toast.error(message);
+                return undefined;
+            }
+        },
+        [user],
+    );
+
+    const handleUploadNew = useCallback(
+        async (file: File | undefined) => {
+            setUploading(true);
+            try {
+                await runUpload(file);
             } finally {
                 setUploading(false);
             }
         },
-        [user],
+        [runUpload],
+    );
+
+    const startReplace = useCallback((id: string, url: string) => {
+        pendingReplaceUrlRef.current = url;
+        setReplacingId(id);
+        replaceInputRef.current?.click();
+    }, []);
+
+    const handleReplaceFileChosen = useCallback(
+        async (file: File | undefined) => {
+            const replaceUrl = pendingReplaceUrlRef.current;
+            if (!file || !replaceUrl) {
+                setReplacingId(null);
+                return;
+            }
+            try {
+                await runUpload(file, { replaceUrl });
+            } finally {
+                setReplacingId(null);
+                pendingReplaceUrlRef.current = null;
+            }
+        },
+        [runUpload],
+    );
+
+    const handleManualReplaceFileChosen = useCallback(
+        async (file: File | undefined) => {
+            const url = manualReplaceUrl.trim();
+            if (!file) return;
+            if (!url) {
+                setError("Paste the link you want to update first.");
+                return;
+            }
+            setManualReplacing(true);
+            try {
+                await runUpload(file, { replaceUrl: url });
+            } finally {
+                setManualReplacing(false);
+            }
+        },
+        [manualReplaceUrl, runUpload],
     );
 
     const removeResult = useCallback((id: string) => {
@@ -157,7 +234,7 @@ export function PdfLinkPageClient() {
                 onDrop={(e) => {
                     e.preventDefault();
                     setDragOver(false);
-                    void runUpload(e.dataTransfer.files?.[0]);
+                    void handleUploadNew(e.dataTransfer.files?.[0]);
                 }}
             >
                 {uploading ? (
@@ -193,7 +270,7 @@ export function PdfLinkPageClient() {
                     className="sr-only"
                     disabled={uploading}
                     onChange={(e) => {
-                        void runUpload(e.target.files?.[0]);
+                        void handleUploadNew(e.target.files?.[0]);
                         e.target.value = "";
                     }}
                 />
@@ -250,6 +327,19 @@ export function PdfLinkPageClient() {
                                     <CopyLinkButton url={r.url} />
                                     <button
                                         type="button"
+                                        onClick={() => startReplace(r.id, r.url)}
+                                        disabled={replacingId === r.id}
+                                        className="inline-flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-transparent px-3 py-1.5 text-xs font-medium text-foreground smooth hover:bg-blue-500/10 disabled:opacity-60"
+                                    >
+                                        {replacingId === r.id ? (
+                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        ) : (
+                                            <RefreshCw className="h-3.5 w-3.5" />
+                                        )}
+                                        Replace file
+                                    </button>
+                                    <button
+                                        type="button"
                                         onClick={() => removeResult(r.id)}
                                         aria-label="Remove from this list"
                                         title="Remove from this list"
@@ -263,6 +353,66 @@ export function PdfLinkPageClient() {
                     </ul>
                 </div>
             )}
+
+            <input
+                ref={replaceInputRef}
+                type="file"
+                accept="application/pdf,.pdf"
+                className="sr-only"
+                onChange={(e) => {
+                    void handleReplaceFileChosen(e.target.files?.[0]);
+                    e.target.value = "";
+                }}
+            />
+
+            <div className="rounded-3xl border border-blue-500/20 bg-card/50 p-6">
+                <h2 className="mb-1 text-base font-semibold text-foreground">
+                    Update the file behind an existing link
+                </h2>
+                <p className="mb-4 text-sm text-muted-foreground">
+                    Paste a link you generated earlier (even in a previous visit) and upload a new PDF — the link itself
+                    won&apos;t change, so any shortcut you made keeps working.
+                </p>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                    <input
+                        type="url"
+                        value={manualReplaceUrl}
+                        onChange={(e) => setManualReplaceUrl(e.target.value)}
+                        placeholder="https://cdn.motionflow.pro/pdf/…"
+                        disabled={manualReplacing}
+                        className="w-full flex-1 rounded-xl border border-blue-500/20 bg-input/30 px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/50"
+                    />
+                    <button
+                        type="button"
+                        disabled={manualReplacing || !manualReplaceUrl.trim()}
+                        onClick={() => {
+                            if (!user) {
+                                setSignInOpen(true);
+                                return;
+                            }
+                            manualReplaceInputRef.current?.click();
+                        }}
+                        className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-linear-to-r from-blue-600 to-blue-500 px-4 py-2.5 text-sm font-medium text-white smooth hover:from-blue-500 hover:to-blue-400 disabled:opacity-50"
+                    >
+                        {manualReplacing ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                            <RefreshCw className="h-4 w-4" />
+                        )}
+                        Choose new PDF
+                    </button>
+                </div>
+                <input
+                    ref={manualReplaceInputRef}
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    className="sr-only"
+                    onChange={(e) => {
+                        void handleManualReplaceFileChosen(e.target.files?.[0]);
+                        e.target.value = "";
+                    }}
+                />
+            </div>
 
             <div className="rounded-3xl border border-blue-500/20 bg-card/80 p-8 backdrop-blur-sm">
                 <h2 className="mb-4 text-xl font-semibold text-foreground">
@@ -292,10 +442,12 @@ export function PdfLinkPageClient() {
                     </div>
                 </div>
                 <p className="mt-6 text-xs leading-relaxed text-muted-foreground/80">
-                    The link points directly to your file and stays the same, so the shortcut will keep working. Double-clicking
-                    it opens the PDF in your browser instead of a local app — handy for quick access from any of your devices
-                    without keeping a local copy. Note that this session&apos;s list above is not saved after you leave the
-                    page, so copy any links you need before navigating away.
+                    The link points directly to your file and stays the same, so the shortcut will keep working even after
+                    you replace the PDF behind it — use the “Replace file” action above whenever you need to update the
+                    document. Double-clicking the shortcut opens the PDF in your browser instead of a local app, which is
+                    handy for quick access from any of your devices without keeping a local copy. Note that the “Your
+                    links” list above is only kept for this browsing session — copy any links you need before navigating
+                    away, since you can always paste them back in later to replace the file.
                 </p>
             </div>
 

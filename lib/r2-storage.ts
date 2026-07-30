@@ -84,6 +84,26 @@ export function r2PublicUrlForKey(key: string): string {
     return `${base}/${encoded}`;
 }
 
+/** Inverse of {@link r2PublicUrlForKey}. Returns `null` if `url` isn't a public R2 URL for this bucket. */
+export function r2KeyFromPublicUrl(url: string): string | null {
+    let base: string;
+    try {
+        base = getR2PublicBaseUrl();
+    } catch {
+        return null;
+    }
+    if (!url.startsWith(`${base}/`)) return null;
+    const encodedKey = url.slice(base.length + 1).split(/[?#]/)[0];
+    try {
+        return encodedKey
+            .split("/")
+            .map((seg) => decodeURIComponent(seg))
+            .join("/");
+    } catch {
+        return null;
+    }
+}
+
 const EXT_BY_MIME: Record<string, string> = {
     "image/png": "png",
     "image/jpeg": "jpg",

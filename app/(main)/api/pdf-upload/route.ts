@@ -1,12 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
-import { uploadBufferToR2 } from "@/lib/r2-storage";
+import { r2KeyFromPublicUrl, uploadBufferToR2 } from "@/lib/r2-storage";
 
 export const runtime = "nodejs";
 
 const MAX_BYTES = 30 * 1024 * 1024;
 const PDF_MAGIC = Buffer.from("%PDF");
+
+// Uploads can be replaced in place later on, so avoid the long-lived
+// "immutable" default cache-control other R2 uploads use — a short,
+// revalidate-on-use lifetime keeps shortcuts pointing at fresh content.
+const PDF_CACHE_CONTROL = "public, max-age=60, must-revalidate";
 
 function slugifyFileName(name: string): string {
     const withoutExt = name.replace(/\.pdf$/i, "");
@@ -18,6 +23,23 @@ function slugifyFileName(name: string): string {
         .replace(/^-+|-+$/g, "")
         .slice(0, 60);
     return slug || "document";
+}
+
+/** Splits an owned R2 key like `pdf/42/report-ab12cd34.pdf` into upload options. */
+function ownedKeyToUploadTarget(
+    key: string,
+    userId: number,
+): { keyPrefix: string; baseName: string } | null {
+    const segments = key.split("/");
+    if (segments.length < 3) return null;
+    const [folder, ownerId, ...rest] = segments;
+    if (folder !== "pdf" || ownerId !== String(userId) || rest.length === 0) {
+        return null;
+    }
+    const last = rest.pop() as string;
+    const baseName = last.replace(/\.pdf$/i, "");
+    if (!baseName) return null;
+    return { keyPrefix: ["pdf", ownerId, ...rest].join("/"), baseName };
 }
 
 export async function POST(req: NextRequest) {
@@ -32,6 +54,7 @@ export async function POST(req: NextRequest) {
 
         const form = await req.formData().catch(() => null);
         const file = form?.get("file");
+        const replaceUrl = form?.get("replaceUrl");
 
         if (!(file instanceof File)) {
             return NextResponse.json(
@@ -56,6 +79,18 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        let uploadTarget: { keyPrefix: string; baseName: string } | null = null;
+        if (typeof replaceUrl === "string" && replaceUrl.trim()) {
+            const key = r2KeyFromPublicUrl(replaceUrl.trim());
+            uploadTarget = key ? ownedKeyToUploadTarget(key, user.id) : null;
+            if (!uploadTarget) {
+                return NextResponse.json(
+                    { error: "That link doesn't belong to one of your uploads." },
+                    { status: 403 },
+                );
+            }
+        }
+
         const buf = Buffer.from(await file.arrayBuffer());
         if (!buf.subarray(0, 4).equals(PDF_MAGIC)) {
             return NextResponse.json(
@@ -64,15 +99,20 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const baseName = `${slugifyFileName(file.name)}-${randomUUID().slice(0, 8)}`;
+        const { keyPrefix, baseName } =
+            uploadTarget ?? {
+                keyPrefix: `pdf/${user.id}`,
+                baseName: `${slugifyFileName(file.name)}-${randomUUID().slice(0, 8)}`,
+            };
 
         let url: string;
         try {
             const result = await uploadBufferToR2(buf, {
                 contentType: "application/pdf",
-                keyPrefix: `pdf/${user.id}`,
-                extension: "pdf",
+                keyPrefix,
                 baseName,
+                extension: "pdf",
+                cacheControl: PDF_CACHE_CONTROL,
             });
             url = result.url;
         } catch (err) {
@@ -87,6 +127,7 @@ export async function POST(req: NextRequest) {
             url,
             filename: file.name,
             size: file.size,
+            replaced: uploadTarget !== null,
         });
     } catch (error) {
         console.error("[pdf-upload] unexpected error:", error);
