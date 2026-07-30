@@ -72,6 +72,17 @@ const SIDE_CHARGE_ORIGINS = new Set([
 ]);
 
 /**
+ * Paddle fires a `transaction.completed` with this origin when a customer
+ * updates their saved card on an existing subscription (a $0 verification
+ * charge, not a real payment). Its `billing_period` reflects the day of the
+ * card change rather than the subscription's real renewal window, so routing
+ * it through the normal upsert would incorrectly reset `ends_at` /
+ * `paddle_billing_period_*` to "today" and make the subscription look like
+ * it's about to expire. We only want to refresh the stored card brand/last4.
+ */
+const PAYMENT_METHOD_CHANGE_ORIGIN = "subscription_payment_method_change";
+
+/**
  * Paddle subscription statuses we map to our internal `status` integer.
  *  1 → active / trialing / past_due / paused
  * -1 → canceled (access ends at `ends_at`)
@@ -599,6 +610,43 @@ async function releasePaddleLock(conn: PoolConnection, key: string): Promise<voi
 }
 
 /**
+ * Handles `origin === "subscription_payment_method_change"` transactions.
+ * Refreshes only the stored payment method (card brand/last4) on the
+ * matching `subscription_systems` row — deliberately leaves `status`,
+ * `plan`, `ends_at`, `trial_ends_at` and the `paddle_billing_period_*`
+ * columns untouched so a card update never resets the subscription's dates.
+ */
+async function updatePaymentMethodOnly(
+  txn: PaddleTransaction,
+): Promise<{ ok: boolean; reason?: string; buyerId?: number }> {
+  if (!txn.subscription_id) {
+    return { ok: true, reason: "payment_method_change_no_subscription" };
+  }
+
+  const argumentsJson = buildArgumentsJson(txn.payments);
+  const pool = getPool();
+  const [result] = await pool.execute<ResultSetHeader>(
+    `UPDATE \`${SUBSCRIPTIONS_TABLE}\`
+        SET \`arguments\`  = ?,
+            \`updated_at\` = NOW()
+      WHERE \`subscription_id\` = ?`,
+    [argumentsJson, txn.subscription_id],
+  );
+
+  if (result.affectedRows === 0) {
+    console.info(
+      `[paddle] updatePaymentMethodOnly: no existing row for subscription ${txn.subscription_id} (txn ${txn.id})`,
+    );
+    return { ok: true, reason: "payment_method_change_unknown_subscription" };
+  }
+
+  console.info(
+    `[paddle] updatePaymentMethodOnly: refreshed payment method for subscription ${txn.subscription_id} (txn ${txn.id})`,
+  );
+  return { ok: true, reason: "payment_method_updated" };
+}
+
+/**
  * Full row upsert from a `transaction.completed` event. This is the source of
  * truth: it carries the captured payment, all monetary totals, the card method
  * details, and (for subscription transactions) the billing period.
@@ -625,6 +673,14 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
   reason?: string;
   buyerId?: number;
 }> {
+  // Payment-method-only updates must be handled BEFORE the side-charge check
+  // below (and before any date/plan logic): they carry a `billing_period`
+  // that reflects "today", not the subscription's real renewal window, so
+  // treating them like a normal transaction would corrupt `ends_at`.
+  if (txn.origin === PAYMENT_METHOD_CHANGE_ORIGIN) {
+    return updatePaymentMethodOnly(txn);
+  }
+
   // Detect side-charges FIRST so they short-circuit cleanly with the right
   // reason, even when `custom_data` is missing (Paddle does not propagate
   // `custom_data` to subscription_charge / subscription_update / subscription_cancellation
