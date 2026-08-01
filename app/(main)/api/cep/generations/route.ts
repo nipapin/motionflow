@@ -40,6 +40,7 @@ async function readIdentity(req: NextRequest): Promise<CaptionsIdentityInput> {
     return {
       email: searchParams.get("email"),
       userId: searchParams.get("userId"),
+      devToken: searchParams.get("devToken"),
     };
   }
   const body = await req.json().catch(() => null);

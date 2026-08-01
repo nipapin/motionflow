@@ -9,6 +9,8 @@ export const UNAUTHORIZED_CODE = "UNAUTHORIZED" as const;
 export type CaptionsIdentityInput = {
   email?: string | null;
   userId?: string | null;
+  /** Secret shared with non-distributed CEP dev builds — required to use dev-admin in production. */
+  devToken?: string | null;
 };
 
 export type ResolvedCaptionsUser = {
@@ -25,9 +27,8 @@ function isProduction(): boolean {
   return process.env.NODE_ENV === "production";
 }
 
-/** CEP panel local-dev credentials (disabled in production). */
+/** CEP panel local-dev credentials. In production, also requires a matching `devToken` (see `isDevTokenValid`). */
 function getCepDevAdmin(): { email: string; id: string } | null {
-  if (isProduction()) return null;
   const email = (
     process.env.CEP_DEV_ADMIN_EMAIL ?? "admin@mail.ru"
   )
@@ -36,6 +37,19 @@ function getCepDevAdmin(): { email: string; id: string } | null {
   const id = (process.env.CEP_DEV_ADMIN_ID ?? "dev-admin").trim();
   if (!email && !id) return null;
   return { email, id };
+}
+
+/**
+ * Production gate for CEP dev-admin: requires `CEP_DEV_ADMIN_TOKEN` to be
+ * configured *and* matched by the caller's `devToken`. The token is only
+ * ever embedded in non-distributed CEP builds (`npm run watch` / `build`,
+ * never `zxp` / `zip` — see `vite.config.ts`), so it never reaches real
+ * users while still letting the developer exercise AI tools against prod.
+ */
+function isDevTokenValid(token: string | null | undefined): boolean {
+  const expected = process.env.CEP_DEV_ADMIN_TOKEN?.trim();
+  if (!expected) return false;
+  return typeof token === "string" && token.trim() === expected;
 }
 
 function normalizeEmail(value: string | null | undefined): string | null {
@@ -53,7 +67,8 @@ function normalizeId(value: string | null | undefined): string | null {
 /**
  * Resolve caller for captions CEP / web:
  * 1) Motion Flow session cookie
- * 2) Non-production CEP body identity (`email` / `userId` matching CEP_DEV_ADMIN_*)
+ * 2) CEP body identity matching CEP_DEV_ADMIN_* — in production also requires
+ *    a valid `devToken` (see `isDevTokenValid`), always available outside prod.
  */
 export async function resolveCaptionsUser(
   identity: CaptionsIdentityInput = {},
@@ -65,6 +80,8 @@ export async function resolveCaptionsUser(
 
   const dev = getCepDevAdmin();
   if (!dev) return null;
+
+  if (isProduction() && !isDevTokenValid(identity.devToken)) return null;
 
   const email = normalizeEmail(identity.email);
   const userId = normalizeId(identity.userId);
@@ -116,16 +133,25 @@ export function identityFromJsonBody(body: unknown): CaptionsIdentityInput {
         ? String(user.id)
         : null;
 
-  return { email, userId };
+  const devToken =
+    typeof b.devToken === "string"
+      ? b.devToken
+      : typeof user?.devToken === "string"
+        ? user.devToken
+        : null;
+
+  return { email, userId, devToken };
 }
 
 /** Parse form fields from multipart (POST /api/generations/captions). */
 export function identityFromFormData(form: FormData): CaptionsIdentityInput {
   const emailRaw = form.get("email");
   const userIdRaw = form.get("userId");
+  const devTokenRaw = form.get("devToken");
   return {
     email: typeof emailRaw === "string" ? emailRaw : null,
     userId: typeof userIdRaw === "string" ? userIdRaw : null,
+    devToken: typeof devTokenRaw === "string" ? devTokenRaw : null,
   };
 }
 
