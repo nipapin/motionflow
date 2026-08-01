@@ -1,24 +1,33 @@
 # Captions Catalog API
 
-Документация для клиентской части. Источник данных на локальной разработке — папка на диске (`CAPTIONS_ROOT`). Позже тот же контракт будет работать поверх R2 (структура ключей совпадает с деревом папок).
+Документация для клиентской части. Источник данных — публичный R2-бакет (`R2_PUBLIC_BUCKET`, тот же, что и `lib/r2-storage.ts`). Каждый продукт («бренд») читает свой префикс ключей в одном бакете; на момент миграции оба префикса содержат одинаковые файлы (см. `scripts/migrate-captions-to-r2.mjs`).
 
-## Структура файлов на диске
+## Бренды каталога
+
+| `brand` | R2-префикс |
+|---------|------------|
+| `gal` (по умолчанию) | `Gal Captions/` |
+| `spunkram` | `Spunkram Captions/` |
+
+`brand` передаётся как query-параметр (`GET /api/captions`, `GET /api/captions/media/...`) или поле JSON-тела (`POST /api/captions`). Если не передан — используется `gal` (обратная совместимость с текущей CEP-панелью).
+
+## Структура ключей в R2
 
 ```
-CAPTIONS_ROOT/
+{Gal Captions | Spunkram Captions}/
   {Category Name}/
     {Caption Name}/
-      thumb.png          # preview image (публичный)
-      preview.mp4        # preview video (публичный)
-      project.mogrt      # Premiere (только по подписке)
-      project.aep        # After Effects (только по подписке)
-      definition.json    # метаданные MOGRT (не отдаётся публично)
+      thumb.png          # preview image (публичный CDN-URL)
+      preview.mp4        # preview video (публичный CDN-URL)
+      project.mogrt      # Premiere (только по подписке, стримится через сервер)
+      project.aep        # After Effects (только по подписке, стримится через сервер)
+      definition.json    # метаданные MOGRT (не отдаётся публично, стримится через сервер)
 ```
 
 Пример:
 
 ```
-Captions/
+Gal Captions/
   Base/
     Base Caption_01/
       thumb.png
@@ -28,29 +37,32 @@ Captions/
       definition.json
 ```
 
-Env (опционально):
+`thumb.png` / `preview.mp4` лежат в **публичном** бакете и отдаются прямыми ссылками на CDN (`R2_PUBLIC_CDN`), но `project.mogrt` / `project.aep` / `definition.json` **никогда** не отдаются как прямой CDN-URL — сервер всегда сам читает объект из R2 (`GetObjectCommand`) и стримит его клиенту только после проверки сессии/подписки в `POST /api/captions`.
 
-```env
-CAPTIONS_ROOT=C:\Users\nipap\Desktop\Captions
+### Заливка / обновление файлов
+
+```bash
+node --env-file=.env scripts/migrate-captions-to-r2.mjs [--dry-run] [--source=<dir>] [--dest=<a,b>] [--skip-existing]
 ```
 
-Если не задан — используется `C:\Users\nipap\Desktop\Captions`.
+Скрипт читает локальную папку (по умолчанию `C:\Users\nipap\Desktop\Captions`, либо `CAPTIONS_ROOT`) и заливает файлы под оба префикса (`--dest` по умолчанию `"Gal Captions,Spunkram Captions"`).
 
 ---
 
 ## Endpoints
 
-### 1. `GET /api/captions`
+### 1. `GET /api/captions?brand=gal|spunkram`
 
 Публичный. Auth не нужен.
 
-Возвращает дерево категорий → captions для отрисовки UI.
+Возвращает дерево категорий → captions для отрисовки UI. `brand` опционален, по умолчанию `"gal"`.
 
 #### Response `200`
 
 ```json
 {
   "rootConfigured": true,
+  "brand": "gal",
   "categories": [
     {
       "name": "Base",
@@ -60,8 +72,8 @@ CAPTIONS_ROOT=C:\Users\nipap\Desktop\Captions
           "id": "Base/Base Caption_01",
           "name": "Base Caption_01",
           "slug": "base-caption_01",
-          "previewImageUrl": "/api/captions/media/Base/Base%20Caption_01/thumb.png",
-          "previewVideoUrl": "/api/captions/media/Base/Base%20Caption_01/preview.mp4",
+          "previewImageUrl": "https://cdn.motionflow.pro/Gal%20Captions/Base/Base%20Caption_01/thumb.png",
+          "previewVideoUrl": "https://cdn.motionflow.pro/Gal%20Captions/Base/Base%20Caption_01/preview.mp4",
           "files": {
             "mogrt": true,
             "aep": true,
@@ -76,18 +88,19 @@ CAPTIONS_ROOT=C:\Users\nipap\Desktop\Captions
 
 | Поле | Тип | Описание |
 |------|-----|----------|
+| `brand` | `string` | Эхо выбранного бренда каталога (`gal` \| `spunkram`) |
 | `categories[].name` | `string` | Имя папки категории (для заголовка секции) |
 | `categories[].slug` | `string` | URL-friendly slug категории |
 | `captions[].id` | `string` | **Стабильный id** для скачивания: `Category/Caption Folder` |
 | `captions[].name` | `string` | Имя папки caption |
 | `captions[].slug` | `string` | URL-friendly slug |
-| `captions[].previewImageUrl` | `string \| null` | URL превью-картинки |
-| `captions[].previewVideoUrl` | `string \| null` | URL превью-видео |
+| `captions[].previewImageUrl` | `string \| null` | Прямая CDN-ссылка на превью-картинку |
+| `captions[].previewVideoUrl` | `string \| null` | Прямая CDN-ссылка на превью-видео |
 | `captions[].files.mogrt` | `boolean` | Есть ли `project.mogrt` |
 | `captions[].files.aep` | `boolean` | Есть ли `project.aep` |
 | `captions[].files.definition` | `boolean` | Есть ли `definition.json` |
 
-Пустая папка / нет root → `{ "categories": [] }`.
+Пустой префикс в R2 → `{ "categories": [] }`. Ответ кешируется в памяти процесса на 30 секунд на бренд (см. `buildCaptionsTree` в `lib/captions-catalog.ts`).
 
 #### Ошибки
 
@@ -97,32 +110,18 @@ CAPTIONS_ROOT=C:\Users\nipap\Desktop\Captions
 
 ---
 
-### 2. `GET /api/captions/media/{Category}/{Caption}/{file}`
+### 2. `GET /api/captions/media/{Category}/{Caption}/{file}?brand=gal|spunkram` (legacy)
 
-Публичный. Auth не нужен.
+Публичный. Auth не нужен. **Оставлен только для обратной совместимости** — новые клиенты должны использовать `previewImageUrl` / `previewVideoUrl` из `GET /api/captions` напрямую.
 
-Отдаёт **только** preview-файлы:
-
-- `thumb.png`
-- `preview.mp4`
-
-Любые другие файлы (`project.mogrt`, `project.aep`, `definition.json`) → `404`.
-
-URL уже приходят готовыми в `previewImageUrl` / `previewVideoUrl` из `GET /api/captions`. Можно ставить напрямую в `<img>` / `<video>`.
+Для **preview-файлов** (`thumb.png`, `preview.mp4`) делает `302`-редирект на прямой CDN-URL в R2. Любые другие файлы (`project.mogrt`, `project.aep`, `definition.json`) → `404` (для них прямой публичный URL никогда не строится).
 
 #### Пример
 
 ```
 GET /api/captions/media/Base/Base%20Caption_01/thumb.png
-GET /api/captions/media/Base/Base%20Caption_01/preview.mp4
+→ 302 Location: https://cdn.motionflow.pro/Gal%20Captions/Base/Base%20Caption_01/thumb.png
 ```
-
-#### Response `200`
-
-Binary stream:
-
-- `Content-Type`: `image/png` или `video/mp4`
-- `Cache-Control`: `public, max-age=3600`
 
 #### Ошибки
 
@@ -130,7 +129,6 @@ Binary stream:
 |--------|------|
 | `400` | `{ "error": "Invalid path" }` |
 | `404` | `{ "error": "Not found" }` |
-| `500` | `{ "error": "Could not read file" }` |
 
 ---
 
@@ -152,6 +150,7 @@ Cookie: <session>   # опционально, если есть web-сессия
 {
   "id": "Base/Base Caption_01",
   "file": "mogrt",
+  "brand": "gal",
   "user": {
     "id": "dev-admin",
     "email": "admin@mail.ru"
@@ -163,6 +162,7 @@ Cookie: <session>   # опционально, если есть web-сессия
 |------|-----|-------------|----------|
 | `id` | `string` | да | Значение `captions[].id` из дерева |
 | `file` | `"mogrt" \| "aep" \| "definition"` | нет | По умолчанию `"mogrt"` |
+| `brand` | `"gal" \| "spunkram"` | нет | По умолчанию `"gal"` |
 | `user.id` / `user.email` | `string` | для CEP | Identity панели (см. CEP auth ниже) |
 | `userId` / `email` | `string` | альтернатива | Топ-level поля вместо `user` |
 
@@ -353,19 +353,9 @@ CEP_DEV_ADMIN_ID=dev-admin
 | Ресурс | Доступ |
 |--------|--------|
 | Дерево каталога | публично |
-| `thumb.png`, `preview.mp4` | публично через media |
-| `definition.json` | POST + session/CEP + подписка |
-| `project.mogrt`, `project.aep` | POST + session/CEP + подписка |
+| `thumb.png`, `preview.mp4` | публично, прямой CDN-URL (R2_PUBLIC_BUCKET) |
+| `definition.json` | POST + session/CEP + подписка (сервер сам читает объект из R2, прямого URL нет) |
+| `project.mogrt`, `project.aep` | POST + session/CEP + подписка (сервер сам читает объект из R2, прямого URL нет) |
 | Transcribe | POST + session/CEP + подписка |
 | Path traversal (`..`) | отклоняется на сервере |
 | CEP body identity | только non-production |
-
----
-
-## Миграция на R2 (позже)
-
-Контракт API **не меняется**. На сервере вместо FS будет чтение объектов с тем же ключом:
-
-`{Category}/{Caption}/{filename}`
-
-Клиенту менять ничего не нужно: URL media и `id` остаются в том же виде.

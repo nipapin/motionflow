@@ -1,21 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { statSync } from "node:fs";
-import {
-  createFileWebStream,
-  mimeForFilename,
-  resolvePreviewMedia,
-} from "@/lib/captions-catalog";
+import { parseCaptionsBrand, resolvePreviewMediaUrl } from "@/lib/captions-catalog";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/captions/media/[...path]
- * Public preview assets only: `thumb.png`, `preview.mp4`
+ * GET /api/captions/media/[...path]?brand=gal|spunkram
+ *
+ * Legacy proxy URL kept for backward compatibility — redirects to the public
+ * R2/CDN URL for the requested preview asset. `GET /api/captions` now returns
+ * ready-to-use CDN URLs directly, so new clients shouldn't need this route.
+ *
+ * Public preview assets only: `thumb.png`, `preview.mp4`.
  * Path: Category/CaptionFolder/filename
  */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ path: string[] }> },
 ) {
   const { path: segments } = await context.params;
@@ -31,26 +31,11 @@ export async function GET(
     return NextResponse.json({ error: "Invalid path" }, { status: 400 });
   }
 
-  const absolute = resolvePreviewMedia(relative);
-  if (!absolute) {
+  const brand = parseCaptionsBrand(req.nextUrl.searchParams.get("brand"));
+  const url = resolvePreviewMediaUrl(brand, relative);
+  if (!url) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  try {
-    const size = statSync(absolute).size;
-    const fileName = absolute.split(/[/\\]/).pop() ?? "file";
-    const headers = new Headers({
-      "Content-Type": mimeForFilename(fileName),
-      "Content-Length": String(size),
-      "Cache-Control": "public, max-age=3600",
-    });
-
-    return new NextResponse(createFileWebStream(absolute), {
-      status: 200,
-      headers,
-    });
-  } catch (e) {
-    console.error("[captions/media] GET", e);
-    return NextResponse.json({ error: "Could not read file" }, { status: 500 });
-  }
+  return NextResponse.redirect(url, 302);
 }

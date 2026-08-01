@@ -1,8 +1,10 @@
 import "server-only";
-import { createReadStream, existsSync, readdirSync, statSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-import { Readable } from "node:stream";
+import {
+  GetObjectCommand,
+  HeadObjectCommand,
+  ListObjectsV2Command,
+} from "@aws-sdk/client-s3";
+import { getR2Bucket, getR2Client, r2PublicUrlForKey } from "@/lib/r2-storage";
 
 /** Public preview filenames served without auth. */
 export const CAPTION_PREVIEW_FILES = new Set([
@@ -46,6 +48,31 @@ export type CaptionTree = {
   categories: CaptionTreeCategory[];
 };
 
+/**
+ * Which product's catalog to read. Data lives in the same public R2 bucket
+ * under a top-level key prefix per brand — for now both prefixes hold
+ * identical files (see `scripts/migrate-captions-to-r2.mjs`).
+ */
+export type CaptionsBrand = "gal" | "spunkram";
+
+const CAPTIONS_BRAND_PREFIXES: Record<CaptionsBrand, string> = {
+  gal: "Gal Captions",
+  spunkram: "Spunkram Captions",
+};
+
+export const DEFAULT_CAPTIONS_BRAND: CaptionsBrand = "gal";
+
+/** Parse a `brand` query/body param, defaulting to `"gal"` for backward compat. */
+export function parseCaptionsBrand(raw: unknown): CaptionsBrand {
+  const v = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (v === "gal" || v === "spunkram") return v;
+  return DEFAULT_CAPTIONS_BRAND;
+}
+
+export function captionsBrandPrefix(brand: CaptionsBrand): string {
+  return CAPTIONS_BRAND_PREFIXES[brand];
+}
+
 function slugify(name: string): string {
   return name
     .trim()
@@ -54,80 +81,149 @@ function slugify(name: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-/** Local FS root. Override with `CAPTIONS_ROOT` (future: R2 prefix mirror). */
-export function getCaptionsRoot(): string {
-  const fromEnv = process.env.CAPTIONS_ROOT?.trim();
-  if (fromEnv) return path.resolve(fromEnv);
-  return path.resolve("C:\\Users\\nipap\\Desktop\\Captions");
+function extname(fileName: string): string {
+  const idx = fileName.lastIndexOf(".");
+  return idx >= 0 ? fileName.slice(idx).toLowerCase() : "";
 }
 
-/**
- * Resolve a path relative to captions root. Rejects traversal.
- * `relative` uses `/` separators (URL / id form).
- */
-export function resolveCaptionsPath(relative: string): string | null {
-  const root = getCaptionsRoot();
-  const normalized = relative
-    .replace(/\\/g, "/")
+/** Split a caption `id` (`"Category/Caption Folder"`) into segments, rejecting traversal. */
+function splitCaptionId(id: string): { category: string; caption: string } | null {
+  const raw = id.replace(/\\/g, "/");
+  const parts = raw
     .split("/")
-    .filter((p) => p.length > 0 && p !== "." && p !== "..")
-    .join(path.sep);
-
-  if (!normalized) return null;
-
-  const candidate = path.resolve(root, normalized);
-  const rel = path.relative(root, candidate);
-  if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) return null;
-  return candidate;
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0 && p !== "." && p !== "..");
+  if (parts.length !== 2) return null;
+  return { category: parts[0], caption: parts[1] };
 }
 
-function mediaUrl(category: string, caption: string, file: string): string {
-  const parts = [category, caption, file].map(encodeURIComponent).join("/");
-  return `/api/captions/media/${parts}`;
+function objectKey(
+  brand: CaptionsBrand,
+  category: string,
+  caption: string,
+  file: string,
+): string {
+  return [captionsBrandPrefix(brand), category, caption, file].join("/");
 }
 
-function listDirs(dir: string): string[] {
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir, { withFileTypes: true })
-    .filter((d) => d.isDirectory())
-    .map((d) => d.name)
-    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+function previewMediaUrl(
+  brand: CaptionsBrand,
+  category: string,
+  caption: string,
+  file: string,
+): string {
+  return r2PublicUrlForKey(objectKey(brand, category, caption, file));
 }
 
-function fileExists(dir: string, name: string): boolean {
-  try {
-    return statSync(path.join(dir, name)).isFile();
-  } catch {
-    return false;
+function isNotFoundError(e: unknown): boolean {
+  const name = (e as { name?: string } | undefined)?.name;
+  const status = (e as { $metadata?: { httpStatusCode?: number } } | undefined)?.$metadata
+    ?.httpStatusCode;
+  return name === "NotFound" || name === "NoSuchKey" || status === 404;
+}
+
+type CaptionEntry = { category: string; caption: string; file: string };
+
+async function listCaptionObjects(brand: CaptionsBrand): Promise<CaptionEntry[]> {
+  const client = getR2Client();
+  const bucket = getR2Bucket();
+  const prefix = `${captionsBrandPrefix(brand)}/`;
+
+  const entries: CaptionEntry[] = [];
+  let continuationToken: string | undefined;
+
+  do {
+    const res = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+        MaxKeys: 1000,
+      }),
+    );
+
+    for (const obj of res.Contents ?? []) {
+      const key = obj.Key;
+      if (!key) continue;
+      const rel = key.slice(prefix.length);
+      const parts = rel.split("/");
+      if (parts.length !== 3) continue; // expect Category/Caption/file
+      const [category, caption, file] = parts;
+      if (!category || !caption || !file) continue;
+      entries.push({ category, caption, file });
+    }
+
+    continuationToken = res.IsTruncated ? res.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  return entries;
+}
+
+type CaptionFlags = {
+  thumb: boolean;
+  preview: boolean;
+  mogrt: boolean;
+  aep: boolean;
+  definition: boolean;
+};
+
+type CachedTree = { tree: CaptionTree; expiresAt: number };
+const treeCache = new Map<CaptionsBrand, CachedTree>();
+const TREE_CACHE_TTL_MS = 30_000;
+
+/** Scan the R2 bucket's `{brand}` prefix → Category → Caption → files. */
+export async function buildCaptionsTree(
+  brand: CaptionsBrand,
+  opts: { fresh?: boolean } = {},
+): Promise<CaptionTree> {
+  if (!opts.fresh) {
+    const cached = treeCache.get(brand);
+    if (cached && cached.expiresAt > Date.now()) return cached.tree;
   }
-}
 
-/** Scan `CAPTIONS_ROOT` → Category → Caption → files. */
-export function buildCaptionsTree(): CaptionTree {
-  const root = getCaptionsRoot();
-  if (!existsSync(root)) {
-    return { categories: [] };
+  const entries = await listCaptionObjects(brand);
+
+  const categoryOrder: string[] = [];
+  const categoryMap = new Map<string, Map<string, CaptionFlags>>();
+
+  for (const { category, caption, file } of entries) {
+    if (!categoryMap.has(category)) {
+      categoryMap.set(category, new Map());
+      categoryOrder.push(category);
+    }
+    const captions = categoryMap.get(category)!;
+    if (!captions.has(caption)) {
+      captions.set(caption, {
+        thumb: false,
+        preview: false,
+        mogrt: false,
+        aep: false,
+        definition: false,
+      });
+    }
+    const flags = captions.get(caption)!;
+    if (file === "thumb.png") flags.thumb = true;
+    else if (file === "preview.mp4") flags.preview = true;
+    else if (file === CAPTION_DOWNLOAD_FILES.mogrt) flags.mogrt = true;
+    else if (file === CAPTION_DOWNLOAD_FILES.aep) flags.aep = true;
+    else if (file === CAPTION_DOWNLOAD_FILES.definition) flags.definition = true;
   }
+
+  categoryOrder.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
   const categories: CaptionTreeCategory[] = [];
+  for (const categoryName of categoryOrder) {
+    const captionsMap = categoryMap.get(categoryName)!;
+    const captionNames = Array.from(captionsMap.keys()).sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true }),
+    );
 
-  for (const categoryName of listDirs(root)) {
-    const categoryDir = path.join(root, categoryName);
     const captions: CaptionTreeCaption[] = [];
-
-    for (const captionName of listDirs(categoryDir)) {
-      const captionDir = path.join(categoryDir, captionName);
-      const hasThumb = fileExists(captionDir, "thumb.png");
-      const hasPreview = fileExists(captionDir, "preview.mp4");
-      const hasMogrt = fileExists(captionDir, CAPTION_DOWNLOAD_FILES.mogrt);
-      const hasAep = fileExists(captionDir, CAPTION_DOWNLOAD_FILES.aep);
-      const hasDefinition = fileExists(
-        captionDir,
-        CAPTION_DOWNLOAD_FILES.definition,
-      );
+    for (const captionName of captionNames) {
+      const flags = captionsMap.get(captionName)!;
 
       // Skip empty / incomplete folders with no recognizable assets
-      if (!hasThumb && !hasPreview && !hasMogrt && !hasAep && !hasDefinition) {
+      if (!flags.thumb && !flags.preview && !flags.mogrt && !flags.aep && !flags.definition) {
         continue;
       }
 
@@ -135,16 +231,16 @@ export function buildCaptionsTree(): CaptionTree {
         id: `${categoryName}/${captionName}`,
         name: captionName,
         slug: slugify(captionName),
-        previewImageUrl: hasThumb
-          ? mediaUrl(categoryName, captionName, "thumb.png")
+        previewImageUrl: flags.thumb
+          ? previewMediaUrl(brand, categoryName, captionName, "thumb.png")
           : null,
-        previewVideoUrl: hasPreview
-          ? mediaUrl(categoryName, captionName, "preview.mp4")
+        previewVideoUrl: flags.preview
+          ? previewMediaUrl(brand, categoryName, captionName, "preview.mp4")
           : null,
         files: {
-          mogrt: hasMogrt,
-          aep: hasAep,
-          definition: hasDefinition,
+          mogrt: flags.mogrt,
+          aep: flags.aep,
+          definition: flags.definition,
         },
       });
     }
@@ -158,38 +254,35 @@ export function buildCaptionsTree(): CaptionTree {
     }
   }
 
-  return { categories };
+  const tree: CaptionTree = { categories };
+  treeCache.set(brand, { tree, expiresAt: Date.now() + TREE_CACHE_TTL_MS });
+  return tree;
 }
 
-export function getCaptionDirById(id: string): string | null {
-  const dir = resolveCaptionsPath(id);
-  if (!dir || !existsSync(dir)) return null;
-  try {
-    if (!statSync(dir).isDirectory()) return null;
-  } catch {
-    return null;
-  }
-  return dir;
-}
-
-export function resolveProjectFile(
+/** Resolve `{id, kind}` → R2 object key, verifying the object exists. */
+export async function resolveProjectFile(
+  brand: CaptionsBrand,
   id: string,
   kind: CaptionProjectFileKind,
-): { absolutePath: string; filename: string } | null {
-  const dir = getCaptionDirById(id);
-  if (!dir) return null;
+): Promise<{ key: string; filename: string } | null> {
+  const split = splitCaptionId(id);
+  if (!split) return null;
+
   const fileName = CAPTION_DOWNLOAD_FILES[kind];
-  const absolutePath = path.join(dir, fileName);
-  if (!fileExists(dir, fileName)) return null;
-  const captionFolder = path.basename(dir);
-  const ext = path.extname(fileName);
-  return {
-    absolutePath,
-    filename:
-      kind === "definition"
-        ? "definition.json"
-        : `${captionFolder}${ext}`,
-  };
+  const key = objectKey(brand, split.category, split.caption, fileName);
+
+  const client = getR2Client();
+  const bucket = getR2Bucket();
+  try {
+    await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+  } catch (e) {
+    if (isNotFoundError(e)) return null;
+    throw e;
+  }
+
+  const ext = extname(fileName);
+  const filename = kind === "definition" ? "definition.json" : `${split.caption}${ext}`;
+  return { key, filename };
 }
 
 const MIME: Record<string, string> = {
@@ -205,39 +298,45 @@ const MIME: Record<string, string> = {
 };
 
 export function mimeForFilename(fileName: string): string {
-  return MIME[path.extname(fileName).toLowerCase()] ?? "application/octet-stream";
+  return MIME[extname(fileName)] ?? "application/octet-stream";
 }
 
-/** Only allow known public preview filenames under a caption folder. */
-export function resolvePreviewMedia(relativePath: string): string | null {
-  const absolute = resolveCaptionsPath(relativePath);
-  if (!absolute || !existsSync(absolute)) return null;
-
-  const base = path.basename(absolute);
-  if (!CAPTION_PREVIEW_FILES.has(base)) return null;
-
-  try {
-    if (!statSync(absolute).isFile()) return null;
-  } catch {
-    return null;
-  }
-
-  // Must be exactly Category/Caption/file (two dirs deep)
-  const root = getCaptionsRoot();
-  const rel = path.relative(root, absolute);
-  const parts = rel.split(path.sep);
+/**
+ * Resolve the public CDN URL for a known preview asset (`thumb.png` /
+ * `preview.mp4`) at `Category/Caption/file`. Returns `null` for anything
+ * else (protected files never get a direct public URL).
+ */
+export function resolvePreviewMediaUrl(
+  brand: CaptionsBrand,
+  relativePath: string,
+): string | null {
+  const raw = relativePath.replace(/\\/g, "/");
+  const parts = raw.split("/").filter((p) => p.length > 0 && p !== "." && p !== "..");
   if (parts.length !== 3) return null;
 
-  return absolute;
+  const [category, caption, file] = parts;
+  if (!CAPTION_PREVIEW_FILES.has(file)) return null;
+
+  return previewMediaUrl(brand, category, caption, file);
 }
 
-export async function readFileBuffer(absolutePath: string): Promise<Buffer> {
-  return readFile(absolutePath);
+export async function readR2ObjectBuffer(key: string): Promise<Buffer> {
+  const client = getR2Client();
+  const bucket = getR2Bucket();
+  const res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  if (!res.Body) throw new Error(`Empty body for key "${key}"`);
+  const bytes = await res.Body.transformToByteArray();
+  return Buffer.from(bytes);
 }
 
-export function createFileWebStream(absolutePath: string): ReadableStream<Uint8Array> {
-  const nodeStream = createReadStream(absolutePath);
-  return Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>;
+export async function createR2ObjectWebStream(
+  key: string,
+): Promise<ReadableStream<Uint8Array>> {
+  const client = getR2Client();
+  const bucket = getR2Bucket();
+  const res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  if (!res.Body) throw new Error(`Empty body for key "${key}"`);
+  return res.Body.transformToWebStream();
 }
 
 export function parseProjectFileKind(raw: unknown): CaptionProjectFileKind | null {

@@ -164,10 +164,44 @@ function extractJsonArray(text: string): unknown {
   return JSON.parse(raw.slice(start, end + 1));
 }
 
+function wordsFromChunks(chunks: CaptionChunk[]): CaptionChunk[] {
+  const MIN_WORD_SPAN = 0.02;
+  const out: CaptionChunk[] = [];
+  for (const c of chunks) {
+    const tokens = c.text.trim().split(/\s+/).filter(Boolean);
+    if (!tokens.length) continue;
+    const start = Number(c.timestamp[0]) || 0;
+    let end = Number(c.timestamp[1]) || 0;
+    const minEnd = start + Math.max(MIN_WORD_SPAN * tokens.length, 0.05);
+    if (!(end > start) || end < minEnd) end = minEnd;
+    const span = end - start;
+    const totalChars =
+      tokens.reduce((sum, t) => sum + t.length, 0) || tokens.length;
+    let cursor = start;
+    for (let i = 0; i < tokens.length; i++) {
+      const text = tokens[i];
+      const share = text.length / totalChars;
+      const wordEnd = i === tokens.length - 1 ? end : cursor + span * share;
+      out.push({
+        text,
+        timestamp: [cursor, Math.max(wordEnd, cursor + MIN_WORD_SPAN)],
+      });
+      cursor = Math.max(wordEnd, cursor + MIN_WORD_SPAN);
+    }
+    out[out.length - 1] = {
+      ...out[out.length - 1],
+      timestamp: [
+        Math.min(out[out.length - 1].timestamp[0], end - MIN_WORD_SPAN),
+        end,
+      ],
+    };
+  }
+  return out;
+}
+
 /**
  * Translate caption chunk texts 1:1 into the target language, keeping timestamps.
- * Returns translated chunks; caller should clear word-level chunks (CEP falls back
- * to proportional timings when words are absent).
+ * Caller rebuilds word-level chunks via wordsFromChunks (proportional timings).
  */
 async function translateChunks(
   chunks: CaptionChunk[],
@@ -363,6 +397,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Real target-language translation (Whisper's built-in translate is English-only).
+    let translated = false;
     if (translateTo) {
       const languageName = languageNameFor(translateTo)!;
       try {
@@ -371,16 +406,19 @@ export async function POST(req: NextRequest) {
           ? sourceChunks
           : asChunks(words);
         if (fallbackChunks.length) {
-          const translated = await translateChunks(
+          const translatedChunks = await translateChunks(
             fallbackChunks,
             languageName,
           );
-          chunk = withChunks(chunk, translated);
-          // Drop word timings — CEP uses proportional timings when words are empty.
+          chunk = withChunks(chunk, translatedChunks);
+          // Original ASR word timings no longer match translated text — rebuild
+          // word chunks with proportional timings so CEP custom/words modes work.
+          const wordChunks = wordsFromChunks(translatedChunks);
           words = {
-            text: translated.map((c) => c.text).join(" "),
-            chunks: [],
+            text: translatedChunks.map((c) => c.text).join(" "),
+            chunks: wordChunks,
           };
+          translated = true;
         }
       } catch (err) {
         console.error("[captions generation] translate error:", err);
@@ -407,7 +445,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ words, chunk });
+    return NextResponse.json({ words, chunk, translated });
   } catch (error) {
     console.error("[captions generation] unexpected error:", error);
     return NextResponse.json({ error: GENERIC_ERROR }, { status: 500 });

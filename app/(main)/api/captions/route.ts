@@ -5,11 +5,11 @@ import {
 } from "@/lib/auth/resolve-captions-user";
 import {
   buildCaptionsTree,
-  createFileWebStream,
-  getCaptionsRoot,
+  createR2ObjectWebStream,
   mimeForFilename,
+  parseCaptionsBrand,
   parseProjectFileKind,
-  readFileBuffer,
+  readR2ObjectBuffer,
   resolveProjectFile,
 } from "@/lib/captions-catalog";
 
@@ -17,16 +17,14 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/captions — JSON tree of categories → captions (previews only).
- * Public — no auth (CEP catalog browsing).
+ * GET /api/captions?brand=gal|spunkram — JSON tree of categories → captions
+ * (previews only, direct R2/CDN URLs). Public — no auth (CEP catalog browsing).
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const tree = buildCaptionsTree();
-    return NextResponse.json({
-      rootConfigured: Boolean(getCaptionsRoot()),
-      ...tree,
-    });
+    const brand = parseCaptionsBrand(req.nextUrl.searchParams.get("brand"));
+    const tree = await buildCaptionsTree(brand);
+    return NextResponse.json({ rootConfigured: true, brand, ...tree });
   } catch (e) {
     console.error("[captions] GET", e);
     return NextResponse.json(
@@ -39,7 +37,7 @@ export async function GET() {
 /**
  * POST /api/captions — download style file (session or CEP identity + subscription).
  *
- * Body: `{ id: string, file?: "mogrt" | "aep" | "definition", user?: { id, email } }`
+ * Body: `{ id: string, file?: "mogrt" | "aep" | "definition", brand?: "gal" | "spunkram", user?: { id, email } }`
  * - mogrt / aep → binary attachment
  * - definition → JSON body (MOGRT clientControls)
  */
@@ -54,19 +52,15 @@ export async function POST(req: NextRequest) {
   const access = await requireCaptionsAccess(identityFromJsonBody(body));
   if (!access.ok) return access.response;
 
-  const id =
-    body && typeof body === "object" && "id" in body
-      ? String((body as { id: unknown }).id ?? "").trim()
-      : "";
+  const b = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const brand = parseCaptionsBrand(b.brand);
+
+  const id = typeof b.id === "string" ? b.id.trim() : "";
   if (!id) {
     return NextResponse.json({ error: "invalid id" }, { status: 400 });
   }
 
-  const fileRaw =
-    body && typeof body === "object" && "file" in body
-      ? (body as { file: unknown }).file
-      : undefined;
-  const kind = parseProjectFileKind(fileRaw);
+  const kind = parseProjectFileKind(b.file);
   if (!kind) {
     return NextResponse.json(
       { error: 'file must be "mogrt", "aep", or "definition"' },
@@ -75,7 +69,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const project = resolveProjectFile(id, kind);
+    const project = await resolveProjectFile(brand, id, kind);
     if (!project) {
       return NextResponse.json(
         {
@@ -90,6 +84,7 @@ export async function POST(req: NextRequest) {
       "[captions] download",
       access.user.email,
       access.user.id,
+      brand,
       id,
       kind,
     );
@@ -97,7 +92,7 @@ export async function POST(req: NextRequest) {
     const encoded = encodeURIComponent(project.filename).replaceAll("'", "%27");
 
     if (kind === "definition") {
-      const raw = await readFileBuffer(project.absolutePath);
+      const raw = await readR2ObjectBuffer(project.key);
       let parsed: unknown;
       try {
         parsed = JSON.parse(raw.toString("utf8"));
@@ -117,13 +112,14 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const stream = await createR2ObjectWebStream(project.key);
     const headers = new Headers({
       "Content-Type": mimeForFilename(project.filename),
       "Content-Disposition": `attachment; filename="${encoded}"; filename*=UTF-8''${encoded}`,
       "Cache-Control": "private, no-store",
     });
 
-    return new NextResponse(createFileWebStream(project.absolutePath), {
+    return new NextResponse(stream, {
       status: 200,
       headers,
     });
