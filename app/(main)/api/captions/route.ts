@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  bearerFromRequest,
   identityFromJsonBody,
   requireCaptionsAccess,
 } from "@/lib/auth/resolve-captions-user";
@@ -49,7 +50,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const access = await requireCaptionsAccess(identityFromJsonBody(body));
+  const access = await requireCaptionsAccess({
+    ...identityFromJsonBody(body),
+    bearer: bearerFromRequest(req),
+  });
   if (!access.ok) return access.response;
 
   const b = body && typeof body === "object" ? (body as Record<string, unknown>) : {};

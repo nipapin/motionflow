@@ -35,6 +35,7 @@ export const GENERATION_TOOLS = [
   "tts",
   "stt",
   "captions",
+  "chapters",
 ] as const;
 export type GenerationTool = (typeof GENERATION_TOOLS)[number];
 

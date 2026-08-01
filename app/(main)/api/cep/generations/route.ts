@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  bearerFromRequest,
   identityFromFormData,
   identityFromJsonBody,
   resolveCaptionsUser,
@@ -30,10 +31,11 @@ function devUnlimitedStatus(): GenerationStatus {
 }
 
 async function readIdentity(req: NextRequest): Promise<CaptionsIdentityInput> {
+  const bearer = bearerFromRequest(req);
   const contentType = req.headers.get("content-type") || "";
   if (contentType.includes("multipart/form-data")) {
     const form = await req.formData().catch(() => null);
-    return form ? identityFromFormData(form) : {};
+    return form ? { ...identityFromFormData(form), bearer } : { bearer };
   }
   if (req.method === "GET") {
     const { searchParams } = new URL(req.url);
@@ -41,10 +43,11 @@ async function readIdentity(req: NextRequest): Promise<CaptionsIdentityInput> {
       email: searchParams.get("email"),
       userId: searchParams.get("userId"),
       devToken: searchParams.get("devToken"),
+      bearer,
     };
   }
   const body = await req.json().catch(() => null);
-  return identityFromJsonBody(body);
+  return { ...identityFromJsonBody(body), bearer };
 }
 
 async function handleStatus(req: NextRequest) {

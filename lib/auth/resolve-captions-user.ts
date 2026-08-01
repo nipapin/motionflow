@@ -2,6 +2,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { getSessionUser, type SessionUser } from "@/lib/auth/get-session-user";
 import { hasActiveMotionflowSubscription } from "@/lib/subscriptions";
+import { resolveCepBearerUser } from "@/lib/cep-auth";
 
 export const SUBSCRIPTION_REQUIRED_CODE = "SUBSCRIPTION_REQUIRED" as const;
 export const UNAUTHORIZED_CODE = "UNAUTHORIZED" as const;
@@ -11,6 +12,8 @@ export type CaptionsIdentityInput = {
   userId?: string | null;
   /** Secret shared with non-distributed CEP dev builds — required to use dev-admin in production. */
   devToken?: string | null;
+  /** Raw `Authorization` header — CEP panels send `Bearer mfcep_…` device tokens. */
+  bearer?: string | null;
 };
 
 export type ResolvedCaptionsUser = {
@@ -18,7 +21,7 @@ export type ResolvedCaptionsUser = {
   id: number | string;
   email: string;
   name: string;
-  source: "session" | "cep-dev";
+  source: "session" | "cep-dev" | "cep-bearer";
   /** When true, skip DB subscription lookup (CEP local-dev admin). */
   treatAsSubscribed: boolean;
 };
@@ -66,13 +69,27 @@ function normalizeId(value: string | null | undefined): string | null {
 
 /**
  * Resolve caller for captions CEP / web:
- * 1) Motion Flow session cookie
- * 2) CEP body identity matching CEP_DEV_ADMIN_* — in production also requires
+ * 1) CEP Bearer device token (`Authorization: Bearer mfcep_…`, see lib/cep-auth.ts)
+ * 2) Motion Flow session cookie
+ * 3) CEP body identity matching CEP_DEV_ADMIN_* — in production also requires
  *    a valid `devToken` (see `isDevTokenValid`), always available outside prod.
  */
 export async function resolveCaptionsUser(
   identity: CaptionsIdentityInput = {},
 ): Promise<ResolvedCaptionsUser | null> {
+  if (identity.bearer) {
+    const bearerUser = await resolveCepBearerUser(identity.bearer);
+    if (bearerUser) {
+      return {
+        id: bearerUser.id,
+        email: bearerUser.email,
+        name: bearerUser.name,
+        source: "cep-bearer",
+        treatAsSubscribed: false,
+      };
+    }
+  }
+
   const session = await getSessionUser();
   if (session) {
     return fromSession(session);
@@ -141,6 +158,13 @@ export function identityFromJsonBody(body: unknown): CaptionsIdentityInput {
         : null;
 
   return { email, userId, devToken };
+}
+
+/** Authorization header for CEP Bearer auth (pass alongside body/form identity). */
+export function bearerFromRequest(req: {
+  headers: { get(name: string): string | null };
+}): string | null {
+  return req.headers.get("authorization");
 }
 
 /** Parse form fields from multipart (POST /api/generations/captions). */

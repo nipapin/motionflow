@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import Replicate from "replicate";
 import { LANGUAGE_NAMES } from "@/lib/generation-languages";
+import {
+  bearerFromRequest,
+  identityFromJsonBody,
+  requireCaptionsAccess,
+} from "@/lib/auth/resolve-captions-user";
+import { GENERATION_LIMIT_REACHED_CODE } from "@/lib/ai-generation-gate";
+import { consumeGeneration, getGenerationsStatus } from "@/lib/generations";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -14,7 +21,7 @@ const CHAPTERS_MODEL =
     "anthropic/claude-4.5-haiku:1ad171f62532e2099a3ed7d8d80327911f5f8d332e83cf4c8959da0be9a8bf3e" as const;
 
 const MAX_CHUNKS = 500;
-/** Rough cap on total transcript size fed to the model (unauthenticated route — keep cost bounded). */
+/** Cap on transcript size fed to the model (cost / abuse bound after auth). */
 const MAX_TRANSCRIPT_CHARS = 40_000;
 const TITLE_COUNT = 3;
 const MIN_TAGS = 8;
@@ -235,6 +242,15 @@ function toTags(raw: unknown): string[] {
 
 export async function POST(req: NextRequest) {
     try {
+        const body = await req.json().catch(() => null);
+
+        const access = await requireCaptionsAccess({
+            ...identityFromJsonBody(body),
+            bearer: bearerFromRequest(req),
+        });
+        if (!access.ok) return access.response;
+        const user = access.user;
+
         if (!process.env.REPLICATE_API_TOKEN) {
             console.error("[chapters generation] REPLICATE_API_TOKEN is not configured");
             return NextResponse.json(
@@ -243,7 +259,6 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const body = await req.json().catch(() => null);
         const rawChunks =
             body && Array.isArray((body as { chunks?: unknown }).chunks)
                 ? (body as { chunks: unknown[] }).chunks
@@ -296,6 +311,20 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        if (typeof user.id === "number") {
+            const preStatus = await getGenerationsStatus(user.id);
+            if (preStatus.total_generations_left <= 0) {
+                return NextResponse.json(
+                    {
+                        code: GENERATION_LIMIT_REACHED_CODE,
+                        error: "GENERATION_LIMIT_REACHED",
+                        ...preStatus,
+                    },
+                    { status: 402 },
+                );
+            }
+        }
+
         const wantTitles = target === "all" || target === "titles";
         const wantChapters = target === "all" || target === "chapters";
         const wantDescription = target === "all" || target === "description";
@@ -338,7 +367,23 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: GENERIC_ERROR }, { status: 502 });
         }
 
-        return NextResponse.json(result);
+        let generations: unknown;
+        if (typeof user.id === "number") {
+            const consumed = await consumeGeneration(user.id, "chapters");
+            if (!consumed.ok) {
+                return NextResponse.json(
+                    {
+                        code: GENERATION_LIMIT_REACHED_CODE,
+                        error: "GENERATION_LIMIT_REACHED",
+                        ...consumed.status,
+                    },
+                    { status: 402 },
+                );
+            }
+            generations = consumed.status;
+        }
+
+        return NextResponse.json({ ...result, generations });
     } catch (error) {
         console.error("[chapters generation] unexpected error:", error);
         return NextResponse.json({ error: GENERIC_ERROR }, { status: 500 });

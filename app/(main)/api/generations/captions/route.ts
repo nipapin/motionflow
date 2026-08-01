@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Replicate from "replicate";
 import {
+  bearerFromRequest,
   identityFromFormData,
   requireCaptionsAccess,
 } from "@/lib/auth/resolve-captions-user";
@@ -291,7 +292,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const access = await requireCaptionsAccess(identityFromFormData(form));
+    const access = await requireCaptionsAccess({
+      ...identityFromFormData(form),
+      bearer: bearerFromRequest(req),
+    });
     if (!access.ok) return access.response;
 
     console.info(
