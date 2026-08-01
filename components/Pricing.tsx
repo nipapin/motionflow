@@ -4,17 +4,25 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAuth } from "@/components/auth-provider";
-import { spunkramSubscriptionTiers, type SpunkramSubscriptionTier } from "@/lib/data";
-import { usePaddle } from "@/lib/paddle";
 import {
-  SPUNKRAM_AUTHOR_ID,
-  SPUNKRAM_SUBSCRIPTION_PRICE_IDS,
+  spunkramSubscriptionTiers,
+  type SpunkramSubscriptionTier,
   type SpunkramSubscriptionTierId,
-} from "@/lib/spunkram-paddle-config";
+} from "@/lib/data";
+import { usePaddle } from "@/lib/paddle";
+import { SPUNKRAM_AUTHOR_ID, SPUNKRAM_SUBSCRIPTION_PRICE_IDS } from "@/lib/spunkram-paddle-config";
 
 type BillingPeriod = "monthly" | "yearly";
 
+const PRICING_DISPLAY_ORDER: SpunkramSubscriptionTierId[] = ["free", "ai_toolkit", "library"];
+
 function tierDisplayPrice(tier: SpunkramSubscriptionTier, billing: BillingPeriod) {
+  if (tier.id === "free") {
+    return {
+      amount: 0,
+      billingNote: "No credit card required",
+    };
+  }
   if (billing === "monthly") {
     return {
       amount: tier.monthlyPrice,
@@ -160,13 +168,16 @@ export function Pricing() {
           </div>
         </div>
 
-        <div className="mt-12 grid gap-6 md:grid-cols-2 max-w-4xl mx-auto">
-          {spunkramSubscriptionTiers.map((tier) => {
+        <div className="mt-12 grid gap-6 md:grid-cols-3 max-w-6xl mx-auto">
+          {PRICING_DISPLAY_ORDER.map((tierId) => {
+            const tier = spunkramSubscriptionTiers.find((t) => t.id === tierId);
+            if (!tier) return null;
             const { amount, billingNote } = tierDisplayPrice(tier, billing);
             const isOpening = openingTier === tier.id;
+            const isFree = tier.id === "free";
 
             return (
-              <div key={tier.id} className="relative">
+              <div key={tier.id} className="relative flex h-full flex-col">
                 {tier.highlight && (
                   <div className="pointer-events-none absolute left-1/2 top-0 z-[2] -translate-x-1/2 -translate-y-1/2">
                     <span className="inline-flex items-center rounded-full border border-brand-500/40 bg-brand-violet px-4 py-1.5 text-xs font-semibold tracking-wide text-white shadow-[0_8px_24px_-12px_rgb(110_60_255/0.75)]">
@@ -176,7 +187,7 @@ export function Pricing() {
                 )}
 
                 <div
-                  className={`card relative isolate overflow-hidden rounded-[28px] p-8 sm:p-9 ${
+                  className={`card relative isolate flex h-full flex-1 flex-col overflow-hidden rounded-[28px] p-8 sm:p-9 ${
                     tier.highlight
                       ? "!border-[3px] !border-brand-500 shadow-[0_0_52px_-10px_rgb(124_77_255/0.8)]"
                       : "border border-brand-500/25"
@@ -184,7 +195,7 @@ export function Pricing() {
                 >
                 <div className="card-sheen-pricing pointer-events-none absolute inset-0 z-0" />
 
-                <div className="relative z-[1]">
+                <div className="relative z-[1] flex h-full flex-1 flex-col">
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
                       <h3 className="text-xl font-semibold tracking-tight text-foreground">
@@ -201,9 +212,9 @@ export function Pricing() {
 
                   <div className="mt-7 flex items-end gap-2">
                     <span className="text-5xl font-semibold tracking-tight text-foreground tabular-nums leading-none">
-                      ${amount.toFixed(1)}
+                      {isFree ? "Free" : `$${amount.toFixed(1)}`}
                     </span>
-                    <span className="pb-1 text-sm text-subtle">/ month</span>
+                    {!isFree && <span className="pb-1 text-sm text-subtle">/ month</span>}
                   </div>
 
                   <div className="mt-7 border-t border-line/60" />
@@ -230,19 +241,28 @@ export function Pricing() {
                     ))}
                   </ul>
 
-                  <div className="mt-8">
-                    <button
-                      type="button"
-                      onClick={() => openSubscribeCheckout(tier.id)}
-                      disabled={isOpening}
-                      className={`w-full rounded-full px-6 py-3 text-sm font-semibold transition-[background-image,box-shadow] duration-200 disabled:pointer-events-none disabled:opacity-60 ${
-                        tier.highlight
-                          ? "bg-brand-violet hover:bg-brand-violet-hover text-white shadow-[inset_0_1px_0_0_rgb(255_255_255/0.22),0_14px_40px_-22px_rgb(110_60_255/0.65)]"
-                          : "border border-line bg-surface/50 text-foreground hover:bg-surface"
-                      }`}
-                    >
-                      {isOpening ? "Opening checkout…" : "Subscribe now"}
-                    </button>
+                  <div className="mt-8 pt-8 flex flex-1 flex-col justify-end">
+                    {isFree ? (
+                      <a
+                        href="#download"
+                        className="block w-full rounded-full border border-line bg-surface/50 px-6 py-3 text-center text-sm font-semibold text-foreground transition hover:bg-surface"
+                      >
+                        Get Started Now
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => openSubscribeCheckout(tier.id)}
+                        disabled={isOpening}
+                        className={`w-full rounded-full px-6 py-3 text-sm font-semibold transition-[background-image,box-shadow] duration-200 disabled:pointer-events-none disabled:opacity-60 ${
+                          tier.highlight
+                            ? "bg-brand-violet hover:bg-brand-violet-hover text-white shadow-[inset_0_1px_0_0_rgb(255_255_255/0.22),0_14px_40px_-22px_rgb(110_60_255/0.65)]"
+                            : "border border-line bg-surface/50 text-foreground hover:bg-surface"
+                        }`}
+                      >
+                        {isOpening ? "Opening checkout…" : "Get Started Now"}
+                      </button>
+                    )}
                   </div>
                 </div>
                 </div>

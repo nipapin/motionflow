@@ -677,7 +677,7 @@ export function PricingPageClient({ currentUser, currentSubscription }: PricingP
           <h2 className="text-2xl font-semibold text-foreground tracking-tight mb-2">What creators say</h2>
           <p className="text-muted-foreground text-sm">Real people, real projects.</p>
         </div>
-        <div className="grid grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           {[
             {
               photo: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=80&h=80&fit=crop&crop=face",
