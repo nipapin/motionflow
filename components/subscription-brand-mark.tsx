@@ -18,7 +18,7 @@ export function SubscriptionBrandMark({
   if (!src || broken) {
     return (
       <Sparkles
-        className="h-10 w-10 text-muted-foreground"
+        className="h-8 w-8 text-muted-foreground"
         aria-hidden
       />
     );
@@ -28,9 +28,9 @@ export function SubscriptionBrandMark({
     <img
       src={src}
       alt={alt}
-      width={64}
-      height={64}
-      className={`h-16 w-16 object-contain${invertIcon ? " dark:invert" : ""}`}
+      width={40}
+      height={40}
+      className={`h-10 w-10 object-contain${invertIcon ? " dark:invert" : ""}`}
       onError={() => setBroken(true)}
     />
   );
