@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
 type CodeInfo = {
   code: string;
@@ -44,9 +45,14 @@ const CLIENT_COPY: Record<string, { title: string; description: string }> = {
   },
 };
 
+/** Display `ABCD-1234` as `ABCD - 1234` (Motionflow confirm card). */
+function formatCodeDisplay(code: string): string {
+  return code.replace("-", " - ");
+}
+
 /**
  * CEP device-code gate on the Spunkram marketing site.
- * Flow: open /spunkram?code=… → if no session, SignInModal → Allow / Deny.
+ * Visual match of the former /cep/login Card on Motionflow.
  */
 export function CepExtensionAuthDialog({
   initialCode,
@@ -108,7 +114,6 @@ export function CepExtensionAuthDialog({
     };
   }, [code]);
 
-  // No browser session → open site login popup first; Allow/Deny follows after.
   useEffect(() => {
     if (!open || authLoading) return;
     if (phase !== "ready") return;
@@ -158,111 +163,127 @@ export function CepExtensionAuthDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader className="text-center sm:text-center">
-          <DialogTitle>{branding.title}</DialogTitle>
-          <DialogDescription>{branding.description}</DialogDescription>
-        </DialogHeader>
+      <DialogContent
+        className={cn(
+          "gap-0 overflow-hidden p-0 sm:max-w-md",
+          // Match Motionflow /cep/login Card chrome (works on Spunkram tokens too).
+          "rounded-xl border border-line bg-surface text-foreground shadow-lg",
+        )}
+      >
+        <div className="flex flex-col gap-6 px-6 py-6">
+          <DialogHeader className="gap-2 text-center sm:text-center">
+            <DialogTitle className="text-xl font-semibold tracking-tight text-foreground">
+              {branding.title}
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              {branding.description}
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="flex flex-col items-center gap-5">
-          <div className="rounded-lg border bg-muted px-6 py-3 font-mono text-2xl font-semibold tracking-widest">
-            {code}
-          </div>
+          <div className="flex flex-col items-center gap-6">
+            <div className="rounded-lg border border-line bg-surface-2 px-6 py-3 font-mono text-2xl font-semibold tracking-widest text-foreground">
+              {formatCodeDisplay(code)}
+            </div>
 
-          {busy ? (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" aria-hidden />
-              <span>Checking…</span>
-            </div>
-          ) : phase === "invalid" ? (
-            <StatusBlock
-              icon={<ShieldAlert className="size-8 text-destructive" />}
-              title="Invalid link"
-              text="This sign-in code is missing or malformed. Start again from the extension."
-            />
-          ) : phase === "expired" ? (
-            <StatusBlock
-              icon={<XCircle className="size-8 text-amber-500" />}
-              title="Code expired"
-              text="This code is no longer valid. Sign in again from the extension."
-            />
-          ) : phase === "approved" ? (
-            <StatusBlock
-              icon={<CheckCircle2 className="size-8 text-emerald-500" />}
-              title="You're signed in"
-              text="Return to the extension — it will finish automatically. You can close this."
-            />
-          ) : phase === "denied" ? (
-            <StatusBlock
-              icon={<XCircle className="size-8 text-muted-foreground" />}
-              title="Request denied"
-              text="The extension was not signed in. You can close this."
-            />
-          ) : phase === "device_limit" ? (
-            <StatusBlock
-              icon={<ShieldAlert className="size-8 text-amber-500" />}
-              title="Device limit reached"
-              text="Remove a device in the extension Account tab, then try again."
-            />
-          ) : phase === "error" ? (
-            <StatusBlock
-              icon={<ShieldAlert className="size-8 text-destructive" />}
-              title="Something went wrong"
-              text={errorMessage || "Please try again."}
-            />
-          ) : !user ? (
-            <div className="flex flex-col items-center gap-4">
-              <p className="text-center text-sm text-muted-foreground">
-                Sign in to your Motionflow account to approve this request.
-              </p>
-              <Button onClick={() => openSignIn("signin")}>
-                Sign in to continue
-              </Button>
-            </div>
-          ) : (
-            <div className="flex w-full flex-col items-center gap-5">
-              {info?.device ? (
-                <div className="flex w-full items-center gap-3 rounded-lg border p-3 text-sm">
-                  <MonitorSmartphone
-                    className="size-5 shrink-0 text-muted-foreground"
-                    aria-hidden
-                  />
-                  <div className="min-w-0">
-                    <div className="truncate font-medium">
-                      {info.device.user || "Unknown user"}
-                    </div>
-                    <div className="truncate text-muted-foreground">
-                      {info.device.os || "Unknown OS"}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-              <p className="text-center text-sm text-muted-foreground">
-                Signed in as <span className="font-medium">{user.email}</span>.
-                Allow this device to use your account?
-              </p>
-              <div className="flex w-full gap-3">
+            {busy ? (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+                <span>Checking code…</span>
+              </div>
+            ) : phase === "invalid" ? (
+              <StatusBlock
+                icon={<ShieldAlert className="size-8 text-destructive" />}
+                title="Invalid link"
+                text="This sign-in code is missing or malformed. Start again from the extension."
+              />
+            ) : phase === "expired" ? (
+              <StatusBlock
+                icon={<XCircle className="size-8 text-amber-500" />}
+                title="Code expired"
+                text="This code is no longer valid. Sign in again from the extension."
+              />
+            ) : phase === "approved" ? (
+              <StatusBlock
+                icon={<CheckCircle2 className="size-8 text-emerald-500" />}
+                title="You're signed in"
+                text="Return to the extension — it will finish signing in automatically. You can close this."
+              />
+            ) : phase === "denied" ? (
+              <StatusBlock
+                icon={<XCircle className="size-8 text-muted-foreground" />}
+                title="Request denied"
+                text="The extension was not signed in. You can close this."
+              />
+            ) : phase === "device_limit" ? (
+              <StatusBlock
+                icon={<ShieldAlert className="size-8 text-amber-500" />}
+                title="Device limit reached"
+                text="Remove a device in the extension Account tab, then try again."
+              />
+            ) : phase === "error" ? (
+              <StatusBlock
+                icon={<ShieldAlert className="size-8 text-destructive" />}
+                title="Something went wrong"
+                text={errorMessage || "Please try again."}
+              />
+            ) : !user ? (
+              <div className="flex flex-col items-center gap-4">
+                <p className="text-center text-sm text-muted-foreground">
+                  Sign in to your Motionflow account to approve this request.
+                </p>
                 <Button
-                  className="flex-1"
-                  disabled={phase === "submitting"}
-                  onClick={() => void submit("approve")}
+                  className="h-10 min-w-40 bg-primary text-primary-foreground hover:bg-primary/90"
+                  onClick={() => openSignIn("signin")}
                 >
-                  {phase === "submitting" ? (
-                    <Loader2 className="size-4 animate-spin" aria-hidden />
-                  ) : null}
-                  Allow
-                </Button>
-                <Button
-                  className="flex-1"
-                  variant="outline"
-                  disabled={phase === "submitting"}
-                  onClick={() => void submit("deny")}
-                >
-                  Deny
+                  Sign in to continue
                 </Button>
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="flex w-full flex-col items-center gap-5">
+                {info?.device ? (
+                  <div className="flex w-full items-center gap-3 rounded-lg border border-line bg-surface-2/50 p-3 text-sm">
+                    <MonitorSmartphone
+                      className="size-5 shrink-0 text-muted-foreground"
+                      aria-hidden
+                    />
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-foreground">
+                        {info.device.user || "Unknown user"}
+                      </div>
+                      <div className="truncate text-muted-foreground">
+                        {info.device.os || "Unknown OS"}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+                <p className="text-center text-sm text-muted-foreground">
+                  Signed in as{" "}
+                  <span className="font-medium text-foreground">{user.email}</span>.
+                  Allow this device to use your account?
+                </p>
+                <div className="flex w-full gap-3">
+                  <Button
+                    className="h-10 flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
+                    disabled={phase === "submitting"}
+                    onClick={() => void submit("approve")}
+                  >
+                    {phase === "submitting" ? (
+                      <Loader2 className="size-4 animate-spin" aria-hidden />
+                    ) : null}
+                    Allow
+                  </Button>
+                  <Button
+                    className="h-10 flex-1 border-line bg-transparent hover:bg-surface-2"
+                    variant="outline"
+                    disabled={phase === "submitting"}
+                    onClick={() => void submit("deny")}
+                  >
+                    Deny
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </DialogContent>
     </Dialog>
@@ -281,7 +302,7 @@ function StatusBlock({
   return (
     <div className="flex flex-col items-center gap-2 text-center">
       {icon}
-      <div className="font-medium">{title}</div>
+      <div className="font-medium text-foreground">{title}</div>
       <p className="max-w-sm text-sm text-muted-foreground">{text}</p>
     </div>
   );
