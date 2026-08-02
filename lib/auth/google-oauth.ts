@@ -2,6 +2,8 @@ import type { NextRequest } from "next/server";
 
 /** Cookie storing CSRF state for Google OAuth */
 export const GOOGLE_OAUTH_STATE_COOKIE = "google_oauth_state";
+/** Cookie storing post-login return path (relative only). */
+export const GOOGLE_OAUTH_NEXT_COOKIE = "google_oauth_next";
 export const GOOGLE_OAUTH_STATE_MAX_AGE = 600;
 
 function stripTrailingSlash(url: string): string {
@@ -108,4 +110,17 @@ export function oauthPublicOrigin(req: NextRequest): string {
 
 export function googleCallbackUrl(req: NextRequest): string {
   return `${oauthPublicOrigin(req)}/api/auth/google/callback`;
+}
+
+/**
+ * Safe relative path for post-OAuth redirect (blocks open redirects).
+ * Allows `/spunkram?code=…` and similar same-site paths.
+ */
+export function sanitizeOAuthNextPath(raw: string | null | undefined): string | null {
+  if (!raw || typeof raw !== "string") return null;
+  const t = raw.trim();
+  if (!t.startsWith("/") || t.startsWith("//")) return null;
+  if (t.includes("://") || t.includes("\\")) return null;
+  if (t.length > 512) return null;
+  return t;
 }

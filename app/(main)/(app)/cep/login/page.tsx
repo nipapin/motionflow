@@ -1,33 +1,20 @@
-import type { Metadata } from "next";
-import {
-  getCepClientConfig,
-  normalizeCepClient,
-} from "@/lib/cep-client-registry";
-import { CepLoginClient } from "./cep-login-client";
+import { redirect } from "next/navigation";
+import { normalizeCepClient } from "@/lib/cep-client-registry";
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata({
-  searchParams,
-}: {
-  searchParams: Promise<{ code?: string; client?: string }>;
-}): Promise<Metadata> {
-  const { client: clientRaw } = await searchParams;
-  const cfg = getCepClientConfig(normalizeCepClient(clientRaw));
-  const title = cfg?.loginTitle ?? "Sign in to the Spunkram extension";
-  return {
-    title: "Confirm extension sign-in",
-    description: title,
-    robots: { index: false },
-  };
-}
-
-export default async function CepLoginPage({
+/**
+ * Legacy CEP confirm URL — redirect to Spunkram marketing page + auth dialog.
+ * @see /spunkram?code=&client=
+ */
+export default async function CepLoginRedirectPage({
   searchParams,
 }: {
   searchParams: Promise<{ code?: string; client?: string }>;
 }) {
   const { code, client: clientRaw } = await searchParams;
-  const client = normalizeCepClient(clientRaw);
-  return <CepLoginClient initialCode={code ?? ""} initialClient={client} />;
+  const params = new URLSearchParams();
+  if (code?.trim()) params.set("code", code.trim());
+  params.set("client", normalizeCepClient(clientRaw));
+  redirect(`/spunkram?${params.toString()}`);
 }

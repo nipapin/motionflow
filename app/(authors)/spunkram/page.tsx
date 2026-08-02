@@ -7,11 +7,13 @@ import { Testimonials } from "@/components/Testimonials";
 import { Pricing } from "@/components/Pricing";
 import { FAQ } from "@/components/FAQ";
 import { Contact } from "@/components/Contact";
+import { CepExtensionAuthDialog } from "@/components/cep-extension-auth-dialog";
 import type { Project, ProjectApp } from "@/lib/data";
 import type { Product } from "@/lib/product-types";
 import { getMarketItemsByAuthorId } from "@/lib/market-items";
 import { productSoftwareLabel, productThumbnailUrl } from "@/lib/product-ui";
 import { SPUNKRAM_AUTHOR_ID } from "@/lib/spunkram-paddle-config";
+import { normalizeCepClient } from "@/lib/cep-client-registry";
 
 function toProjectApp(product: Product): ProjectApp | null {
   const label = productSoftwareLabel(product);
@@ -34,12 +36,23 @@ function toProject(product: Product): Project | null {
   };
 }
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ code?: string; client?: string }>;
+}) {
+  const { code, client: clientRaw } = await searchParams;
   const items = await getMarketItemsByAuthorId(SPUNKRAM_AUTHOR_ID);
-  const projects = items.map(toProject).filter((item): item is Project => item != null);
+  const projects = items
+    .map(toProject)
+    .filter((item): item is Project => item != null);
 
   return (
     <div className="min-w-0">
+      <CepExtensionAuthDialog
+        initialCode={code ?? ""}
+        initialClient={normalizeCepClient(clientRaw)}
+      />
       <NavbarWithOffset
         topClassName="top-3"
         position="sticky"

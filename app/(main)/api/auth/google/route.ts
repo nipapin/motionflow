@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  GOOGLE_OAUTH_NEXT_COOKIE,
   GOOGLE_OAUTH_STATE_COOKIE,
   GOOGLE_OAUTH_STATE_MAX_AGE,
   googleCallbackUrl,
+  sanitizeOAuthNextPath,
 } from "@/lib/auth/google-oauth";
 import { baseCookieOptions } from "@/lib/auth/session";
 
@@ -19,6 +21,7 @@ export async function GET(req: NextRequest) {
 
   const state = crypto.randomUUID();
   const redirectUri = googleCallbackUrl(req);
+  const nextPath = sanitizeOAuthNextPath(req.nextUrl.searchParams.get("next"));
 
   const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   authUrl.searchParams.set("client_id", clientId);
@@ -30,9 +33,18 @@ export async function GET(req: NextRequest) {
   authUrl.searchParams.set("prompt", "select_account");
 
   const res = NextResponse.redirect(authUrl.toString());
+  const cookieOpts = baseCookieOptions(req);
   res.cookies.set(GOOGLE_OAUTH_STATE_COOKIE, state, {
-    ...baseCookieOptions(req),
+    ...cookieOpts,
     maxAge: GOOGLE_OAUTH_STATE_MAX_AGE,
   });
+  if (nextPath) {
+    res.cookies.set(GOOGLE_OAUTH_NEXT_COOKIE, nextPath, {
+      ...cookieOpts,
+      maxAge: GOOGLE_OAUTH_STATE_MAX_AGE,
+    });
+  } else {
+    res.cookies.set(GOOGLE_OAUTH_NEXT_COOKIE, "", { ...cookieOpts, maxAge: 0 });
+  }
   return res;
 }

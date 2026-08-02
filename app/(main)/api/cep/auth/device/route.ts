@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
     });
 
     const origin = verificationOrigin(req);
-    const verificationUrl = new URL(`${origin}/cep/login`);
+    const verificationUrl = new URL(`${origin}/spunkram`);
     verificationUrl.searchParams.set("code", code);
     verificationUrl.searchParams.set("client", cfg.client);
 

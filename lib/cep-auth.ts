@@ -8,7 +8,7 @@ import { getPool } from "@/lib/db";
  *
  * Flow (see CEP/spunkram-library/docs/BACKEND_CEP_API.md):
  *   1. Panel: POST /api/cep/auth/device        → cep_auth_sessions row + short code
- *   2. Browser: /cep/login?code=… (session)    → approve/deny (approveAuthSession)
+ *   2. Browser: /spunkram?code=… (session) → login modal if needed → allow/deny
  *   3. Panel:  POST /api/cep/auth/token (poll) → one-time token claim (claimAuthToken)
  *   4. Panel:  Authorization: Bearer <token>   → resolveCepBearerUser on every CEP route
  *

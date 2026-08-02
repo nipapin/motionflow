@@ -147,7 +147,11 @@ export function SignInModal({
 
   const handleGoogleSignIn = () => {
     setFormError(null);
-    window.location.href = "/api/auth/google";
+    const next = `${window.location.pathname}${window.location.search}`;
+    const qs = next.startsWith("/")
+      ? `?next=${encodeURIComponent(next)}`
+      : "";
+    window.location.href = `/api/auth/google${qs}`;
   };
 
   return (

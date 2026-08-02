@@ -3,9 +3,11 @@ import bcrypt from "bcryptjs";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { getPool } from "@/lib/db";
 import {
+  GOOGLE_OAUTH_NEXT_COOKIE,
   GOOGLE_OAUTH_STATE_COOKIE,
   googleCallbackUrl,
   oauthPublicOrigin,
+  sanitizeOAuthNextPath,
 } from "@/lib/auth/google-oauth";
 import {
   SESSION_COOKIE_NAME,
@@ -169,10 +171,14 @@ export async function GET(req: NextRequest) {
       name: user.name,
     });
 
-    const home = new URL("/", oauthPublicOrigin(req));
+    const nextPath = sanitizeOAuthNextPath(
+      req.cookies.get(GOOGLE_OAUTH_NEXT_COOKIE)?.value,
+    );
+    const home = new URL(nextPath || "/", oauthPublicOrigin(req));
     const res = NextResponse.redirect(home);
     const cookieOpts = { ...baseCookieOptions(req), maxAge: sessionCookieMaxAgeSec() };
     res.cookies.set(GOOGLE_OAUTH_STATE_COOKIE, "", { ...baseCookieOptions(req), maxAge: 0 });
+    res.cookies.set(GOOGLE_OAUTH_NEXT_COOKIE, "", { ...baseCookieOptions(req), maxAge: 0 });
     res.cookies.set(SESSION_COOKIE_NAME, token, cookieOpts);
 
     const laravelSessionId = await createLaravelSession(user.id);
