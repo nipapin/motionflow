@@ -16,6 +16,8 @@ const MAX_EXTRA_VALUE = 500;
 const STACK_TG_LIMIT = 1500;
 const RATE_WINDOW_MS = 60_000;
 
+type SupportSeverity = "error" | "warning" | "info";
+
 type HostPayload = {
     appId: string;
     appName?: string;
@@ -26,6 +28,7 @@ type ReportBody = {
     action: string;
     error: string;
     error_code?: string;
+    severity: SupportSeverity;
     stack?: string;
     extension_version: string;
     host: HostPayload;
@@ -81,6 +84,11 @@ function escapeHtml(text: string): string {
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;");
+}
+
+function parseSeverity(raw: unknown): SupportSeverity {
+    if (raw === "warning" || raw === "info" || raw === "error") return raw;
+    return "error";
 }
 
 function parseHost(raw: unknown): HostPayload | null {
@@ -143,6 +151,7 @@ function parseBody(raw: unknown): ReportBody | null {
         action,
         error,
         error_code: clip(o.error_code, 128) || undefined,
+        severity: parseSeverity(o.severity),
         stack: clip(o.stack, MAX_STACK) || undefined,
         extension_version,
         host,
@@ -164,6 +173,7 @@ function formatTelegramMessage(
 
     const lines = [
         "🚨 <b>CEP error</b>",
+        `severity: <code>error</code>`,
         `action: <code>${escapeHtml(report.action)}</code>`,
         `error: ${escapeHtml(report.error)}`,
     ];
@@ -203,6 +213,7 @@ function formatTelegramMessage(
 
 /**
  * POST /api/cep/support/report — CEP error observer → Telegram support topic.
+ * Only `severity: "error"` is forwarded to Telegram; warning/info accepted as no-op.
  * Bearer optional (enriches message with user email when present).
  */
 export async function POST(req: NextRequest) {
@@ -222,6 +233,14 @@ export async function POST(req: NextRequest) {
             return NextResponse.json(
                 { error: "INVALID_BODY", message: "Missing or invalid report fields" },
                 { status: 400 },
+            );
+        }
+
+        // Soft events: accept but do not page Telegram.
+        if (report.severity !== "error") {
+            return NextResponse.json(
+                { ok: true, delivered: false, reason: "severity_filtered" },
+                { status: 202 },
             );
         }
 
@@ -248,7 +267,7 @@ export async function POST(req: NextRequest) {
             console.error("[cep/support/report] telegram failed:", err);
         });
 
-        return NextResponse.json({ ok: true }, { status: 202 });
+        return NextResponse.json({ ok: true, delivered: true }, { status: 202 });
     } catch (err) {
         console.error("[cep/support/report]", err);
         return NextResponse.json(
