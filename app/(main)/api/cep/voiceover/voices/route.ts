@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { CEP_VOICES } from "@/lib/cep-voiceover";
+import { CEP_LANGUAGE_OPTIONS, CEP_VOICES } from "@/lib/cep-voiceover";
 
 export const runtime = "nodejs";
 
 /**
- * GET /api/cep/voiceover/voices — MiniMax voices for the CEP Voiceover tool.
- * Public catalog (no auth required); generation itself is gated.
+ * GET /api/cep/voiceover/voices — MiniMax voices + language_boost options
+ * for the CEP Voiceover tool. Public catalog (no auth); generation is gated.
  * @see CEP/spunkram-library/docs/BACKEND_CEP_API.md §3.1
  */
 export async function GET(req: NextRequest) {
@@ -14,9 +14,12 @@ export async function GET(req: NextRequest) {
     voices: CEP_VOICES.map((v) => ({
       id: v.id,
       name: v.name,
-      language: v.language,
       gender: v.gender,
       preview_url: `${origin}${v.previewPath}`,
+    })),
+    languages: CEP_LANGUAGE_OPTIONS.map((l) => ({
+      id: l.id,
+      name: l.label,
     })),
   });
 }

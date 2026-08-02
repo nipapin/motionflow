@@ -13,6 +13,7 @@ import { GENERATION_LIMIT_REACHED_CODE } from "@/lib/ai-generation-gate";
 import { insertGenerationRecord } from "@/lib/generation-records";
 import { uploadBufferToR2 } from "@/lib/r2-storage";
 import { resolveVoiceId } from "@/lib/cep-voiceover";
+import { resolveLanguageBoost } from "@/lib/minimax-language-boost";
 
 export const runtime = "nodejs";
 /** CEP client timeout is 120s — keep the whole job inside that budget. */
@@ -37,6 +38,10 @@ interface VoiceoverBody {
   text?: unknown;
   voice_id?: unknown;
   speed?: unknown;
+  /** MiniMax language_boost value, e.g. "Russian" | "Automatic". */
+  language_boost?: unknown;
+  /** Short alias accepted too, e.g. "ru" | "en". */
+  language?: unknown;
   email?: unknown;
   userId?: unknown;
   devToken?: unknown;
@@ -85,6 +90,7 @@ export async function POST(req: NextRequest) {
     }
 
     const voiceId = resolveVoiceId(body.voice_id) ?? "Wise_Woman";
+    const languageBoost = resolveLanguageBoost(body.language_boost, body.language);
     const rawSpeed = typeof body.speed === "number" ? body.speed : 1;
     const speed = Math.min(Math.max(Number.isNaN(rawSpeed) ? 1 : rawSpeed, 0.5), 2);
 
@@ -103,6 +109,7 @@ export async function POST(req: NextRequest) {
       text,
       voice: voiceId,
       speed,
+      language_boost: languageBoost,
       audio_format: AUDIO_FORMAT,
       sample_rate: SAMPLE_RATE,
       bitrate: BITRATE,
@@ -115,6 +122,7 @@ export async function POST(req: NextRequest) {
           text,
           voice_id: voiceId,
           speed,
+          language_boost: languageBoost,
           audio_format: AUDIO_FORMAT,
           sample_rate: SAMPLE_RATE,
           bitrate: BITRATE,
@@ -209,6 +217,7 @@ export async function POST(req: NextRequest) {
       file_name: fileName,
       voice: voiceId,
       speed,
+      language_boost: languageBoost,
       generations,
     });
   } catch (error) {

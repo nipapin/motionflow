@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 /**
- * Upload a Spunkram .zxp to the public R2 bucket and refresh latest.json.
+ * Upload a Spunkram .zxp to the public R2 bucket and refresh the channel pointer.
  *
  * Keys:
  *   public/downloads/spunkram/{version}/spunkram.zxp
- *   public/downloads/spunkram/latest.json
+ *   public/downloads/spunkram/latest.json   (--channel=stable, default)
+ *   public/downloads/spunkram/beta.json     (--channel=beta)
  *
  * Usage (from next-app):
  *   node --env-file=.env scripts/upload-spunkram-zxp.mjs --zxp=./spunkram.zxp --version=0.1.0
- *   node --env-file=.env scripts/upload-spunkram-zxp.mjs --zxp=./spunkram.zxp --version=0.1.0 --changelog="$(cat CHANGELOG.md)"
+ *   node --env-file=.env scripts/upload-spunkram-zxp.mjs --zxp=./x.zxp --version=0.1.1-beta.1 --channel=beta
  *   node --env-file=.env scripts/upload-spunkram-zxp.mjs --dry-run --zxp=./x.zxp --version=0.1.0
  */
 
@@ -22,6 +23,7 @@ function parseArgs(argv) {
     zxp: "",
     version: "",
     changelog: "",
+    channel: "", // stable | beta | auto
     dryRun: false,
   };
   for (const arg of argv.slice(2)) {
@@ -29,10 +31,11 @@ function parseArgs(argv) {
     else if (arg.startsWith("--zxp=")) opts.zxp = arg.slice("--zxp=".length);
     else if (arg.startsWith("--version=")) opts.version = arg.slice("--version=".length);
     else if (arg.startsWith("--changelog=")) opts.changelog = arg.slice("--changelog=".length);
+    else if (arg.startsWith("--channel=")) opts.channel = arg.slice("--channel=".length);
     else if (arg === "--help" || arg === "-h") {
       console.log(
         "Usage: node --env-file=.env scripts/upload-spunkram-zxp.mjs " +
-          "--zxp=<file.zxp> --version=x.y.z [--changelog=...] [--dry-run]",
+          "--zxp=<file.zxp> --version=x.y.z [--channel=stable|beta] [--changelog=...] [--dry-run]",
       );
       process.exit(0);
     } else {
@@ -87,6 +90,11 @@ function normalizeVersion(v) {
     .replace(/[^0-9A-Za-z._-]+/g, "");
 }
 
+function resolveChannel(explicit, version) {
+  if (explicit === "stable" || explicit === "beta") return explicit;
+  return /-beta/i.test(version) ? "beta" : "stable";
+}
+
 async function main() {
   const opts = parseArgs(process.argv);
   if (!opts.zxp) throw new Error("--zxp=<path> is required");
@@ -95,11 +103,15 @@ async function main() {
   const version = normalizeVersion(opts.version);
   if (!version) throw new Error("Invalid --version");
 
+  const channel = resolveChannel(opts.channel, version);
   const zxpPath = path.resolve(opts.zxp);
   await stat(zxpPath);
 
   const zxpKey = `public/downloads/spunkram/${version}/spunkram.zxp`;
-  const latestKey = "public/downloads/spunkram/latest.json";
+  const pointerKey =
+    channel === "beta"
+      ? "public/downloads/spunkram/beta.json"
+      : "public/downloads/spunkram/latest.json";
   const ffmpeg = {
     win: publicUrl("public/downloads/ffmpeg/win/ffmpeg.exe"),
     mac: publicUrl("public/downloads/ffmpeg/mac/ffmpeg-mac.zip"),
@@ -109,13 +121,14 @@ async function main() {
     zxpUrl: publicUrl(zxpKey),
     changelog: opts.changelog || "",
     publishedAt: new Date().toISOString(),
+    channel,
     ffmpeg,
   };
 
   if (opts.dryRun) {
     const { size } = await stat(zxpPath);
     console.log(`[dry-run] ${zxpPath} (${size} bytes) → ${zxpKey}`);
-    console.log(`[dry-run] latest.json →`, JSON.stringify(manifest, null, 2));
+    console.log(`[dry-run] ${pointerKey} →`, JSON.stringify(manifest, null, 2));
     return;
   }
 
@@ -123,7 +136,7 @@ async function main() {
   const client = createClient();
   const body = await readFile(zxpPath);
 
-  console.log(`[upload-zxp] bucket=${bucket}`);
+  console.log(`[upload-zxp] bucket=${bucket} channel=${channel}`);
   console.log(`  → ${zxpKey} (${(body.length / 1024 / 1024).toFixed(1)} MB)`);
   await client.send(
     new PutObjectCommand({
@@ -139,13 +152,13 @@ async function main() {
   await client.send(
     new PutObjectCommand({
       Bucket: bucket,
-      Key: latestKey,
+      Key: pointerKey,
       Body: Buffer.from(JSON.stringify(manifest, null, 2), "utf8"),
       ContentType: "application/json; charset=utf-8",
       CacheControl: "public, max-age=60",
     }),
   );
-  console.log(`  ✓ ${publicUrl(latestKey)}`);
+  console.log(`  ✓ ${publicUrl(pointerKey)}`);
   console.log("[upload-zxp] done");
 }
 

@@ -9,6 +9,7 @@ import { GENERATION_LIMIT_REACHED_CODE } from "@/lib/ai-generation-gate";
 import { requireCreatorAiForGeneration } from "@/lib/creator-ai-generation-access";
 import { insertGenerationRecord } from "@/lib/generation-records";
 import { mirrorReplicateUrlsToR2 } from "@/lib/replicate-mirror-output";
+import { ALLOWED_LANGUAGE_BOOST } from "@/lib/minimax-language-boost";
 
 export const runtime = "nodejs";
 /** Long-running TTS jobs occasionally need more than the default 10s budget. */
@@ -64,39 +65,6 @@ const ALLOWED_SAMPLE_RATES = new Set<number>([
 const ALLOWED_BITRATES = new Set<number>([
     32000, 64000, 128000, 192000, 256000,
 ]);
-const ALLOWED_LANGUAGE_BOOST = new Set<string>([
-    "None",
-    "Automatic",
-    "English",
-    "Chinese",
-    "Chinese,Yue",
-    "Spanish",
-    "French",
-    "German",
-    "Japanese",
-    "Korean",
-    "Russian",
-    "Arabic",
-    "Portuguese",
-    "Italian",
-    "Turkish",
-    "Dutch",
-    "Indonesian",
-    "Vietnamese",
-    "Thai",
-    "Polish",
-    "Romanian",
-    "Greek",
-    "Czech",
-    "Hungarian",
-    "Ukrainian",
-    "Filipino",
-    "Malay",
-    "Hindi",
-    "Hebrew",
-    "Bengali",
-]);
-
 const CONTENT_TYPE_BY_FORMAT: Record<string, string> = {
     mp3: "audio/mpeg",
     wav: "audio/wav",

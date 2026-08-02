@@ -106,10 +106,13 @@ export async function POST(request: Request) {
   }
 
   const tag = release.tag_name || "";
-  const version = tag.replace(/^v/i, "");
+    const version = tag.replace(/^v/i, "");
   if (!version) {
     return NextResponse.json({ ok: true, skipped: "no_tag" });
   }
+
+  const channel =
+    release.prerelease || /-beta/i.test(version) ? ("beta" as const) : ("stable" as const);
 
   const asset = pickZxpAsset(release.assets);
   if (!asset?.browser_download_url && !asset?.url) {
@@ -139,12 +142,18 @@ export async function POST(request: Request) {
       zxpBody: body,
       changelog: release.body || "",
       publishedAt: release.published_at || new Date().toISOString(),
+      channel,
     });
 
     console.info(
-      `[github-webhook] Published Spunkram ${manifest.version} → ${manifest.zxpUrl}`,
+      `[github-webhook] Published Spunkram ${manifest.version} (${channel}) → ${manifest.zxpUrl}`,
     );
-    return NextResponse.json({ ok: true, version: manifest.version, zxpUrl: manifest.zxpUrl });
+    return NextResponse.json({
+      ok: true,
+      version: manifest.version,
+      zxpUrl: manifest.zxpUrl,
+      channel,
+    });
   } catch (err) {
     console.error("[github-webhook] Publish failed", err);
     return NextResponse.json({ error: "Publish failed" }, { status: 500 });
