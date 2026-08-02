@@ -11,9 +11,9 @@ import {
   languageNameFor,
 } from "@/lib/generation-languages";
 import {
-  consumeGeneration,
-  getGenerationsStatus,
-} from "@/lib/generations";
+  generationsStatusForResolvedUser,
+  consumeGenerationForResolvedUser,
+} from "@/lib/cep-generations";
 import { uploadBufferToR2 } from "@/lib/r2-storage";
 
 export const runtime = "nodejs";
@@ -357,7 +357,7 @@ export async function POST(req: NextRequest) {
 
     // Meter real session users before the expensive Whisper calls.
     if (typeof access.user.id === "number") {
-      const preStatus = await getGenerationsStatus(access.user.id);
+      const preStatus = await generationsStatusForResolvedUser(access.user);
       if (preStatus.total_generations_left <= 0) {
         return NextResponse.json(
           { code: GENERATION_LIMIT_REACHED_CODE, ...preStatus },
@@ -440,7 +440,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (typeof access.user.id === "number") {
-      const consumed = await consumeGeneration(access.user.id, "captions");
+      const consumed = await consumeGenerationForResolvedUser(access.user, "captions");
       if (!consumed.ok) {
         return NextResponse.json(
           { code: GENERATION_LIMIT_REACHED_CODE, ...consumed.status },

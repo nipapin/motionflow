@@ -5,12 +5,17 @@ import {
   type CepDeviceFingerprint,
 } from "@/lib/cep-auth";
 import { checkCepAuthDeviceRateLimit } from "@/lib/cep-auth-rate-limit";
+import {
+  CepUnknownClientError,
+  normalizeCepClient,
+  requireCepClientConfig,
+} from "@/lib/cep-client-registry";
 
 export const runtime = "nodejs";
 
 /**
  * POST /api/cep/auth/device — start a device-code login session for the CEP panel.
- * Returns a short user-facing `code` plus a panel-only `device_code` required to poll.
+ * Accepts only `client` (no author_id). Unknown clients → 400 UNKNOWN_CLIENT.
  * @see CEP/spunkram-library/docs/BACKEND_CEP_API.md §1.1
  */
 export async function POST(req: NextRequest) {
@@ -49,23 +54,36 @@ export async function POST(req: NextRequest) {
       };
     }
 
-    const client =
-      typeof body.client === "string" && body.client.trim()
-        ? body.client.trim()
-        : "spunkram-cep";
+    const client = normalizeCepClient(body.client);
+    let cfg;
+    try {
+      cfg = requireCepClientConfig(client);
+    } catch (e) {
+      if (e instanceof CepUnknownClientError) {
+        return NextResponse.json(
+          { error: "UNKNOWN_CLIENT", message: `Unknown client: ${client}` },
+          { status: 400 },
+        );
+      }
+      throw e;
+    }
 
     const { code, deviceCode, expiresIn, interval } = await createAuthSession({
       usp,
       device,
-      client,
+      client: cfg.client,
       ip,
     });
 
     const origin = verificationOrigin(req);
+    const verificationUrl = new URL(`${origin}/cep/login`);
+    verificationUrl.searchParams.set("code", code);
+    verificationUrl.searchParams.set("client", cfg.client);
+
     return NextResponse.json({
       code,
       device_code: deviceCode,
-      verification_url: `${origin}/cep/login?code=${encodeURIComponent(code)}`,
+      verification_url: verificationUrl.toString(),
       interval,
       expires_in: expiresIn,
     });
@@ -78,13 +96,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/**
- * Public origin for the browser verification page.
- * Prefer AUTH_PUBLIC_URL / NEXT_PUBLIC_APP_URL even in local next-app — the CEP
- * panel opens this in the system browser, and localhost is useless there when
- * the DB is shared with production. Fall back to the request origin only when
- * no public URL is configured (pure local e2e).
- */
 function verificationOrigin(req: NextRequest): string {
   const fromEnv =
     process.env.AUTH_PUBLIC_URL?.trim() ||

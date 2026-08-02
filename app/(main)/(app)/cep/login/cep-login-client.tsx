@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   Loader2,
@@ -36,13 +36,38 @@ type Phase =
   | "device_limit"
   | "error";
 
-export function CepLoginClient({ initialCode }: { initialCode: string }) {
+const CLIENT_COPY: Record<string, { title: string; description: string }> = {
+  "spunkram-cep": {
+    title: "Sign in to the Spunkram extension",
+    description:
+      "The Spunkram extension in Premiere Pro / After Effects is asking to use your account.",
+  },
+};
+
+export function CepLoginClient({
+  initialCode,
+  initialClient = "spunkram-cep",
+}: {
+  initialCode: string;
+  initialClient?: string;
+}) {
   const { user, loading: authLoading, openSignIn } = useAuth();
   const [info, setInfo] = useState<CodeInfo | null>(null);
   const [phase, setPhase] = useState<Phase>("loading");
   const [errorMessage, setErrorMessage] = useState<string>("");
 
   const code = initialCode.trim().toUpperCase();
+
+  const branding = useMemo(() => {
+    const client = info?.client || initialClient || "spunkram-cep";
+    return (
+      CLIENT_COPY[client] ?? {
+        title: "Sign in to the Spunkram extension",
+        description:
+          "An Adobe extension is asking to use your Motionflow account.",
+      }
+    );
+  }, [info?.client, initialClient]);
 
   useEffect(() => {
     if (!code) {
@@ -116,13 +141,8 @@ export function CepLoginClient({ initialCode }: { initialCode: string }) {
     <main className="flex min-h-[70vh] items-center justify-center px-4 py-16">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-xl">
-            Sign in to the Motionflow extension
-          </CardTitle>
-          <CardDescription>
-            A Motionflow extension in Premiere Pro / After Effects is asking to
-            use your account.
-          </CardDescription>
+          <CardTitle className="text-xl">{branding.title}</CardTitle>
+          <CardDescription>{branding.description}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col items-center gap-6">
           {code ? (

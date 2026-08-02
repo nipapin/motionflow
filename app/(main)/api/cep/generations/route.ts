@@ -7,8 +7,15 @@ import {
   type CaptionsIdentityInput,
   UNAUTHORIZED_CODE,
 } from "@/lib/auth/resolve-captions-user";
+import { resolveCepBearerUser } from "@/lib/cep-auth";
+import {
+  getCepClientConfig,
+  requireCepClientConfig,
+} from "@/lib/cep-client-registry";
+import { getActiveAuthorSubscription } from "@/lib/cep-entitlements";
 import {
   CREATOR_AI_BILLING_PERIOD_GENERATIONS_LIMIT,
+  getCepSpunkramGenerationsStatus,
   getGenerationsStatus,
   type GenerationStatus,
 } from "@/lib/generations";
@@ -69,6 +76,34 @@ async function handleStatus(req: NextRequest) {
       });
     }
 
+    // CEP Bearer → Spunkram author tier (10 free / 100 subscribed), not Creator + AI.
+    const cepUser = identity.bearer
+      ? await resolveCepBearerUser(identity.bearer)
+      : null;
+    if (cepUser) {
+      const cfg =
+        getCepClientConfig(cepUser.client) ??
+        requireCepClientConfig("spunkram-cep");
+      const authorSub = await getActiveAuthorSubscription(
+        cepUser.id,
+        cfg.authorId,
+      );
+      const status = await getCepSpunkramGenerationsStatus(
+        cepUser.id,
+        {
+          free: cfg.freeGenerationsLimit,
+          subscribed: cfg.subscribedGenerationsLimit,
+        },
+        authorSub.active,
+      );
+      return NextResponse.json({
+        authenticated: true,
+        source: "cep-bearer",
+        ...status,
+        plan: authorSub.active ? "spunkram_subscribed" : "free",
+      });
+    }
+
     const status = await getGenerationsStatus(user.id);
     return NextResponse.json({
       authenticated: true,
@@ -78,21 +113,16 @@ async function handleStatus(req: NextRequest) {
   } catch (err) {
     console.error("[cep/generations]", err);
     return NextResponse.json(
-      { error: "Failed to load generation status" },
+      { error: "SERVER_ERROR", message: "Could not load generations" },
       { status: 500 },
     );
   }
 }
 
-/**
- * CEP-reachable generations status.
- * Auth: same as captions — session cookie, or non-prod CEP body/query identity.
- */
 export async function GET(req: NextRequest) {
   return handleStatus(req);
 }
 
-/** Same as GET — CEP may POST with email/userId in JSON body. */
 export async function POST(req: NextRequest) {
   return handleStatus(req);
 }

@@ -5,7 +5,10 @@ import {
   identityFromJsonBody,
   requireCaptionsAccess,
 } from "@/lib/auth/resolve-captions-user";
-import { consumeGeneration, getGenerationsStatus } from "@/lib/generations";
+import {
+  consumeGenerationForResolvedUser,
+  generationsStatusForResolvedUser,
+} from "@/lib/cep-generations";
 import { GENERATION_LIMIT_REACHED_CODE } from "@/lib/ai-generation-gate";
 import { insertGenerationRecord } from "@/lib/generation-records";
 import { uploadBufferToR2 } from "@/lib/r2-storage";
@@ -86,7 +89,7 @@ export async function POST(req: NextRequest) {
     const speed = Math.min(Math.max(Number.isNaN(rawSpeed) ? 1 : rawSpeed, 0.5), 2);
 
     if (typeof user.id === "number") {
-      const preStatus = await getGenerationsStatus(user.id);
+      const preStatus = await generationsStatusForResolvedUser(user);
       if (preStatus.total_generations_left <= 0) {
         return NextResponse.json(
           { code: GENERATION_LIMIT_REACHED_CODE, error: "GENERATION_LIMIT_REACHED", ...preStatus },
@@ -183,7 +186,7 @@ export async function POST(req: NextRequest) {
 
     let generations: unknown;
     if (typeof user.id === "number") {
-      const consumed = await consumeGeneration(user.id, "tts");
+      const consumed = await consumeGenerationForResolvedUser(user, "tts");
       if (!consumed.ok) {
         return NextResponse.json(
           { code: GENERATION_LIMIT_REACHED_CODE, error: "GENERATION_LIMIT_REACHED", ...consumed.status },

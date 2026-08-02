@@ -7,7 +7,10 @@ import {
   requireCaptionsAccess,
 } from "@/lib/auth/resolve-captions-user";
 import { GENERATION_LIMIT_REACHED_CODE } from "@/lib/ai-generation-gate";
-import { consumeGeneration, getGenerationsStatus } from "@/lib/generations";
+import {
+  consumeGenerationForResolvedUser,
+  generationsStatusForResolvedUser,
+} from "@/lib/cep-generations";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -312,7 +315,7 @@ export async function POST(req: NextRequest) {
         }
 
         if (typeof user.id === "number") {
-            const preStatus = await getGenerationsStatus(user.id);
+            const preStatus = await generationsStatusForResolvedUser(user);
             if (preStatus.total_generations_left <= 0) {
                 return NextResponse.json(
                     {
@@ -369,7 +372,7 @@ export async function POST(req: NextRequest) {
 
         let generations: unknown;
         if (typeof user.id === "number") {
-            const consumed = await consumeGeneration(user.id, "chapters");
+            const consumed = await consumeGenerationForResolvedUser(user, "chapters");
             if (!consumed.ok) {
                 return NextResponse.json(
                     {

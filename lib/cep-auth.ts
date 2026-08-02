@@ -493,6 +493,8 @@ export type CepBearerUser = {
   email: string;
   name: string;
   deviceId: number;
+  /** CEP client id from device registry (e.g. spunkram-cep). */
+  client: string;
 };
 
 /**
@@ -512,9 +514,10 @@ export async function resolveCepBearerUser(
     user_id: number;
     email: string;
     name: string;
+    client: string;
   };
   const [rows] = await pool.execute<JoinedRow[]>(
-    `SELECT d.id AS device_id, u.id AS user_id, u.email, u.name
+    `SELECT d.id AS device_id, u.id AS user_id, u.email, u.name, d.client
      FROM \`${DEVICES_TABLE}\` d
      JOIN users u ON u.id = d.user_id
      WHERE d.token_hash = ? AND d.revoked_at IS NULL
@@ -535,6 +538,7 @@ export async function resolveCepBearerUser(
     email: row.email,
     name: row.name ?? "",
     deviceId: Number(row.device_id),
+    client: String(row.client || "spunkram-cep"),
   };
 }
 

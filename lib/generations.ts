@@ -325,3 +325,134 @@ export async function consumeGeneration(
     conn.release();
   }
 }
+
+/** Spunkram CEP free / subscribed quotas (not Motionflow Creator). */
+export async function getCepSpunkramGenerationsStatus(
+  userId: number,
+  limits: { free: number; subscribed: number },
+  authorSubscribed: boolean,
+): Promise<GenerationStatus> {
+  await ensureTable();
+  await ensureUserGenerationCreditsSchema();
+
+  const hasSubscription = authorSubscribed;
+  const limit = hasSubscription ? limits.subscribed : limits.free;
+  // Free = lifetime pool; subscribed = calendar month (UTC).
+  const plan: MotionflowGenerationPlan = hasSubscription ? "creator_ai" : "none";
+  const usageWindow = utcMonthBounds();
+  const used = await countUsed(userId, plan, usageWindow);
+  const extra_generations_left = hasSubscription
+    ? await getExtraBalance(userId)
+    : 0;
+  const subscription_generations_left = Math.max(0, limit - used);
+  const total_generations_left =
+    subscription_generations_left + extra_generations_left;
+
+  return {
+    used,
+    limit,
+    effective_limit: limit,
+    remaining: subscription_generations_left,
+    hasSubscription,
+    plan: hasSubscription ? "creator_ai" : "none",
+    subscription_generations_left,
+    extra_generations_left,
+    total_generations_left,
+  };
+}
+
+export async function consumeCepSpunkramGeneration(
+  userId: number,
+  tool: GenerationTool,
+  limits: { free: number; subscribed: number },
+  authorSubscribed: boolean,
+): Promise<ConsumeResult> {
+  await ensureTable();
+  await ensureUserGenerationCreditsSchema();
+  const pool = getPool();
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const hasSubscription = authorSubscribed;
+    const limit = hasSubscription ? limits.subscribed : limits.free;
+    const plan: MotionflowGenerationPlan = hasSubscription ? "creator_ai" : "none";
+    const usageWindow = utcMonthBounds();
+
+    let creditsRow: CreditsRow | null = null;
+    if (hasSubscription) {
+      await ensureCreditsRowForUser(userId, conn);
+      creditsRow = await fetchCreditsRowLocked(userId, conn);
+    }
+
+    const used = await countUsed(userId, plan, usageWindow, conn);
+    const extraCount = hasSubscription
+      ? Number(creditsRow?.extra_balance ?? 0)
+      : 0;
+    const subscriptionLeft = Math.max(0, limit - used);
+    const totalLeft = subscriptionLeft + extraCount;
+
+    const emptyStatus = (u: number): GenerationStatus => ({
+      used: u,
+      limit,
+      effective_limit: limit,
+      remaining: 0,
+      hasSubscription,
+      plan: hasSubscription ? "creator_ai" : "none",
+      subscription_generations_left: 0,
+      extra_generations_left: 0,
+      total_generations_left: 0,
+    });
+
+    if (totalLeft <= 0) {
+      await conn.rollback();
+      return { ok: false, reason: "limit_reached", status: emptyStatus(used) };
+    }
+
+    let newSubscriptionLeft: number;
+    let newExtraLeft: number;
+
+    if (subscriptionLeft > 0) {
+      await conn.execute<ResultSetHeader>(
+        `INSERT INTO \`${TABLE}\` (user_id, tool) VALUES (?, ?)`,
+        [userId, tool],
+      );
+      newSubscriptionLeft = subscriptionLeft - 1;
+      newExtraLeft = extraCount;
+    } else {
+      const dec = await decrementExtraBalanceOne(userId, conn);
+      if (!dec) {
+        await conn.rollback();
+        return { ok: false, reason: "limit_reached", status: emptyStatus(used) };
+      }
+      newSubscriptionLeft = 0;
+      newExtraLeft = extraCount - 1;
+    }
+
+    await conn.commit();
+    const newUsed = subscriptionLeft > 0 ? used + 1 : used;
+    return {
+      ok: true,
+      status: {
+        used: newUsed,
+        limit,
+        effective_limit: limit,
+        remaining: newSubscriptionLeft,
+        hasSubscription,
+        plan: hasSubscription ? "creator_ai" : "none",
+        subscription_generations_left: newSubscriptionLeft,
+        extra_generations_left: newExtraLeft,
+        total_generations_left: newSubscriptionLeft + newExtraLeft,
+      },
+    };
+  } catch (err) {
+    try {
+      await conn.rollback();
+    } catch {
+      /* ignore */
+    }
+    throw err;
+  } finally {
+    conn.release();
+  }
+}

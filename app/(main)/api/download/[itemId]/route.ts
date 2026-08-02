@@ -14,6 +14,7 @@ import {
 import { getPresignedMarketplaceDownloadUrl } from "@/lib/marketplace-r2-presign";
 import { checkMarketplaceDownloadRateLimit } from "@/lib/marketplace-download-rate-limit";
 import { hasActiveMotionflowSubscription } from "@/lib/subscriptions";
+import { getActiveAuthorSubscription } from "@/lib/cep-entitlements";
 
 const DL_TABLE = "subscription_downloads";
 
@@ -50,19 +51,26 @@ export async function GET(
     return redirectRelative("/?signin=1");
   }
 
-  const [subOk, owns] = await Promise.all([
-    hasActiveMotionflowSubscription(user.id),
-    userOwnsItem(user.id, itemId),
-  ]);
-
-  if (!subOk && !owns) {
-    return redirectRelative("/pricing");
-  }
-
   const products = await getMarketItemsByIds([itemId]);
   const product = products[0];
   if (!product) {
     return NextResponse.json({ error: "item not found" }, { status: 404 });
+  }
+
+  const [subOk, owns, authorSub] = await Promise.all([
+    hasActiveMotionflowSubscription(user.id),
+    userOwnsItem(user.id, itemId),
+    getActiveAuthorSubscription(user.id, product.author_id),
+  ]);
+
+  const freePack =
+    (product.discount_price != null
+      ? Number(product.discount_price)
+      : Number(product.price)) <= 0;
+
+  const authorSubOk = authorSub.active;
+  if (!subOk && !owns && !authorSubOk && !freePack) {
+    return redirectRelative("/pricing");
   }
 
   const rate = await checkMarketplaceDownloadRateLimit(user.id);
@@ -75,7 +83,7 @@ export async function GET(
 
   let purchaseCode: string;
 
-  if (subOk) {
+  if (subOk || authorSubOk || freePack) {
     purchaseCode = crypto.randomBytes(16).toString("hex");
     const pool = getPool();
     await pool.execute<ResultSetHeader>(

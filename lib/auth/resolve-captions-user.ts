@@ -24,6 +24,8 @@ export type ResolvedCaptionsUser = {
   source: "session" | "cep-dev" | "cep-bearer";
   /** When true, skip DB subscription lookup (CEP local-dev admin). */
   treatAsSubscribed: boolean;
+  /** Present for CEP device tokens — used for Spunkram entitlements. */
+  cepClient?: string;
 };
 
 function isProduction(): boolean {
@@ -85,7 +87,9 @@ export async function resolveCaptionsUser(
         email: bearerUser.email,
         name: bearerUser.name,
         source: "cep-bearer",
-        treatAsSubscribed: false,
+        // Free CEP tier includes limited AI gens — don't require Motionflow Creator.
+        treatAsSubscribed: true,
+        cepClient: bearerUser.client,
       };
     }
   }
