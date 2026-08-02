@@ -12,7 +12,7 @@ import {
   getCepClientConfig,
   requireCepClientConfig,
 } from "@/lib/cep-client-registry";
-import { getActiveAuthorSubscription } from "@/lib/cep-entitlements";
+import { getActiveAuthorSubscription, cepAiGenerationsLimit } from "@/lib/cep-entitlements";
 import {
   CREATOR_AI_BILLING_PERIOD_GENERATIONS_LIMIT,
   getCepSpunkramGenerationsStatus,
@@ -76,7 +76,7 @@ async function handleStatus(req: NextRequest) {
       });
     }
 
-    // CEP Bearer → Spunkram author tier (10 free / 100 subscribed), not Creator + AI.
+    // CEP Bearer → Spunkram author tier (5 free / 10 Editor / 100 Editor AI).
     const cepUser = identity.bearer
       ? await resolveCepBearerUser(identity.bearer)
       : null;
@@ -88,19 +88,21 @@ async function handleStatus(req: NextRequest) {
         cepUser.id,
         cfg.authorId,
       );
+      const monthlyLimit = cepAiGenerationsLimit(cfg, authorSub);
       const status = await getCepSpunkramGenerationsStatus(
         cepUser.id,
-        {
-          free: cfg.freeGenerationsLimit,
-          subscribed: cfg.subscribedGenerationsLimit,
-        },
+        monthlyLimit,
         authorSub.active,
       );
       return NextResponse.json({
         authenticated: true,
         source: "cep-bearer",
         ...status,
-        plan: authorSub.active ? "spunkram_subscribed" : "free",
+        plan: authorSub.active
+          ? authorSub.tierId === "library"
+            ? "spunkram_editor"
+            : "spunkram_editor_ai"
+          : "free",
       });
     }
 

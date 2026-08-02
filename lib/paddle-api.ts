@@ -16,18 +16,37 @@ import "server-only";
  * Required env:
  *   PADDLE_API_KEY                — Server-side key (Dashboard → Developer tools → Authentication)
  *   NEXT_PUBLIC_PADDLE_ENVIRONMENT — "sandbox" | "production" (defaults to sandbox)
+ *
+ * Spunkram (sandbox until launch) — pass `account: "spunkram"`:
+ *   SPUNKRAM_PADDLE_API_KEY
+ *   NEXT_PUBLIC_SPUNKRAM_PADDLE_ENVIRONMENT
  */
 
 const SANDBOX_BASE = "https://sandbox-api.paddle.com";
 const PRODUCTION_BASE = "https://api.paddle.com";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function getBaseUrl(): string {
+export type PaddleApiAccount = "default" | "spunkram";
+
+function getBaseUrl(account: PaddleApiAccount = "default"): string {
+  if (account === "spunkram") {
+    const env = (process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_ENVIRONMENT ?? "sandbox").toLowerCase();
+    return env === "production" ? PRODUCTION_BASE : SANDBOX_BASE;
+  }
   const env = (process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT ?? "sandbox").toLowerCase();
   return env === "production" ? PRODUCTION_BASE : SANDBOX_BASE;
 }
 
-function getApiKey(): string {
+function getApiKey(account: PaddleApiAccount = "default"): string {
+  if (account === "spunkram") {
+    const key = process.env.SPUNKRAM_PADDLE_API_KEY?.trim();
+    if (!key) {
+      throw new Error(
+        "SPUNKRAM_PADDLE_API_KEY is not configured. Add the Spunkram sandbox API key to enable Spunkram subscription management.",
+      );
+    }
+    return key;
+  }
   const key = process.env.PADDLE_API_KEY;
   if (!key) {
     throw new Error(
@@ -58,11 +77,12 @@ function extractPaddleErrorDetail(json: unknown): string | undefined {
 
 async function paddleFetch<T>(
   path: string,
-  init: RequestInit & { idempotencyKey?: string } = {},
+  init: RequestInit & { idempotencyKey?: string; account?: PaddleApiAccount } = {},
 ): Promise<T> {
-  const url = `${getBaseUrl()}${path}`;
+  const account = init.account ?? "default";
+  const url = `${getBaseUrl(account)}${path}`;
   const headers = new Headers(init.headers);
-  headers.set("Authorization", `Bearer ${getApiKey()}`);
+  headers.set("Authorization", `Bearer ${getApiKey(account)}`);
   headers.set("Content-Type", "application/json");
   if (init.idempotencyKey) {
     // HTTP headers are ByteString — every char must be in 0x00–0xFF. If a
@@ -74,7 +94,8 @@ async function paddleFetch<T>(
     headers.set("Paddle-Idempotency-Key", sanitized);
   }
 
-  const res = await fetch(url, { ...init, headers, cache: "no-store" });
+  const { account: _account, idempotencyKey: _idempotencyKey, ...fetchInit } = init;
+  const res = await fetch(url, { ...fetchInit, headers, cache: "no-store" });
   const text = await res.text();
   let json: unknown = null;
   if (text) {
@@ -157,9 +178,13 @@ export interface PaddleApiPrice {
 /*  Operations                                                                 */
 /* -------------------------------------------------------------------------- */
 
-export async function getSubscription(id: string): Promise<PaddleApiSubscription> {
+export async function getSubscription(
+  id: string,
+  options: { account?: PaddleApiAccount } = {},
+): Promise<PaddleApiSubscription> {
   return paddleFetch<PaddleApiSubscription>(
     `/subscriptions/${encodeURIComponent(id)}?include=next_transaction`,
+    { account: options.account },
   );
 }
 
@@ -243,12 +268,13 @@ export async function clearScheduledChange(
  */
 export async function cancelSubscriptionImmediately(
   subscriptionId: string,
-  options: { idempotencyKey?: string } = {},
+  options: { idempotencyKey?: string; account?: PaddleApiAccount } = {},
 ): Promise<PaddleApiSubscription> {
   return paddleFetch<PaddleApiSubscription>(
     `/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`,
     {
       method: "POST",
+      account: options.account,
       idempotencyKey: options.idempotencyKey,
       body: JSON.stringify({ effective_from: "immediately" }),
     },
@@ -273,6 +299,8 @@ export interface PaddleApiTransaction {
     billingPeriod?: string;
     kind?: string;
     generations?: string | number;
+    author_id?: string | number;
+    tier?: string;
   } | null;
   items?: Array<{
     quantity?: number;
@@ -294,9 +322,13 @@ export interface PaddleApiTransaction {
  *
  * Docs: https://developer.paddle.com/api-reference/transactions/get-transaction
  */
-export async function getTransaction(id: string): Promise<PaddleApiTransaction> {
+export async function getTransaction(
+  id: string,
+  options: { account?: PaddleApiAccount } = {},
+): Promise<PaddleApiTransaction> {
   return paddleFetch<PaddleApiTransaction>(
     `/transactions/${encodeURIComponent(id)}`,
+    { account: options.account },
   );
 }
 

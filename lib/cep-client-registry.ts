@@ -13,9 +13,13 @@ export type CepClientConfig = {
   /** Browser confirmation page title */
   loginTitle: string;
   loginDescription: string;
-  /** Free-tier AI generations (server-enforced). */
+  /** Free / no Spunkram subscription — AI generations per month. */
   freeGenerationsLimit: number;
-  /** Subscribed AI generations per month. */
+  /** Editor (library packs) subscription — AI generations per month. */
+  editorGenerationsLimit: number;
+  /** Editor AI subscription — AI generations per month. */
+  editorAiGenerationsLimit: number;
+  /** @deprecated use editorAiGenerationsLimit */
   subscribedGenerationsLimit: number;
   freePackSlots: number;
   pricingPath: string;
@@ -30,7 +34,9 @@ const REGISTRY: Record<string, CepClientConfig> = {
     loginTitle: "Sign in to the Spunkram extension",
     loginDescription:
       "The Spunkram extension in Premiere Pro / After Effects is asking to use your account.",
-    freeGenerationsLimit: 10,
+    freeGenerationsLimit: 5,
+    editorGenerationsLimit: 10,
+    editorAiGenerationsLimit: 100,
     subscribedGenerationsLimit: 100,
     freePackSlots: 1,
     pricingPath: "/pricing?client=spunkram-cep",

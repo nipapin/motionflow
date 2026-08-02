@@ -51,7 +51,26 @@ export function Pricing() {
         awaitingCheckout.current = false;
         setOpeningTier(null);
         toast.success("Payment successful! Your subscription is activating…");
-        router.push("/account?checkout=success");
+        const transactionId = event.data?.transaction_id ?? null;
+        void (async () => {
+          if (transactionId) {
+            try {
+              await fetch("/api/me/subscriptions/claim", {
+                method: "POST",
+                credentials: "include",
+                cache: "no-store",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ transactionId }),
+              });
+            } catch (err) {
+              console.warn(
+                "[spunkram-pricing] claim endpoint failed; relying on Paddle webhook:",
+                err,
+              );
+            }
+          }
+          router.push("/account?checkout=success");
+        })();
       }
       if (event.name === "checkout.error") {
         awaitingCheckout.current = false;
@@ -98,9 +117,9 @@ export function Pricing() {
         items: [{ priceId, quantity: 1 }],
         customer: { email: user.email ?? undefined },
         customData: {
-          buyer_id: Number(user.id),
+          buyer_id: String(user.id),
           kind: "spunkram_subscription",
-          author_id: Number(SPUNKRAM_AUTHOR_ID),
+          author_id: String(SPUNKRAM_AUTHOR_ID),
           billingPeriod: billing,
           tier: tierId,
         },

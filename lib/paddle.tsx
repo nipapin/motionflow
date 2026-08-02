@@ -31,7 +31,15 @@ const PaddleContext = createContext<PaddleContextValue>({
   subscribe: () => () => {},
 });
 
-export function PaddleProvider({ children }: { children: ReactNode }) {
+type PaddleProviderProps = {
+  children: ReactNode;
+  /** Override client token (e.g. Spunkram sandbox). Defaults to NEXT_PUBLIC_PADDLE_CLIENT_TOKEN. */
+  token?: string;
+  /** Override environment. Defaults to NEXT_PUBLIC_PADDLE_ENVIRONMENT. */
+  environment?: Environments;
+};
+
+export function PaddleProvider({ children, token: tokenProp, environment: environmentProp }: PaddleProviderProps) {
   const [paddle, setPaddle] = useState<Paddle | null>(null);
   const initialized = useRef(false);
   const listeners = useRef<Set<EventListener>>(new Set());
@@ -40,11 +48,21 @@ export function PaddleProvider({ children }: { children: ReactNode }) {
     if (initialized.current) return;
     initialized.current = true;
 
-    const token = process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN;
-    const environment = (process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT ?? "sandbox") as Environments;
+    const token =
+      tokenProp !== undefined
+        ? tokenProp.trim()
+        : process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN;
+    const environment = (environmentProp ??
+      process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT ??
+      "sandbox") as Environments;
 
     if (!token) {
-      console.warn("[Paddle] NEXT_PUBLIC_PADDLE_CLIENT_TOKEN is not set; checkout will not load.");
+      console.warn(
+        "[Paddle] Client token is not set; checkout will not load.",
+        tokenProp !== undefined
+          ? "(NEXT_PUBLIC_SPUNKRAM_PADDLE_CLIENT_TOKEN or provider override)"
+          : "(NEXT_PUBLIC_PADDLE_CLIENT_TOKEN)",
+      );
       return;
     }
 
@@ -67,7 +85,7 @@ export function PaddleProvider({ children }: { children: ReactNode }) {
       .catch((err) => {
         console.error("[Paddle] Failed to initialize:", err);
       });
-  }, []);
+  }, [tokenProp, environmentProp]);
 
   const subscribe = useCallback((listener: EventListener) => {
     listeners.current.add(listener);

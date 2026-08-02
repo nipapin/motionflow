@@ -8,7 +8,10 @@ import { normalizePaddleProductNameToken } from "@/lib/paddle-product-label";
 import {
   cancelSubscriptionImmediately,
   createBilledRecurringTransaction,
+  getSubscription,
+  getTransaction,
   PaddleApiError,
+  type PaddleApiAccount,
   type PaddleApiBillingCycle,
   type PaddleApiUnitPrice,
 } from "@/lib/paddle-api";
@@ -26,6 +29,7 @@ import {
   lookupSubscriptionForGhl,
 } from "@/lib/paddle-laravel-port";
 import { sendGhlEvent, type GhlEventType } from "@/lib/ghl-forwarder";
+import { isSpunkramSubscriptionPriceId } from "@/lib/spunkram-paddle-config";
 
 const SUBSCRIPTIONS_TABLE = "subscription_systems";
 const EXTRA_GEN_CREDIT_EVENTS_TABLE = "paddle_extra_generation_credit_events";
@@ -369,6 +373,92 @@ function toMysqlDateTime(iso: string): string {
   return d.toISOString().slice(0, 19).replace("T", " ");
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function paddleAccountForTransaction(txn: PaddleTransaction): PaddleApiAccount {
+  const { priceId } = pickPaddleCatalogIds(txn.items);
+  const kind = String(txn.custom_data?.kind ?? "").trim().toLowerCase();
+  if (kind === "spunkram_subscription" || isSpunkramSubscriptionPriceId(priceId)) {
+    return "spunkram";
+  }
+  return "default";
+}
+
+function transactionLooksRecurring(txn: PaddleTransaction): boolean {
+  return Boolean(
+    txn.items?.some((item) => item.price?.billing_cycle?.interval),
+  );
+}
+
+/**
+ * `checkout.completed` (and the client claim that follows it) can fire before
+ * Paddle has attached `subscription_id` / `billing_period` on the transaction.
+ * Without those we would persist `subscription_id = txn_…` and `ends_at = NULL`.
+ * Poll the API briefly, then fall back to the subscription entity for period dates.
+ */
+async function resolveTransactionForUpsert(
+  txn: PaddleTransaction,
+): Promise<PaddleTransaction> {
+  let current = txn;
+  const account = paddleAccountForTransaction(current);
+  const recurring = transactionLooksRecurring(current);
+
+  if (recurring && (!current.subscription_id?.startsWith("sub_") || !current.billing_period?.ends_at)) {
+    for (let attempt = 0; attempt < 6; attempt++) {
+      if (current.subscription_id?.startsWith("sub_") && current.billing_period?.ends_at) {
+        break;
+      }
+      if (attempt > 0) await sleep(350 * attempt);
+      try {
+        current = (await getTransaction(current.id, { account })) as unknown as PaddleTransaction;
+      } catch (err) {
+        if (err instanceof PaddleApiError && err.status === 404 && account === "spunkram") {
+          try {
+            current = (await getTransaction(current.id, {
+              account: "default",
+            })) as unknown as PaddleTransaction;
+          } catch {
+            break;
+          }
+        } else {
+          console.warn(
+            `[paddle] resolveTransactionForUpsert: getTransaction failed for ${current.id}:`,
+            err,
+          );
+          break;
+        }
+      }
+    }
+  }
+
+  if (!current.billing_period?.ends_at && current.subscription_id?.startsWith("sub_")) {
+    try {
+      const sub = await getSubscription(current.subscription_id, {
+        account: paddleAccountForTransaction(current),
+      });
+      const period = sub.current_billing_period;
+      if (period?.ends_at) {
+        current = {
+          ...current,
+          billing_period: {
+            starts_at: period.starts_at ?? null,
+            ends_at: period.ends_at ?? null,
+          },
+        };
+      }
+    } catch (err) {
+      console.warn(
+        `[paddle] resolveTransactionForUpsert: getSubscription failed for ${current.subscription_id}:`,
+        err,
+      );
+    }
+  }
+
+  return current;
+}
+
 /**
  * Resolve the Motionflow buyer id from a Paddle subscription/transaction payload.
  *
@@ -668,11 +758,13 @@ async function updatePaymentMethodOnly(
  *   `2026_04_22_subscription_systems_paddle_product_name.sql` for display name, and
  *   `2026_04_23_subscription_systems_paddle_billing_period.sql` for quota windows.
  */
-export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
+export async function upsertFromTransaction(txnInput: PaddleTransaction): Promise<{
   ok: boolean;
   reason?: string;
   buyerId?: number;
 }> {
+  const txn = await resolveTransactionForUpsert(txnInput);
+
   // Payment-method-only updates must be handled BEFORE the side-charge check
   // below (and before any date/plan logic): they carry a `billing_period`
   // that reflects "today", not the subscription's real renewal window, so
@@ -839,6 +931,18 @@ export async function upsertFromTransaction(txn: PaddleTransaction): Promise<{
     const lock = await acquirePaddleLock(conn, rowSubscriptionId);
     if (!lock.acquired) return { ok: false, reason: "could_not_acquire_lock" };
     lockKey = lock.key;
+
+    // Client claim after checkout.completed can race ahead of Paddle attaching
+    // `subscription_id`, writing a provisional row keyed by `txn_…`. Re-key it
+    // before the upsert so we don't leave a duplicate without `ends_at`.
+    if (rowSubscriptionId.startsWith("sub_") && paymentId.startsWith("txn_")) {
+      await conn.execute<ResultSetHeader>(
+        `UPDATE \`${SUBSCRIPTIONS_TABLE}\`
+            SET \`subscription_id\` = ?
+          WHERE \`payment_id\` = ? AND \`subscription_id\` = ?`,
+        [rowSubscriptionId, paymentId, paymentId],
+      );
+    }
 
     const insertParams = [
       userId,

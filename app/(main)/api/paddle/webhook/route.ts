@@ -9,16 +9,27 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const secret = process.env.PADDLE_WEBHOOK_SECRET;
-  if (!secret) {
-    console.error("[paddle-webhook] PADDLE_WEBHOOK_SECRET not configured");
+  const secrets = [
+    process.env.PADDLE_WEBHOOK_SECRET,
+    process.env.SPUNKRAM_PADDLE_WEBHOOK_SECRET,
+  ]
+    .map((s) => s?.trim())
+    .filter((s): s is string => Boolean(s));
+
+  if (secrets.length === 0) {
+    console.error(
+      "[paddle-webhook] Neither PADDLE_WEBHOOK_SECRET nor SPUNKRAM_PADDLE_WEBHOOK_SECRET is configured",
+    );
     return NextResponse.json({ error: "Webhook not configured" }, { status: 500 });
   }
 
   const rawBody = await request.text();
   const signature = request.headers.get("paddle-signature");
 
-  if (!verifyPaddleSignature(rawBody, signature, secret)) {
+  const signatureOk = secrets.some((secret) =>
+    verifyPaddleSignature(rawBody, signature, secret),
+  );
+  if (!signatureOk) {
     console.warn("[paddle-webhook] Invalid signature");
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }

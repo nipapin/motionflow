@@ -326,17 +326,17 @@ export async function consumeGeneration(
   }
 }
 
-/** Spunkram CEP free / subscribed quotas (not Motionflow Creator). */
+/** Spunkram CEP monthly quota (free / Editor / Editor AI — limit chosen by caller). */
 export async function getCepSpunkramGenerationsStatus(
   userId: number,
-  limits: { free: number; subscribed: number },
+  monthlyLimit: number,
   authorSubscribed: boolean,
 ): Promise<GenerationStatus> {
   await ensureTable();
   await ensureUserGenerationCreditsSchema();
 
   const hasSubscription = authorSubscribed;
-  const limit = hasSubscription ? limits.subscribed : limits.free;
+  const limit = Math.max(0, monthlyLimit);
   // Free = lifetime pool; subscribed = calendar month (UTC).
   const plan: MotionflowGenerationPlan = hasSubscription ? "creator_ai" : "none";
   const usageWindow = utcMonthBounds();
@@ -364,7 +364,7 @@ export async function getCepSpunkramGenerationsStatus(
 export async function consumeCepSpunkramGeneration(
   userId: number,
   tool: GenerationTool,
-  limits: { free: number; subscribed: number },
+  monthlyLimit: number,
   authorSubscribed: boolean,
 ): Promise<ConsumeResult> {
   await ensureTable();
@@ -375,7 +375,7 @@ export async function consumeCepSpunkramGeneration(
     await conn.beginTransaction();
 
     const hasSubscription = authorSubscribed;
-    const limit = hasSubscription ? limits.subscribed : limits.free;
+    const limit = Math.max(0, monthlyLimit);
     const plan: MotionflowGenerationPlan = hasSubscription ? "creator_ai" : "none";
     const usageWindow = utcMonthBounds();
 

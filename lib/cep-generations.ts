@@ -4,7 +4,10 @@ import {
   getCepClientConfig,
   requireCepClientConfig,
 } from "@/lib/cep-client-registry";
-import { getActiveAuthorSubscription } from "@/lib/cep-entitlements";
+import {
+  cepAiGenerationsLimit,
+  getActiveAuthorSubscription,
+} from "@/lib/cep-entitlements";
 import {
   consumeCepSpunkramGeneration,
   consumeGeneration,
@@ -15,15 +18,23 @@ import {
   type GenerationTool,
 } from "@/lib/generations";
 
-async function cepLimits(user: ResolvedCaptionsUser) {
+async function cepQuota(user: ResolvedCaptionsUser) {
   const cfg =
     getCepClientConfig(user.cepClient || "spunkram-cep") ??
     requireCepClientConfig("spunkram-cep");
   if (typeof user.id !== "number") {
-    return { cfg, authorSubscribed: true as boolean };
+    return {
+      cfg,
+      authorSubscribed: true as boolean,
+      monthlyLimit: cfg.editorAiGenerationsLimit,
+    };
   }
   const sub = await getActiveAuthorSubscription(user.id, cfg.authorId);
-  return { cfg, authorSubscribed: sub.active };
+  return {
+    cfg,
+    authorSubscribed: sub.active,
+    monthlyLimit: cepAiGenerationsLimit(cfg, sub),
+  };
 }
 
 /** Status for captions/chapters/voiceover — Spunkram CEP uses author-tier limits. */
@@ -44,13 +55,10 @@ export async function generationsStatusForResolvedUser(
     };
   }
   if (user.source === "cep-bearer") {
-    const { cfg, authorSubscribed } = await cepLimits(user);
+    const { monthlyLimit, authorSubscribed } = await cepQuota(user);
     return getCepSpunkramGenerationsStatus(
       user.id,
-      {
-        free: cfg.freeGenerationsLimit,
-        subscribed: cfg.subscribedGenerationsLimit,
-      },
+      monthlyLimit,
       authorSubscribed,
     );
   }
@@ -68,14 +76,11 @@ export async function consumeGenerationForResolvedUser(
     };
   }
   if (user.source === "cep-bearer") {
-    const { cfg, authorSubscribed } = await cepLimits(user);
+    const { monthlyLimit, authorSubscribed } = await cepQuota(user);
     return consumeCepSpunkramGeneration(
       user.id,
       tool,
-      {
-        free: cfg.freeGenerationsLimit,
-        subscribed: cfg.subscribedGenerationsLimit,
-      },
+      monthlyLimit,
       authorSubscribed,
     );
   }

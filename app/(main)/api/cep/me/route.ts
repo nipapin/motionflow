@@ -31,12 +31,15 @@ export async function GET(req: NextRequest) {
     const cfg =
       getCepClientConfig(user.client) ?? requireCepClientConfig("spunkram-cep");
 
+    const hostRaw = (req.nextUrl.searchParams.get("host") || "").toUpperCase();
+    const host = hostRaw === "AE" || hostRaw === "PR" ? hostRaw : undefined;
+
     const [{ tier, subscription, purchases }, devices] = await Promise.all([
-      resolveCepTier(user.id, cfg),
+      resolveCepTier(user.id, cfg, { host }),
       listDevicesForUser(user.id, user.deviceId),
     ]);
 
-    const entitlements = cepEntitlementsForTier(tier, cfg);
+    const entitlements = cepEntitlementsForTier(tier, cfg, subscription);
 
     return NextResponse.json({
       user: {

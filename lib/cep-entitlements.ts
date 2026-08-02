@@ -12,6 +12,10 @@ import {
 import { productThumbnailUrl } from "@/lib/product-ui";
 import type { Product } from "@/lib/product-types";
 import { getPurchasesForUser, userOwnsItem } from "@/lib/purchases";
+import {
+  resolveSpunkramSubscriptionTierId,
+  type SpunkramSubscriptionTierId,
+} from "@/lib/spunkram-paddle-config";
 
 const SUB_TABLE = "subscription_systems";
 
@@ -22,6 +26,8 @@ export type CepAuthorSubscription = {
   plan: string | null;
   status: string | null;
   renews_at: string | null;
+  /** `library` = Editor, `ai_toolkit` = Editor AI */
+  tierId: SpunkramSubscriptionTierId | null;
 };
 
 type SubRow = RowDataPacket & {
@@ -31,6 +37,7 @@ type SubRow = RowDataPacket & {
   plan: string | null;
   ends_at: string | null;
   paddle_product_name: string | null;
+  paddle_price_id: string | null;
 };
 
 function endsAtStillValid(endsAt: string | null): boolean {
@@ -65,7 +72,7 @@ export async function getActiveAuthorSubscription(
 ): Promise<CepAuthorSubscription> {
   const pool = getPool();
   const [rows] = await pool.execute<SubRow[]>(
-    `SELECT id, author_id, status, plan, ends_at, paddle_product_name
+    `SELECT id, author_id, status, plan, ends_at, paddle_product_name, paddle_price_id
      FROM \`${SUB_TABLE}\`
      WHERE buyer_id = ? AND author_id = ?
      ORDER BY id DESC`,
@@ -73,28 +80,61 @@ export async function getActiveAuthorSubscription(
   );
   const active = rows.find((r) => rowIsActive(r));
   if (!active) {
-    return { active: false, plan: null, status: "none", renews_at: null };
+    return {
+      active: false,
+      plan: null,
+      status: "none",
+      renews_at: null,
+      tierId: null,
+    };
   }
   const cancelled = active.status === -1;
+  const planLabel =
+    active.paddle_product_name?.trim() ||
+    active.plan?.trim() ||
+    "Spunkram Library";
+  const tierId =
+    resolveSpunkramSubscriptionTierId({
+      priceId: active.paddle_price_id,
+      plan: active.plan,
+      productName: active.paddle_product_name,
+    }) ?? "ai_toolkit";
   return {
     active: true,
-    plan:
-      active.paddle_product_name?.trim() ||
-      active.plan?.trim() ||
-      "Spunkram Library",
+    plan: planLabel,
     status: cancelled ? "cancelled" : "active",
     renews_at: toIsoDate(active.ends_at),
+    tierId,
   };
 }
+
+/** Monthly AI generation quota for Spunkram CEP by subscription tier. */
+export function cepAiGenerationsLimit(
+  cfg: CepClientConfig,
+  subscription: Pick<CepAuthorSubscription, "active" | "tierId">,
+): number {
+  if (!subscription.active) return cfg.freeGenerationsLimit;
+  if (subscription.tierId === "library") return cfg.editorGenerationsLimit;
+  return cfg.editorAiGenerationsLimit;
+}
+
+export type CepPurchaseDto = {
+  id: string;
+  name?: string;
+  product_type?: string;
+  /** Host app for this pack; null = other hosts (e.g. DaVinci) — hide in AE/PR CEP. */
+  primary_type: "AE" | "PR" | null;
+};
 
 export async function resolveCepTier(
   userId: number,
   cfg: CepClientConfig,
+  opts?: { host?: "AE" | "PR" },
 ): Promise<{
   tier: CepAccessTier;
   subscription: CepAuthorSubscription;
   purchaseCount: number;
-  purchases: Array<{ id: string; name?: string; product_type?: string }>;
+  purchases: CepPurchaseDto[];
 }> {
   const [subscription, allPurchases] = await Promise.all([
     getActiveAuthorSubscription(userId, cfg.authorId),
@@ -105,11 +145,20 @@ export async function resolveCepTier(
     (p) => p.product?.author_id === cfg.authorId,
   );
 
-  const purchases = authorPurchases.map((p) => ({
-    id: `purchase_${p.id}`,
-    name: p.product?.name || `Item ${p.itemId}`,
-    product_type: "pack" as const,
-  }));
+  const seenItemIds = new Set<number>();
+  const purchases: CepPurchaseDto[] = [];
+  for (const p of authorPurchases) {
+    if (seenItemIds.has(p.itemId)) continue;
+    seenItemIds.add(p.itemId);
+    const primary_type = p.product ? productHostType(p.product) : null;
+    if (opts?.host && primary_type !== opts.host) continue;
+    purchases.push({
+      id: `purchase_${p.id}`,
+      name: p.product?.name || `Item ${p.itemId}`,
+      product_type: "pack",
+      primary_type,
+    });
+  }
 
   let tier: CepAccessTier = "free";
   if (subscription.active) tier = "subscribed";
@@ -126,13 +175,17 @@ export async function resolveCepTier(
 export function cepEntitlementsForTier(
   tier: CepAccessTier,
   cfg: CepClientConfig,
+  subscription?: Pick<CepAuthorSubscription, "active" | "tierId">,
 ): { free_pack_slots: number; ai_generations_limit: number } {
   return {
     free_pack_slots: cfg.freePackSlots,
-    ai_generations_limit:
-      tier === "subscribed"
-        ? cfg.subscribedGenerationsLimit
-        : cfg.freeGenerationsLimit,
+    ai_generations_limit: cepAiGenerationsLimit(
+      cfg,
+      subscription ?? {
+        active: tier === "subscribed",
+        tierId: tier === "subscribed" ? "ai_toolkit" : null,
+      },
+    ),
   };
 }
 
@@ -144,13 +197,20 @@ export function cepManageSubscriptionUrl(cfg: CepClientConfig): string {
   return motionflowMainSiteUrl(cfg.manageSubscriptionPath);
 }
 
-/** Map marketplace category slug → CEP host type. */
+/** Map marketplace category / name → CEP host type (AE/PR only). */
 export function productHostType(product: Product): "AE" | "PR" | null {
   const slug = (product.index_category_slug || "").toLowerCase();
   if (slug === "after-effects" || slug === "ae" || slug.includes("after-effect")) {
     return "AE";
   }
   if (slug === "premiere-pro" || slug === "premiere" || slug === "pr") {
+    return "PR";
+  }
+  const name = (product.name || "").toLowerCase();
+  if (name.includes("after effects") || name.includes("after-effects")) {
+    return "AE";
+  }
+  if (name.includes("premiere")) {
     return "PR";
   }
   return null;
@@ -272,7 +332,7 @@ export async function buildCepMarketPackages(opts: {
       author: cfg.extensionName,
       version: undefined,
       primary_type: primary,
-      image_url: productThumbnailUrl(product) || `${motionflowSiteOrigin()}/assets/spunkram-logo.png`,
+      image_url: productThumbnailUrl(product) || `${motionflowSiteOrigin()}/assets/spunkram.png`,
       custom_price: isFreePrice ? 0 : price,
       video_id: extractYoutubeId(product.youtube_preview),
       owned,

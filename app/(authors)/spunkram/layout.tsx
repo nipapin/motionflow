@@ -6,6 +6,7 @@ import { AuthProvider } from "@/components/auth-provider";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { SpunkramMainHeader } from "@/components/spunkram-main-header";
 import { PaddleProvider } from "@/lib/paddle";
+import { getSpunkramPaddleClientConfig } from "@/lib/spunkram-paddle-config";
 import { SiteFooter } from "@/components/site-footer";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -42,6 +43,7 @@ export default async function RootLayout({
   const initialUser = sessionUser
     ? sessionUser
     : null;
+  const spunkramPaddle = getSpunkramPaddleClientConfig();
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -71,7 +73,10 @@ export default async function RootLayout({
           storageKey="motionflow-theme"
         >
           <AuthProvider initialUser={initialUser}>
-            <PaddleProvider>
+            <PaddleProvider
+              token={spunkramPaddle.token}
+              environment={spunkramPaddle.environment}
+            >
               <div className="relative min-h-screen overflow-x-clip">
                 {/* Decorative layer first so it never stacks above app content in edge cases */}
                 <EditorialBackdrop />
