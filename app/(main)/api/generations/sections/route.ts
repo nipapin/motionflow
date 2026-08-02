@@ -9,6 +9,8 @@ import { GENERATION_LIMIT_REACHED_CODE } from "@/lib/ai-generation-gate";
 import {
   consumeGenerationForResolvedUser,
   generationsStatusForResolvedUser,
+  billableAccountRequiredResponse,
+  isBillableCepUser,
 } from "@/lib/cep-generations";
 
 export const runtime = "nodejs";
@@ -145,6 +147,7 @@ export async function POST(req: NextRequest) {
     });
     if (!access.ok) return access.response;
     const user = access.user;
+    if (!isBillableCepUser(user)) return billableAccountRequiredResponse();
 
     if (!process.env.REPLICATE_API_TOKEN) {
       console.error("[sections generation] REPLICATE_API_TOKEN is not configured");
@@ -190,18 +193,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (typeof user.id === "number") {
-      const preStatus = await generationsStatusForResolvedUser(user);
-      if (preStatus.total_generations_left <= 0) {
-        return NextResponse.json(
-          {
-            code: GENERATION_LIMIT_REACHED_CODE,
-            error: "GENERATION_LIMIT_REACHED",
-            ...preStatus,
-          },
-          { status: 402 },
-        );
-      }
+    const preStatus = await generationsStatusForResolvedUser(user);
+    if (preStatus.total_generations_left <= 0) {
+      return NextResponse.json(
+        {
+          code: GENERATION_LIMIT_REACHED_CODE,
+          error: "GENERATION_LIMIT_REACHED",
+          ...preStatus,
+        },
+        { status: 402 },
+      );
     }
 
     let output: unknown;
@@ -238,23 +239,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: GENERIC_ERROR }, { status: 502 });
     }
 
-    let generations: unknown;
-    if (typeof user.id === "number") {
-      const consumed = await consumeGenerationForResolvedUser(user, "sections");
-      if (!consumed.ok) {
-        return NextResponse.json(
-          {
-            code: GENERATION_LIMIT_REACHED_CODE,
-            error: "GENERATION_LIMIT_REACHED",
-            ...consumed.status,
-          },
-          { status: 402 },
-        );
-      }
-      generations = consumed.status;
+    const consumed = await consumeGenerationForResolvedUser(user, "sections");
+    if (!consumed.ok) {
+      return NextResponse.json(
+        {
+          code: GENERATION_LIMIT_REACHED_CODE,
+          error: "GENERATION_LIMIT_REACHED",
+          ...consumed.status,
+        },
+        { status: 402 },
+      );
     }
 
-    return NextResponse.json({ sections, generations });
+    return NextResponse.json({ sections, generations: consumed.status });
   } catch (error) {
     console.error("[sections generation] unexpected error:", error);
     return NextResponse.json({ error: GENERIC_ERROR }, { status: 500 });

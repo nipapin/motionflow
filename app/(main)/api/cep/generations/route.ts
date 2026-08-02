@@ -14,28 +14,15 @@ import {
 } from "@/lib/cep-client-registry";
 import { getActiveAuthorSubscription, cepAiGenerationsLimit } from "@/lib/cep-entitlements";
 import {
-  CREATOR_AI_BILLING_PERIOD_GENERATIONS_LIMIT,
   getCepSpunkramGenerationsStatus,
   getGenerationsStatus,
-  type GenerationStatus,
 } from "@/lib/generations";
+import {
+  billableAccountRequiredResponse,
+  isBillableCepUser,
+} from "@/lib/cep-generations";
 
 export const runtime = "nodejs";
-
-/** Unlimited placeholder for CEP local-dev admin (no numeric user id). */
-function devUnlimitedStatus(): GenerationStatus {
-  return {
-    used: 0,
-    limit: CREATOR_AI_BILLING_PERIOD_GENERATIONS_LIMIT,
-    effective_limit: CREATOR_AI_BILLING_PERIOD_GENERATIONS_LIMIT,
-    remaining: CREATOR_AI_BILLING_PERIOD_GENERATIONS_LIMIT,
-    hasSubscription: true,
-    plan: "creator_ai",
-    subscription_generations_left: CREATOR_AI_BILLING_PERIOD_GENERATIONS_LIMIT,
-    extra_generations_left: 0,
-    total_generations_left: CREATOR_AI_BILLING_PERIOD_GENERATIONS_LIMIT,
-  };
-}
 
 async function readIdentity(req: NextRequest): Promise<CaptionsIdentityInput> {
   const bearer = bearerFromRequest(req);
@@ -69,11 +56,8 @@ async function handleStatus(req: NextRequest) {
     }
 
     if (typeof user.id !== "number") {
-      return NextResponse.json({
-        authenticated: true,
-        source: user.source,
-        ...devUnlimitedStatus(),
-      });
+      // cep-dev has no billable quota — do not report fake unlimited credits.
+      return billableAccountRequiredResponse();
     }
 
     // CEP Bearer → Spunkram author tier (5 free / 10 Editor / 100 Editor AI).
@@ -104,6 +88,10 @@ async function handleStatus(req: NextRequest) {
             : "spunkram_editor_ai"
           : "free",
       });
+    }
+
+    if (!isBillableCepUser(user)) {
+      return billableAccountRequiredResponse();
     }
 
     const status = await getGenerationsStatus(user.id);

@@ -45,11 +45,9 @@ function getCepDevAdmin(): { email: string; id: string } | null {
 }
 
 /**
- * Production gate for CEP dev-admin: requires `CEP_DEV_ADMIN_TOKEN` to be
- * configured *and* matched by the caller's `devToken`. The token is only
- * ever embedded in non-distributed CEP builds (`npm run watch` / `build`,
- * never `zxp` / `zip` — see `vite.config.ts`), so it never reaches real
- * users while still letting the developer exercise AI tools against prod.
+ * Production gate for CEP dev-admin: disabled entirely in production
+ * (`resolveCaptionsUser` returns null). Outside production, requires
+ * `CEP_DEV_ADMIN_TOKEN` to match the caller's `devToken`.
  */
 function isDevTokenValid(token: string | null | undefined): boolean {
   const expected = process.env.CEP_DEV_ADMIN_TOKEN?.trim();
@@ -102,7 +100,11 @@ export async function resolveCaptionsUser(
   const dev = getCepDevAdmin();
   if (!dev) return null;
 
-  if (isProduction() && !isDevTokenValid(identity.devToken)) return null;
+  // Never allow the shared cep-dev backdoor against production — it skipped
+  // generation metering (string user id). Use a real device Bearer instead.
+  if (isProduction()) return null;
+
+  if (!isDevTokenValid(identity.devToken)) return null;
 
   const email = normalizeEmail(identity.email);
   const userId = normalizeId(identity.userId);

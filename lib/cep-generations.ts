@@ -1,4 +1,5 @@
 import "server-only";
+import { NextResponse } from "next/server";
 import type { ResolvedCaptionsUser } from "@/lib/auth/resolve-captions-user";
 import {
   getCepClientConfig,
@@ -18,17 +19,45 @@ import {
   type GenerationTool,
 } from "@/lib/generations";
 
-async function cepQuota(user: ResolvedCaptionsUser) {
+export const BILLABLE_ACCOUNT_REQUIRED_CODE = "BILLABLE_ACCOUNT_REQUIRED" as const;
+
+function emptyStatus(): GenerationStatus {
+  return {
+    used: 0,
+    limit: 0,
+    effective_limit: 0,
+    remaining: 0,
+    hasSubscription: false,
+    plan: "none",
+    subscription_generations_left: 0,
+    extra_generations_left: 0,
+    total_generations_left: 0,
+  };
+}
+
+/** Real DB user id — required for any metered CEP AI call. */
+export function isBillableCepUser(
+  user: ResolvedCaptionsUser,
+): user is ResolvedCaptionsUser & { id: number } {
+  return typeof user.id === "number";
+}
+
+export function billableAccountRequiredResponse(): NextResponse {
+  return NextResponse.json(
+    {
+      code: BILLABLE_ACCOUNT_REQUIRED_CODE,
+      error: "BILLABLE_ACCOUNT_REQUIRED",
+      message: "Sign in with a Motionflow account to use AI generations.",
+      ...emptyStatus(),
+    },
+    { status: 403 },
+  );
+}
+
+async function cepQuota(user: ResolvedCaptionsUser & { id: number }) {
   const cfg =
     getCepClientConfig(user.cepClient || "spunkram-cep") ??
     requireCepClientConfig("spunkram-cep");
-  if (typeof user.id !== "number") {
-    return {
-      cfg,
-      authorSubscribed: true as boolean,
-      monthlyLimit: cfg.editorAiGenerationsLimit,
-    };
-  }
   const sub = await getActiveAuthorSubscription(user.id, cfg.authorId);
   return {
     cfg,
@@ -41,19 +70,10 @@ async function cepQuota(user: ResolvedCaptionsUser) {
 export async function generationsStatusForResolvedUser(
   user: ResolvedCaptionsUser,
 ): Promise<GenerationStatus> {
-  if (typeof user.id !== "number") {
-    return {
-      used: 0,
-      limit: 100,
-      effective_limit: 100,
-      remaining: 100,
-      hasSubscription: true,
-      plan: "creator_ai",
-      subscription_generations_left: 100,
-      extra_generations_left: 0,
-      total_generations_left: 100,
-    };
-  }
+  // cep-dev / string ids are never billable — report zero so clients cannot
+  // treat them as unlimited.
+  if (!isBillableCepUser(user)) return emptyStatus();
+
   if (user.source === "cep-bearer") {
     const { monthlyLimit, authorSubscribed } = await cepQuota(user);
     return getCepSpunkramGenerationsStatus(
@@ -65,15 +85,16 @@ export async function generationsStatusForResolvedUser(
   return getGenerationsStatus(user.id);
 }
 
+/**
+ * Atomically consume 1 generation. Non-billable identities always fail
+ * (no silent unlimited path).
+ */
 export async function consumeGenerationForResolvedUser(
   user: ResolvedCaptionsUser,
   tool: GenerationTool,
 ): Promise<ConsumeResult> {
-  if (typeof user.id !== "number") {
-    return {
-      ok: true,
-      status: await generationsStatusForResolvedUser(user),
-    };
+  if (!isBillableCepUser(user)) {
+    return { ok: false, reason: "limit_reached", status: emptyStatus() };
   }
   if (user.source === "cep-bearer") {
     const { monthlyLimit, authorSubscribed } = await cepQuota(user);

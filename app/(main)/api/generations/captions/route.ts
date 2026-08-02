@@ -13,6 +13,8 @@ import {
 import {
   generationsStatusForResolvedUser,
   consumeGenerationForResolvedUser,
+  billableAccountRequiredResponse,
+  isBillableCepUser,
 } from "@/lib/cep-generations";
 import { uploadBufferToR2 } from "@/lib/r2-storage";
 
@@ -297,6 +299,7 @@ export async function POST(req: NextRequest) {
       bearer: bearerFromRequest(req),
     });
     if (!access.ok) return access.response;
+    if (!isBillableCepUser(access.user)) return billableAccountRequiredResponse();
 
     console.info(
       "[captions generation] user",
@@ -355,15 +358,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Meter real session users before the expensive Whisper calls.
-    if (typeof access.user.id === "number") {
-      const preStatus = await generationsStatusForResolvedUser(access.user);
-      if (preStatus.total_generations_left <= 0) {
-        return NextResponse.json(
-          { code: GENERATION_LIMIT_REACHED_CODE, ...preStatus },
-          { status: 402 },
-        );
-      }
+    // Meter before the expensive Whisper calls.
+    const preStatus = await generationsStatusForResolvedUser(access.user);
+    if (preStatus.total_generations_left <= 0) {
+      return NextResponse.json(
+        { code: GENERATION_LIMIT_REACHED_CODE, ...preStatus },
+        { status: 402 },
+      );
     }
 
     let audioUrl: string;
@@ -439,14 +440,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (typeof access.user.id === "number") {
-      const consumed = await consumeGenerationForResolvedUser(access.user, "captions");
-      if (!consumed.ok) {
-        return NextResponse.json(
-          { code: GENERATION_LIMIT_REACHED_CODE, ...consumed.status },
-          { status: 402 },
-        );
-      }
+    const consumed = await consumeGenerationForResolvedUser(access.user, "captions");
+    if (!consumed.ok) {
+      return NextResponse.json(
+        { code: GENERATION_LIMIT_REACHED_CODE, ...consumed.status },
+        { status: 402 },
+      );
     }
 
     return NextResponse.json({ words, chunk, translated });

@@ -8,6 +8,8 @@ import {
 import {
   consumeGenerationForResolvedUser,
   generationsStatusForResolvedUser,
+  billableAccountRequiredResponse,
+  isBillableCepUser,
 } from "@/lib/cep-generations";
 import { GENERATION_LIMIT_REACHED_CODE } from "@/lib/ai-generation-gate";
 import { insertGenerationRecord } from "@/lib/generation-records";
@@ -63,6 +65,7 @@ export async function POST(req: NextRequest) {
     });
     if (!access.ok) return access.response;
     const user = access.user;
+    if (!isBillableCepUser(user)) return billableAccountRequiredResponse();
 
     if (!process.env.REPLICATE_API_TOKEN) {
       console.error("[voiceover] REPLICATE_API_TOKEN is not configured");
@@ -94,14 +97,12 @@ export async function POST(req: NextRequest) {
     const rawSpeed = typeof body.speed === "number" ? body.speed : 1;
     const speed = Math.min(Math.max(Number.isNaN(rawSpeed) ? 1 : rawSpeed, 0.5), 2);
 
-    if (typeof user.id === "number") {
-      const preStatus = await generationsStatusForResolvedUser(user);
-      if (preStatus.total_generations_left <= 0) {
-        return NextResponse.json(
-          { code: GENERATION_LIMIT_REACHED_CODE, error: "GENERATION_LIMIT_REACHED", ...preStatus },
-          { status: 402 },
-        );
-      }
+    const preStatus = await generationsStatusForResolvedUser(user);
+    if (preStatus.total_generations_left <= 0) {
+      return NextResponse.json(
+        { code: GENERATION_LIMIT_REACHED_CODE, error: "GENERATION_LIMIT_REACHED", ...preStatus },
+        { status: 402 },
+      );
     }
 
     const settings = {
@@ -132,15 +133,13 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       console.error("[voiceover] replicate error:", err);
       const { status, message } = mapReplicateError(err);
-      if (typeof user.id === "number") {
-        void insertGenerationRecord({
-          userId: user.id,
-          tool: "tts",
-          status: "failed",
-          settings,
-          errorMessage: message,
-        });
-      }
+      void insertGenerationRecord({
+        userId: user.id,
+        tool: "tts",
+        status: "failed",
+        settings,
+        errorMessage: message,
+      });
       return NextResponse.json({ error: "GENERATION_FAILED", message }, { status });
     }
 
@@ -177,7 +176,7 @@ export async function POST(req: NextRequest) {
     try {
       const uploaded = await uploadBufferToR2(audioBuffer, {
         contentType: "audio/mpeg",
-        keyPrefix: `voiceover/${typeof user.id === "number" ? user.id : "dev"}`,
+        keyPrefix: `voiceover/${user.id}`,
         extension: "mp3",
       });
       audioUrl = uploaded.url;
@@ -192,24 +191,21 @@ export async function POST(req: NextRequest) {
     const duration =
       Math.round(((audioBuffer.length * 8) / BITRATE) * 10) / 10;
 
-    let generations: unknown;
-    if (typeof user.id === "number") {
-      const consumed = await consumeGenerationForResolvedUser(user, "tts");
-      if (!consumed.ok) {
-        return NextResponse.json(
-          { code: GENERATION_LIMIT_REACHED_CODE, error: "GENERATION_LIMIT_REACHED", ...consumed.status },
-          { status: 402 },
-        );
-      }
-      generations = consumed.status;
-      void insertGenerationRecord({
-        userId: user.id,
-        tool: "tts",
-        status: "ok",
-        settings,
-        result: { audio_url: audioUrl },
-      });
+    const consumed = await consumeGenerationForResolvedUser(user, "tts");
+    if (!consumed.ok) {
+      return NextResponse.json(
+        { code: GENERATION_LIMIT_REACHED_CODE, error: "GENERATION_LIMIT_REACHED", ...consumed.status },
+        { status: 402 },
+      );
     }
+    const generations = consumed.status;
+    void insertGenerationRecord({
+      userId: user.id,
+      tool: "tts",
+      status: "ok",
+      settings,
+      result: { audio_url: audioUrl },
+    });
 
     return NextResponse.json({
       audio_url: audioUrl,
