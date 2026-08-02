@@ -109,7 +109,7 @@ const PRODUCT_PAGES: Record<number | string, string> = {
 
 const ICONS: Record<number | string, string> = {
   4141: "/assets/logo.png",
-  1691: "/assets/spunkram.png",
+  1691: "/assets/spunkram.svg",
   "": "/assets/logo_square.png",
 };
 

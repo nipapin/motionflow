@@ -332,7 +332,7 @@ export async function buildCepMarketPackages(opts: {
       author: cfg.extensionName,
       version: undefined,
       primary_type: primary,
-      image_url: productThumbnailUrl(product) || `${motionflowSiteOrigin()}/assets/spunkram.png`,
+      image_url: productThumbnailUrl(product) || `${motionflowSiteOrigin()}/assets/spunkram.svg`,
       custom_price: isFreePrice ? 0 : price,
       video_id: extractYoutubeId(product.youtube_preview),
       owned,

@@ -263,7 +263,16 @@ export function CepExtensionAuthDialog({
                 </p>
                 <div className="flex w-full gap-3">
                   <Button
-                    className="h-10 flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
+                    className={cn(
+                      "h-10 flex-1 font-semibold tracking-tight text-white",
+                      "border border-white/10 bg-brand-violet-soft",
+                      "shadow-[0_4px_24px_-6px_rgb(45_20_90/0.55),inset_0_1px_0_0_rgb(255_255_255/0.18)]",
+                      "backdrop-blur-xl backdrop-saturate-150",
+                      "transition-[background-image,box-shadow,border-color] duration-200",
+                      "hover:bg-brand-violet-soft-hover hover:shadow-[0_6px_28px_-6px_rgb(55_25_110/0.55),inset_0_1px_0_0_rgb(255_255_255/0.22)]",
+                      "light:border-black/10 light:shadow-[0_4px_24px_-6px_rgb(45_20_90/0.35),inset_0_1px_0_0_rgb(0_0_0/0.08)]",
+                      "light:hover:shadow-[0_6px_28px_-6px_rgb(55_25_110/0.4),inset_0_1px_0_0_rgb(0_0_0/0.1)]",
+                    )}
                     disabled={phase === "submitting"}
                     onClick={() => void submit("approve")}
                   >
