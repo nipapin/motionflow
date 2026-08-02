@@ -29,24 +29,34 @@ interface SendTelegramMessageOptions {
 
 const API_BASE = "https://api.telegram.org";
 
+/** Strip surrounding quotes / whitespace — common when env is set as KEY="value". */
+function envValue(name: string): string | null {
+    const raw = process.env[name];
+    if (raw == null) return null;
+    let v = raw.trim();
+    if (
+        (v.startsWith('"') && v.endsWith('"')) ||
+        (v.startsWith("'") && v.endsWith("'"))
+    ) {
+        v = v.slice(1, -1).trim();
+    }
+    return v || null;
+}
+
 function getBotToken(): string | null {
-    const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
-    return token ? token : null;
+    return envValue("TELEGRAM_BOT_TOKEN");
 }
 
 function getRequestsChatId(): string | null {
-    const chatId = process.env.TELEGRAM_REQUESTS_CHAT_ID?.trim();
-    return chatId ? chatId : null;
+    return envValue("TELEGRAM_REQUESTS_CHAT_ID");
 }
 
 function getSupportGroupChatId(): string | null {
-    const chatId = process.env.GROUP_CHAT_ID?.trim();
-    return chatId ? chatId : null;
+    return envValue("GROUP_CHAT_ID");
 }
 
 function getSupportTopicId(): string | null {
-    const topicId = process.env.TOPIC_ID?.trim();
-    return topicId ? topicId : null;
+    return envValue("TOPIC_ID");
 }
 
 /**
@@ -139,9 +149,24 @@ export async function sendTelegramSupportReport(
         console.warn("[telegram] TOPIC_ID is not set — skipping support notification");
         return false;
     }
-    return sendTelegramMessage(chatId, text, {
+    const token = getBotToken();
+    if (!token) {
+        console.warn("[telegram] TELEGRAM_BOT_TOKEN is not set — skipping support notification");
+        return false;
+    }
+
+    console.info(
+        `[telegram] support report → chat=${chatId} topic=${topicId} token=…${token.slice(-6)} bytes=${text.length}`,
+    );
+    const ok = await sendTelegramMessage(chatId, text, {
         parseMode: options.parseMode ?? "HTML",
         disablePreview: true,
         messageThreadId: topicId,
     });
+    if (ok) {
+        console.info("[telegram] support report delivered");
+    } else {
+        console.error("[telegram] support report NOT delivered");
+    }
+    return ok;
 }

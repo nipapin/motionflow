@@ -262,12 +262,29 @@ export async function POST(req: NextRequest) {
             user ? { id: user.id, email: user.email } : null,
         );
 
-        // Best-effort: accept the report even if Telegram is down / misconfigured.
-        void sendTelegramSupportReport(text).catch((err) => {
-            console.error("[cep/support/report] telegram failed:", err);
-        });
+        // Await so PM2/logs show Telegram result and the client learns if it landed.
+        let telegram = false;
+        try {
+            telegram = await sendTelegramSupportReport(text);
+        } catch (err) {
+            console.error("[cep/support/report] telegram threw:", err);
+            telegram = false;
+        }
 
-        return NextResponse.json({ ok: true, delivered: true }, { status: 202 });
+        return NextResponse.json(
+            {
+                ok: true,
+                delivered: true,
+                telegram,
+                ...(telegram
+                    ? {}
+                    : {
+                          telegram_error:
+                              "Telegram send failed or env missing — check GROUP_CHAT_ID / TOPIC_ID / TELEGRAM_BOT_TOKEN (no quotes) and pm2 logs for [telegram]",
+                      }),
+            },
+            { status: 202 },
+        );
     } catch (err) {
         console.error("[cep/support/report]", err);
         return NextResponse.json(
