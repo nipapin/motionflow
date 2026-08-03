@@ -195,7 +195,17 @@ function toTitles(raw: unknown): string[] {
     if (!Array.isArray(raw)) return [];
     const titles: string[] = [];
     for (const item of raw) {
-        if (typeof item === "string" && item.trim()) titles.push(item.trim());
+        let text = "";
+        if (typeof item === "string") {
+            text = item.trim();
+        } else if (item && typeof item === "object") {
+            // Claude sometimes returns [{title: "..."}] instead of string[]
+            const row = item as Record<string, unknown>;
+            if (typeof row.title === "string") text = row.title.trim();
+            else if (typeof row.text === "string") text = row.text.trim();
+            else if (typeof row.name === "string") text = row.name.trim();
+        }
+        if (text) titles.push(text);
         if (titles.length >= TITLE_COUNT) break;
     }
     return titles;
@@ -337,41 +347,106 @@ export async function POST(req: NextRequest) {
         // остальных полей укладывается в заметно меньший бюджет токенов
         const maxTokens = target === "all" || target === "chapters" ? 3072 : 768;
 
-        let output: unknown;
-        try {
-            output = await replicate.run(CHAPTERS_MODEL, {
-                input: {
-                    prompt,
-                    system_prompt: systemPromptFor(target, languageName),
-                    max_tokens: maxTokens,
-                },
-            });
-        } catch (err) {
-            console.error("[chapters generation] replicate error:", err);
-            const { status, message } = mapReplicateError(err);
-            return NextResponse.json({ error: message }, { status });
-        }
-
-        const text = Array.isArray(output) ? output.join("") : String(output ?? "");
-
-        let result: ChaptersResponse;
-        try {
-            const parsed = extractJsonObject(text) as Record<string, unknown>;
-            result = {};
-            if (wantTitles) result.titles = toTitles(parsed.titles);
-            if (wantChapters) {
-                const sections = toSections(parsed.sections, chunks);
-                if (!sections.length) throw new Error("empty sections output");
-                result.sections = sections;
+        const runOnce = async (): Promise<ChaptersResponse> => {
+            let output: unknown;
+            try {
+                output = await replicate.run(CHAPTERS_MODEL, {
+                    input: {
+                        prompt,
+                        system_prompt: systemPromptFor(target, languageName),
+                        max_tokens: maxTokens,
+                    },
+                });
+            } catch (err) {
+                console.error("[chapters generation] replicate error:", err);
+                const mapped = mapReplicateError(err);
+                const e = new Error(mapped.message) as Error & {
+                    status?: number;
+                    code?: string;
+                };
+                e.status = mapped.status;
+                e.code = "CHAPTERS_REPLICATE_FAILED";
+                throw e;
             }
-            if (wantDescription) result.description = toDescription(parsed.description);
-            if (wantTags) result.tags = toTags(parsed.tags);
-        } catch (parseErr) {
-            console.error("[chapters generation] failed to parse model output:", parseErr, text);
-            return NextResponse.json({ error: GENERIC_ERROR }, { status: 502 });
+
+            const text = Array.isArray(output) ? output.join("") : String(output ?? "");
+            try {
+                const parsed = extractJsonObject(text) as Record<string, unknown>;
+                const result: ChaptersResponse = {};
+                if (wantTitles) {
+                    result.titles = toTitles(parsed.titles);
+                    if (!result.titles.length) {
+                        throw new Error("empty titles output");
+                    }
+                }
+                if (wantChapters) {
+                    const sections = toSections(parsed.sections, chunks);
+                    if (!sections.length) throw new Error("empty sections output");
+                    result.sections = sections;
+                }
+                if (wantDescription) result.description = toDescription(parsed.description);
+                if (wantTags) result.tags = toTags(parsed.tags);
+                return result;
+            } catch (parseErr) {
+                console.error(
+                    "[chapters generation] failed to parse model output:",
+                    parseErr,
+                    text.slice(0, 2000),
+                );
+                const e = new Error(
+                    parseErr instanceof Error ? parseErr.message : "parse failed",
+                ) as Error & { status?: number; code?: string };
+                e.status = 502;
+                e.code = "CHAPTERS_PARSE_FAILED";
+                throw e;
+            }
+        };
+
+        // One retry — Haiku occasionally returns empty / non-JSON for titles-only.
+        let result: ChaptersResponse | null = null;
+        let lastErr: (Error & { status?: number; code?: string }) | null = null;
+        for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+                result = await runOnce();
+                break;
+            } catch (err) {
+                lastErr = err as Error & { status?: number; code?: string };
+                if (lastErr.code === "CHAPTERS_REPLICATE_FAILED") break;
+                console.warn(
+                    `[chapters generation] attempt ${attempt + 1} failed:`,
+                    lastErr.message,
+                );
+            }
         }
 
-        const consumed = await consumeGenerationForResolvedUser(user, "chapters");
+        if (!result) {
+            const status = lastErr?.status ?? 502;
+            const message =
+                lastErr?.code === "CHAPTERS_REPLICATE_FAILED"
+                    ? lastErr.message
+                    : GENERIC_ERROR;
+            return NextResponse.json(
+                {
+                    error: message,
+                    code: lastErr?.code ?? "CHAPTERS_FAILED",
+                },
+                { status },
+            );
+        }
+
+        let consumed;
+        try {
+            consumed = await consumeGenerationForResolvedUser(user, "chapters");
+        } catch (consumeErr) {
+            console.error("[chapters generation] consume failed:", consumeErr);
+            return NextResponse.json(
+                {
+                    error: GENERIC_ERROR,
+                    code: "CHAPTERS_CONSUME_FAILED",
+                },
+                { status: 500 },
+            );
+        }
         if (!consumed.ok) {
             return NextResponse.json(
                 {
@@ -386,6 +461,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ...result, generations: consumed.status });
     } catch (error) {
         console.error("[chapters generation] unexpected error:", error);
-        return NextResponse.json({ error: GENERIC_ERROR }, { status: 500 });
+        return NextResponse.json(
+            { error: GENERIC_ERROR, code: "CHAPTERS_UNEXPECTED" },
+            { status: 500 },
+        );
     }
 }
