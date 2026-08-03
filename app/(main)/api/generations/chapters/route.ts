@@ -80,6 +80,13 @@ function mapReplicateError(error: unknown): { status: number; message: string } 
         };
     }
 
+    if (status === 422 || /unprocessable|validation failed|invalid_fields/i.test(raw)) {
+        return {
+            status: 503,
+            message: "The chapters service rejected the request. Please try again shortly.",
+        };
+    }
+
     if (status >= 500 && status < 600) {
         return {
             status: 503,
@@ -343,9 +350,8 @@ export async function POST(req: NextRequest) {
         const wantChapters = target === "all" || target === "chapters";
         const wantDescription = target === "all" || target === "description";
         const wantTags = target === "all" || target === "tags";
-        // главы — самая "тяжёлая" часть по объёму вывода, точечная регенерация
-        // остальных полей укладывается в заметно меньший бюджет токенов
-        const maxTokens = target === "all" || target === "chapters" ? 3072 : 768;
+        // Claude on Replicate requires max_tokens >= 1024 (422 otherwise).
+        const maxTokens = target === "all" || target === "chapters" ? 3072 : 1024;
 
         const runOnce = async (): Promise<ChaptersResponse> => {
             let output: unknown;
