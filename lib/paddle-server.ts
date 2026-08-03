@@ -2,7 +2,10 @@ import "server-only";
 import crypto from "node:crypto";
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
-import { incrementPurchasedExtraBalance } from "@/lib/user-generation-credits";
+import {
+  MOTIONFLOW_CREDITS_AUTHOR_ID,
+  incrementPurchasedExtraBalance,
+} from "@/lib/user-generation-credits";
 import { EXTRA_GEN_PACKS } from "@/lib/extra-generation-packs";
 import { normalizePaddleProductNameToken } from "@/lib/paddle-product-label";
 import {
@@ -608,7 +611,12 @@ export async function applyExtraGenerationsCredit(
       await conn.commit();
       return { ok: true, reason: "extra_generations_credit_already_applied" };
     }
-    await incrementPurchasedExtraBalance(userId, generations, conn);
+    await incrementPurchasedExtraBalance(
+      userId,
+      generations,
+      conn,
+      MOTIONFLOW_CREDITS_AUTHOR_ID,
+    );
     await conn.commit();
     console.info(
       `[paddle] extra AI generations +${generations} for user ${userId} (txn ${paddleTransactionId})`,

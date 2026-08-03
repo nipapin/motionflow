@@ -61,6 +61,7 @@ async function cepQuota(user: ResolvedCaptionsUser & { id: number }) {
   const sub = await getActiveAuthorSubscription(user.id, cfg.authorId);
   return {
     cfg,
+    authorId: cfg.authorId,
     authorSubscribed: sub.active,
     monthlyLimit: cepAiGenerationsLimit(cfg, sub),
   };
@@ -75,11 +76,12 @@ export async function generationsStatusForResolvedUser(
   if (!isBillableCepUser(user)) return emptyStatus();
 
   if (user.source === "cep-bearer") {
-    const { monthlyLimit, authorSubscribed } = await cepQuota(user);
+    const { monthlyLimit, authorSubscribed, authorId } = await cepQuota(user);
     return getCepSpunkramGenerationsStatus(
       user.id,
       monthlyLimit,
       authorSubscribed,
+      authorId,
     );
   }
   return getGenerationsStatus(user.id);
@@ -97,12 +99,13 @@ export async function consumeGenerationForResolvedUser(
     return { ok: false, reason: "limit_reached", status: emptyStatus() };
   }
   if (user.source === "cep-bearer") {
-    const { monthlyLimit, authorSubscribed } = await cepQuota(user);
+    const { monthlyLimit, authorSubscribed, authorId } = await cepQuota(user);
     return consumeCepSpunkramGeneration(
       user.id,
       tool,
       monthlyLimit,
       authorSubscribed,
+      authorId,
     );
   }
   return consumeGeneration(user.id, tool);

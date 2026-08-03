@@ -8,6 +8,7 @@ import {
   type MotionflowGenerationPlan,
 } from "@/lib/subscriptions";
 import {
+  MOTIONFLOW_CREDITS_AUTHOR_ID,
   ensureCreditsRowForUser,
   ensureUserGenerationCreditsSchema,
   decrementExtraBalanceOne,
@@ -15,7 +16,6 @@ import {
   getExtraBalance,
   getSubscriptionAdjustment,
   subscriptionAdjustmentFromRow,
-  type CreditsRow,
 } from "@/lib/user-generation-credits";
 
 /** Lifetime cap for users without an active Motionflow Creator subscription. */
@@ -54,7 +54,7 @@ export interface GenerationStatus {
   plan: MotionflowGenerationPlan;
   /** Generations remaining from the monthly subscription quota. */
   subscription_generations_left: number;
-  /** Purchased extra generations (never expire). */
+  /** Purchased extra generations (never expire) for this author scope. */
   extra_generations_left: number;
   /** Total generations available = subscription_generations_left + extra_generations_left. */
   total_generations_left: number;
@@ -64,7 +64,33 @@ const TABLE = "user_generations";
 
 let tableEnsured = false;
 
-/** Lazily create the tracking table on first use. Safe to call repeatedly. */
+type ColRow = RowDataPacket & { c: number };
+
+async function columnExists(table: string, column: string): Promise<boolean> {
+  const [rows] = await getPool().execute<ColRow[]>(
+    `SELECT COUNT(*) AS c
+       FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = ?
+        AND column_name = ?`,
+    [table, column],
+  );
+  return Number(rows[0]?.c ?? 0) > 0;
+}
+
+async function indexExists(table: string, indexName: string): Promise<boolean> {
+  const [rows] = await getPool().execute<ColRow[]>(
+    `SELECT COUNT(*) AS c
+       FROM information_schema.statistics
+      WHERE table_schema = DATABASE()
+        AND table_name = ?
+        AND index_name = ?`,
+    [table, indexName],
+  );
+  return Number(rows[0]?.c ?? 0) > 0;
+}
+
+/** Lazily create / migrate the usage ledger. Existing rows → author_id = 0. */
 async function ensureTable(): Promise<void> {
   if (tableEnsured) return;
   const pool = getPool();
@@ -72,13 +98,36 @@ async function ensureTable(): Promise<void> {
     `CREATE TABLE IF NOT EXISTS \`${TABLE}\` (
        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
        user_id BIGINT UNSIGNED NOT NULL,
+       author_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
        tool VARCHAR(32) NOT NULL,
        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
        PRIMARY KEY (id),
        KEY idx_user (user_id),
-       KEY idx_user_created (user_id, created_at)
+       KEY idx_user_created (user_id, created_at),
+       KEY idx_user_author_created (user_id, author_id, created_at)
      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
   );
+
+  if (!(await columnExists(TABLE, "author_id"))) {
+    await pool.query(
+      `ALTER TABLE \`${TABLE}\`
+         ADD COLUMN \`author_id\` BIGINT UNSIGNED NOT NULL DEFAULT 0 AFTER \`user_id\``,
+    );
+    await pool.query(
+      `UPDATE \`${TABLE}\` SET \`author_id\` = ${MOTIONFLOW_CREDITS_AUTHOR_ID}`,
+    );
+  }
+  if (!(await indexExists(TABLE, "idx_user_author_created"))) {
+    try {
+      await pool.query(
+        `ALTER TABLE \`${TABLE}\`
+           ADD KEY \`idx_user_author_created\` (\`user_id\`, \`author_id\`, \`created_at\`)`,
+      );
+    } catch {
+      /* ignore */
+    }
+  }
+
   tableEnsured = true;
 }
 
@@ -145,6 +194,7 @@ function getLimitForPlan(plan: MotionflowGenerationPlan): {
 
 async function countUsed(
   userId: number,
+  authorId: number,
   plan: MotionflowGenerationPlan,
   usageWindow: { start: string; endExclusive: string },
   conn?: PoolConnection,
@@ -154,8 +204,9 @@ async function countUsed(
   if (plan === "none") {
     const lock = conn ? " FOR UPDATE" : "";
     const [rows] = await executor.execute<CountRow[]>(
-      `SELECT COUNT(*) AS c FROM \`${TABLE}\` WHERE user_id = ?${lock}`,
-      [userId],
+      `SELECT COUNT(*) AS c FROM \`${TABLE}\`
+        WHERE user_id = ? AND author_id = ?${lock}`,
+      [userId, authorId],
     );
     return Number(rows[0]?.c ?? 0);
   }
@@ -164,9 +215,10 @@ async function countUsed(
   const [rows] = await executor.execute<CountRow[]>(
     `SELECT COUNT(*) AS c FROM \`${TABLE}\`
      WHERE user_id = ?
+       AND author_id = ?
        AND created_at >= ?
        AND created_at < ?${lock}`,
-    [userId, start, endExclusive],
+    [userId, authorId, start, endExclusive],
   );
   return Number(rows[0]?.c ?? 0);
 }
@@ -176,19 +228,19 @@ export async function getGenerationsStatus(
 ): Promise<GenerationStatus> {
   await ensureTable();
   await ensureUserGenerationCreditsSchema();
+  const authorId = MOTIONFLOW_CREDITS_AUTHOR_ID;
   const ctx = await getMotionflowGenerationContext(userId);
   const plan = ctx.plan;
   const { limit, hasSubscription } = getLimitForPlan(plan);
   const usageWindow = resolveUsageWindow(ctx);
-  const used = await countUsed(userId, plan, usageWindow);
+  const used = await countUsed(userId, authorId, plan, usageWindow);
   const subAdj =
     plan === "creator" || plan === "creator_ai"
-      ? await getSubscriptionAdjustment(userId)
+      ? await getSubscriptionAdjustment(userId, authorId)
       : 0;
   const effectiveLimit = limit + subAdj;
   const subscription_generations_left = Math.max(0, effectiveLimit - used);
-  const extra_generations_left =
-    plan === "creator_ai" ? await getExtraBalance(userId) : 0;
+  const extra_generations_left = await getExtraBalance(userId, authorId);
   const total_generations_left =
     subscription_generations_left + extra_generations_left;
   return {
@@ -209,9 +261,8 @@ export type ConsumeResult =
   | { ok: false; status: GenerationStatus; reason: "limit_reached" };
 
 /**
- * Atomically reserves one generation for the user.
- * Re-checks the limit inside a transaction to avoid race conditions.
- * Creator + AI: deducts subscription quota first, then extra_generations_count.
+ * Atomically reserves one Motionflow-scoped generation.
+ * Deducts subscription/free quota first, then platform extra_balance.
  */
 export async function consumeGeneration(
   userId: number,
@@ -219,6 +270,7 @@ export async function consumeGeneration(
 ): Promise<ConsumeResult> {
   await ensureTable();
   await ensureUserGenerationCreditsSchema();
+  const authorId = MOTIONFLOW_CREDITS_AUTHOR_ID;
   const pool = getPool();
   const conn = await pool.getConnection();
   try {
@@ -229,30 +281,22 @@ export async function consumeGeneration(
     const { limit, hasSubscription } = getLimitForPlan(plan);
     const usageWindow = resolveUsageWindow(ctx);
 
-    let creditsRow: CreditsRow | null = null;
-    if (plan === "creator" || plan === "creator_ai") {
-      await ensureCreditsRowForUser(userId, conn);
-      creditsRow = await fetchCreditsRowLocked(userId, conn);
-    }
+    await ensureCreditsRowForUser(userId, authorId, conn);
+    const creditsRow = await fetchCreditsRowLocked(userId, authorId, conn);
 
-    const used = await countUsed(userId, plan, usageWindow, conn);
+    const used = await countUsed(userId, authorId, plan, usageWindow, conn);
     const subAdj =
       plan === "creator" || plan === "creator_ai"
         ? subscriptionAdjustmentFromRow(creditsRow)
         : 0;
     const effectiveLimit = limit + subAdj;
 
-    const extraCount =
-      plan === "creator_ai"
-        ? Number(creditsRow?.extra_balance ?? 0)
-        : 0;
+    const extraCount = Number(creditsRow?.extra_balance ?? 0);
 
     const subscriptionLeft = Math.max(0, effectiveLimit - used);
     const totalLeft = subscriptionLeft + extraCount;
 
-    const emptyStatus = (
-      u: number,
-    ): GenerationStatus => ({
+    const emptyStatus = (u: number): GenerationStatus => ({
       used: u,
       limit,
       effective_limit: effectiveLimit,
@@ -278,13 +322,13 @@ export async function consumeGeneration(
 
     if (subscriptionLeft > 0) {
       await conn.execute<ResultSetHeader>(
-        `INSERT INTO \`${TABLE}\` (user_id, tool) VALUES (?, ?)`,
-        [userId, tool],
+        `INSERT INTO \`${TABLE}\` (user_id, author_id, tool) VALUES (?, ?, ?)`,
+        [userId, authorId, tool],
       );
       newSubscriptionLeft = subscriptionLeft - 1;
       newExtraLeft = extraCount;
     } else {
-      const dec = await decrementExtraBalanceOne(userId, conn);
+      const dec = await decrementExtraBalanceOne(userId, conn, authorId);
       if (!dec) {
         await conn.rollback();
         return {
@@ -327,11 +371,14 @@ export async function consumeGeneration(
   }
 }
 
-/** Spunkram CEP monthly quota (free / Editor / Editor AI — limit chosen by caller). */
+/**
+ * Spunkram CEP (or other author) monthly quota — scoped by marketplace author_id.
+ */
 export async function getCepSpunkramGenerationsStatus(
   userId: number,
   monthlyLimit: number,
   authorSubscribed: boolean,
+  authorId: number,
 ): Promise<GenerationStatus> {
   await ensureTable();
   await ensureUserGenerationCreditsSchema();
@@ -341,10 +388,8 @@ export async function getCepSpunkramGenerationsStatus(
   // Free = lifetime pool; subscribed = calendar month (UTC).
   const plan: MotionflowGenerationPlan = hasSubscription ? "creator_ai" : "none";
   const usageWindow = utcMonthBounds();
-  const used = await countUsed(userId, plan, usageWindow);
-  const extra_generations_left = hasSubscription
-    ? await getExtraBalance(userId)
-    : 0;
+  const used = await countUsed(userId, authorId, plan, usageWindow);
+  const extra_generations_left = await getExtraBalance(userId, authorId);
   const subscription_generations_left = Math.max(0, limit - used);
   const total_generations_left =
     subscription_generations_left + extra_generations_left;
@@ -367,6 +412,7 @@ export async function consumeCepSpunkramGeneration(
   tool: GenerationTool,
   monthlyLimit: number,
   authorSubscribed: boolean,
+  authorId: number,
 ): Promise<ConsumeResult> {
   await ensureTable();
   await ensureUserGenerationCreditsSchema();
@@ -380,16 +426,11 @@ export async function consumeCepSpunkramGeneration(
     const plan: MotionflowGenerationPlan = hasSubscription ? "creator_ai" : "none";
     const usageWindow = utcMonthBounds();
 
-    let creditsRow: CreditsRow | null = null;
-    if (hasSubscription) {
-      await ensureCreditsRowForUser(userId, conn);
-      creditsRow = await fetchCreditsRowLocked(userId, conn);
-    }
+    await ensureCreditsRowForUser(userId, authorId, conn);
+    const creditsRow = await fetchCreditsRowLocked(userId, authorId, conn);
 
-    const used = await countUsed(userId, plan, usageWindow, conn);
-    const extraCount = hasSubscription
-      ? Number(creditsRow?.extra_balance ?? 0)
-      : 0;
+    const used = await countUsed(userId, authorId, plan, usageWindow, conn);
+    const extraCount = Number(creditsRow?.extra_balance ?? 0);
     const subscriptionLeft = Math.max(0, limit - used);
     const totalLeft = subscriptionLeft + extraCount;
 
@@ -415,13 +456,13 @@ export async function consumeCepSpunkramGeneration(
 
     if (subscriptionLeft > 0) {
       await conn.execute<ResultSetHeader>(
-        `INSERT INTO \`${TABLE}\` (user_id, tool) VALUES (?, ?)`,
-        [userId, tool],
+        `INSERT INTO \`${TABLE}\` (user_id, author_id, tool) VALUES (?, ?, ?)`,
+        [userId, authorId, tool],
       );
       newSubscriptionLeft = subscriptionLeft - 1;
       newExtraLeft = extraCount;
     } else {
-      const dec = await decrementExtraBalanceOne(userId, conn);
+      const dec = await decrementExtraBalanceOne(userId, conn, authorId);
       if (!dec) {
         await conn.rollback();
         return { ok: false, reason: "limit_reached", status: emptyStatus(used) };

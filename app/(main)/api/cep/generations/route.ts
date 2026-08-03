@@ -77,6 +77,7 @@ async function handleStatus(req: NextRequest) {
         cepUser.id,
         monthlyLimit,
         authorSub.active,
+        cfg.authorId,
       );
       return NextResponse.json({
         authenticated: true,
