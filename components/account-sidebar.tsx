@@ -10,6 +10,7 @@ import {
   Bookmark,
   Sparkles,
   LayoutDashboard,
+  Package,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -32,9 +33,11 @@ function isActive(normalized: string, href: string): boolean {
 
 interface AccountSidebarProps {
   access: number;
+  email?: string | null;
+  showPackages?: boolean;
 }
 
-export function AccountSidebar({ access }: AccountSidebarProps) {
+export function AccountSidebar({ access, showPackages }: AccountSidebarProps) {
   const pathname = usePathname();
   const normalized = pathname.replace(/\/$/, "") || "/";
 
@@ -64,6 +67,27 @@ export function AccountSidebar({ access }: AccountSidebarProps) {
               </li>
             );
           })}
+          {showPackages ? (
+            <li>
+              <Link
+                href="/profile/packages"
+                className={cn(
+                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium smooth",
+                  isActive(normalized, "/profile/packages")
+                    ? "bg-linear-to-r from-blue-600 to-blue-500 text-white shadow-md shadow-blue-500/20"
+                    : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+                )}
+              >
+                <Package
+                  className={cn(
+                    "h-5 w-5 shrink-0",
+                    isActive(normalized, "/profile/packages") ? "text-white" : "text-blue-400",
+                  )}
+                />
+                Packages
+              </Link>
+            </li>
+          ) : null}
         </ul>
       </div>
 
@@ -83,7 +107,6 @@ export function AccountSidebar({ access }: AccountSidebarProps) {
           </div>
         </div>
       ) : null}
-
     </nav>
   );
 }

@@ -49,6 +49,13 @@
 
 ---
 
+## Фаза 1c — Packages admin + R2Sync (MVP A)
+
+- Web: `/profile/packages` for `basepackagehelp@gmail.com`
+- Studio + R2Sync APIs; docs: `docs/packages-admin-mvp-a.md`, `docs/r2sync-api.md`, Phase B: `docs/packages-admin-phase-b.md`
+
+---
+
 ## Фазы
 
 ### Фаза 0 — Инвентаризация и контракт (P0)

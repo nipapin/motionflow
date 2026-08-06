@@ -8,6 +8,7 @@ import {
   CreditCard,
   Download,
   LogOut,
+  Package,
   ShoppingBag,
   Sparkles,
   User,
@@ -24,6 +25,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { PROFILE_PAGE_CLASS } from "@/lib/profile-layout";
 import { cn } from "@/lib/utils";
+
+const PACKAGES_ADMIN_EMAILS = new Set(["basepackagehelp@gmail.com"]);
 
 const ACCOUNT_LINKS = [
   { icon: User, label: "Profile", href: "/profile" },
@@ -126,7 +129,12 @@ export function ProfileHeader() {
                   onMouseEnter={openAccountMenu}
                   onMouseLeave={scheduleAccountMenuClose}
                 >
-                  {ACCOUNT_LINKS.map(({ icon: Icon, label, href }) => (
+                  {[
+                    ...ACCOUNT_LINKS,
+                    ...(user?.email && PACKAGES_ADMIN_EMAILS.has(user.email.trim().toLowerCase())
+                      ? ([{ icon: Package, label: "Packages", href: "/profile/packages" }] as const)
+                      : []),
+                  ].map(({ icon: Icon, label, href }) => (
                     <DropdownMenuItem
                       key={label}
                       asChild

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { AccountSidebar } from "@/components/account-sidebar";
+import { isPackagesAdmin } from "@/lib/packages-admin";
 
 export const metadata: Metadata = {
   title: "Account",
@@ -24,7 +25,11 @@ export default async function ProfileSectionLayout({
   return (
     <div className="flex flex-col gap-8 lg:flex-row lg:gap-10">
       <aside className="shrink-0 lg:w-56">
-        <AccountSidebar access={sessionUser.access} />
+        <AccountSidebar
+          access={sessionUser.access}
+          email={sessionUser.email}
+          showPackages={isPackagesAdmin(sessionUser.email)}
+        />
       </aside>
       <div className="min-w-0 flex-1">{children}</div>
     </div>

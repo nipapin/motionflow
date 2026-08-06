@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { motionflowMainSiteUrl, motionflowSiteOrigin } from "@/lib/motionflow-urls";
 import { SEARCH_CATEGORY_OPTIONS, searchCategoryHref, type SearchCategory } from "@/lib/search-categories";
 import { cn } from "@/lib/utils";
-import { Bookmark, ChevronDown, CreditCard, Download, LogOut, Search, ShoppingBag, Sparkles, User, X } from "lucide-react";
+import { Bookmark, ChevronDown, CreditCard, Download, LogOut, Package, Search, ShoppingBag, Sparkles, User, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -288,6 +288,9 @@ export function Header({
                   { icon: CreditCard, label: "My subscriptions", href: "/profile/subscriptions" },
                   { icon: Download, label: "My downloads", href: "/profile/downloads" },
                   { icon: Bookmark, label: "Favorites", href: "/profile/favorites" },
+                  ...(user?.email?.trim().toLowerCase() === "basepackagehelp@gmail.com"
+                    ? [{ icon: Package, label: "Packages", href: "/profile/packages" }]
+                    : []),
                 ].map(({ icon: Icon, label, href }) => (
                   <DropdownMenuItem
                     key={label}
