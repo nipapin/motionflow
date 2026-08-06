@@ -16,6 +16,8 @@ export interface Product {
   index_category_slug: string;
   sub_category_slug: string;
   name: string;
+  /** Pack version for Packages / CEP (nullable until set). */
+  version: string | null;
   description: string;
   description_html: string | null;
   description_json: Record<string, string>;

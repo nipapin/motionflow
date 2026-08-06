@@ -185,6 +185,7 @@ export async function getDirectSalesRows(
       index_category_slug: String(raw.index_category_slug ?? ""),
       sub_category_slug: "",
       name: itemName,
+      version: null,
       description: "",
       description_html: null,
       description_json: {},

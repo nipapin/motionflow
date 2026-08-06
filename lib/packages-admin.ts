@@ -30,6 +30,8 @@ export const PACKAGES_AUTHORS: PackagesAuthor[] = [
   },
 ];
 
+/** Keep `lib/packages-admin-client.ts` ids/labels in sync with this registry. */
+
 export function packagesAdminEmails(): Set<string> {
   const set = new Set<string>(DEFAULT_PACKAGES_ADMIN_EMAILS.map((e) => e.toLowerCase()));
   const fromEnv = process.env.PACKAGES_ADMIN_EMAILS?.trim();

@@ -181,8 +181,34 @@ function ViewToggle({
   );
 }
 
-function FileActions({ entry }: { entry: FsEntry }) {
-  if (entry.kind !== "file" || !entry.publicUrl) return null;
+function FileActions({
+  entry,
+  onSelectFile,
+  selectLabel,
+  objects,
+}: {
+  entry: FsEntry;
+  onSelectFile?: (obj: R2BrowserObject) => void;
+  selectLabel?: string;
+  objects: R2BrowserObject[];
+}) {
+  if (entry.kind !== "file") return null;
+  if (onSelectFile) {
+    return (
+      <button
+        type="button"
+        className="text-blue-400 hover:underline text-xs shrink-0"
+        onClick={(e) => {
+          e.stopPropagation();
+          const obj = objects.find((o) => o.key === entry.path);
+          if (obj) onSelectFile(obj);
+        }}
+      >
+        {selectLabel ?? "Select"}
+      </button>
+    );
+  }
+  if (!entry.publicUrl) return null;
   return (
     <button
       type="button"
@@ -200,7 +226,16 @@ function FileActions({ entry }: { entry: FsEntry }) {
   );
 }
 
-export function PackagesR2Browser({ objects }: { objects: R2BrowserObject[] }) {
+export function PackagesR2Browser({
+  objects,
+  onSelectFile,
+  selectLabel = "Select",
+}: {
+  objects: R2BrowserObject[];
+  /** When set, files show a select action instead of (or in addition to) copy. */
+  onSelectFile?: (obj: R2BrowserObject) => void;
+  selectLabel?: string;
+}) {
   const root = useMemo(
     () => commonRootPrefix(objects.map((o) => o.key)),
     [objects],
@@ -365,7 +400,12 @@ export function PackagesR2Browser({ objects }: { objects: R2BrowserObject[] }) {
                       : "—"}
                   </td>
                   <td className="py-1.5 pr-3">
-                    <FileActions entry={entry} />
+                    <FileActions
+                      entry={entry}
+                      objects={objects}
+                      onSelectFile={onSelectFile}
+                      selectLabel={selectLabel}
+                    />
                   </td>
                 </tr>
               ))}
@@ -484,7 +524,12 @@ export function PackagesR2Browser({ objects }: { objects: R2BrowserObject[] }) {
                             {entry.kind === "folder" ? (
                               <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/70" />
                             ) : (
-                              <FileActions entry={entry} />
+                              <FileActions
+                      entry={entry}
+                      objects={objects}
+                      onSelectFile={onSelectFile}
+                      selectLabel={selectLabel}
+                    />
                             )}
                           </button>
                         </li>
