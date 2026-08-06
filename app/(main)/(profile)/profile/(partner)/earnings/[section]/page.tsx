@@ -92,6 +92,7 @@ function stubProduct(name: string, slug: string, id: number): Product {
     index_category_slug: slug,
     sub_category_slug: "",
     name,
+    version: null,
     description: "",
     description_html: null,
     description_json: {},

@@ -35,6 +35,7 @@ function stubProduct(row: { index_category_slug: string; name: string; id: numbe
     index_category_slug: row.index_category_slug,
     sub_category_slug: "",
     name: row.name,
+    version: null,
     description: "",
     description_html: null,
     description_json: {},
