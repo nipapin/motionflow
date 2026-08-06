@@ -47,10 +47,12 @@ const nextConfig = {
         permanent: true,
       },
       {
+        // Catch-all for obsolete profile slugs. Keep real routes in the negative lookahead
+        // (including `packages`) or they 308 → /profile and look "unclickable".
         source:
-          '/profile/:slug((?!downloads|purchases|subscriptions|favorites|generations|dashboard|upload|items|earnings|payouts)[^/]+)',
+          '/profile/:slug((?!downloads|purchases|subscriptions|favorites|generations|dashboard|upload|items|earnings|payouts|packages)[^/]+)',
         destination: '/profile',
-        permanent: true,
+        permanent: false,
       },
     ]
   },
