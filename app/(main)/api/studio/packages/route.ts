@@ -12,6 +12,7 @@ import {
 import { listSpunkramVersionsFromR2 } from "@/lib/spunkram-release";
 import { listR2ObjectsForAuthor } from "@/lib/r2-list";
 import { listR2SyncEvents } from "@/lib/r2sync-events";
+import { listPremieregalDemoSources } from "@/lib/premieregal-demo-import";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,16 +35,22 @@ export async function GET(req: NextRequest) {
     ]);
 
     if (author.slug === "premiere-gal") {
-      const demos = await Promise.all(
-        listDemoHosts().map(async (host) => {
-          const [manifest, versions] = await Promise.all([
-            getGalToolkitDemoManifest(host),
-            listGalToolkitDemoVersionsFromR2(host).catch(() => []),
-          ]);
-          return { host, manifest, versions };
+      const [demos, premieregalSources] = await Promise.all([
+        Promise.all(
+          listDemoHosts().map(async (host) => {
+            const [manifest, versions] = await Promise.all([
+              getGalToolkitDemoManifest(host),
+              listGalToolkitDemoVersionsFromR2(host).catch(() => []),
+            ]);
+            return { host, manifest, versions };
+          }),
+        ),
+        listPremieregalDemoSources({ maxKeys: 120 }).catch((err) => {
+          console.error("[studio/packages] premieregal list", err);
+          return [];
         }),
-      );
-      return NextResponse.json({ author, demos, objects, events });
+      ]);
+      return NextResponse.json({ author, demos, objects, events, premieregalSources });
     }
 
     const spunkramVersions = await listSpunkramVersionsFromR2().catch(() => []);

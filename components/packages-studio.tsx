@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Copy, Package, RefreshCw, Upload } from "lucide-react";
+import { PackagesR2Browser } from "@/components/packages-r2-browser";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +43,14 @@ type SyncEvent = {
   created_at: string;
 };
 
+type PremieregalSource = {
+  key: string;
+  size: number;
+  lastModified: string | null;
+  suggestedHost: "PR" | "AE" | null;
+  kind: "max" | "update" | "compare" | "other";
+};
+
 function formatBytes(n: number) {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
@@ -58,9 +67,11 @@ async function copyText(text: string) {
 
 function DemoCard({
   demo,
+  sources,
   onSaved,
 }: {
   demo: DemoBlock;
+  sources: PremieregalSource[];
   onSaved: () => void;
 }) {
   const [name, setName] = useState(demo.manifest?.name || "");
@@ -68,12 +79,21 @@ function DemoCard({
   const [version, setVersion] = useState(demo.manifest?.version || "");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [importKey, setImportKey] = useState("");
 
   useEffect(() => {
     setName(demo.manifest?.name || "");
     setDescription(demo.manifest?.description || "");
     setVersion(demo.manifest?.version || "");
   }, [demo]);
+
+  useEffect(() => {
+    const preferred =
+      sources.find((s) => s.kind === "compare") ||
+      sources.find((s) => s.kind === "max") ||
+      sources[0];
+    setImportKey(preferred?.key || "");
+  }, [sources]);
 
   const saveMeta = async () => {
     setBusy(true);
@@ -136,6 +156,37 @@ function DemoCard({
     }
   };
 
+  const importFromPremieregal = async () => {
+    if (!importKey) {
+      setMsg("Pick a file from premieregal");
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/studio/packages/demo/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          host: demo.host,
+          sourceKey: importKey,
+          version: version || undefined,
+          name: name || undefined,
+          description: description || undefined,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = (await res.json()) as { manifest?: { version?: string } };
+      if (data.manifest?.version) setVersion(data.manifest.version);
+      setMsg("Imported from premieregal & published");
+      onSaved();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Import failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="rounded-xl border border-blue-500/20 bg-card/40 p-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
@@ -152,6 +203,14 @@ function DemoCard({
           </Button>
         ) : null}
       </div>
+      {demo.manifest ? (
+        <p className="text-xs text-muted-foreground">
+          Live: v{demo.manifest.version}
+          {demo.manifest.name ? ` · ${demo.manifest.name}` : ""}
+        </p>
+      ) : (
+        <p className="text-xs text-amber-400/90">No published demo yet — import or upload.</p>
+      )}
       <label className="block text-xs text-muted-foreground">
         Version
         <input
@@ -177,6 +236,38 @@ function DemoCard({
           onChange={(e) => setDescription(e.target.value)}
         />
       </label>
+
+      <div className="rounded-lg border border-border/50 bg-background/30 p-3 space-y-2">
+        <p className="text-xs font-medium text-muted-foreground">
+          Import from premieregal bucket
+        </p>
+        <select
+          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs"
+          value={importKey}
+          onChange={(e) => setImportKey(e.target.value)}
+          disabled={busy || sources.length === 0}
+        >
+          {sources.length === 0 ? (
+            <option value="">No matching zips</option>
+          ) : (
+            sources.map((s) => (
+              <option key={s.key} value={s.key}>
+                [{s.kind}] {s.key} ({formatBytes(s.size)})
+              </option>
+            ))
+          )}
+        </select>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          disabled={busy || !importKey}
+          onClick={() => void importFromPremieregal()}
+        >
+          Import & publish
+        </Button>
+      </div>
+
       <div className="flex flex-wrap gap-2">
         <Button type="button" size="sm" disabled={busy} onClick={saveMeta}>
           Save metadata
@@ -237,6 +328,7 @@ export function PackagesStudio() {
   >([]);
   const [objects, setObjects] = useState<R2Object[]>([]);
   const [events, setEvents] = useState<SyncEvent[]>([]);
+  const [premieregalSources, setPremieregalSources] = useState<PremieregalSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -261,6 +353,7 @@ export function PackagesStudio() {
       setSpunkramVersions(data.spunkramVersions || []);
       setObjects(data.objects || []);
       setEvents(data.events || []);
+      setPremieregalSources(data.premieregalSources || []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Load failed");
     } finally {
@@ -327,7 +420,16 @@ export function PackagesStudio() {
       {active === "premiere-gal" ? (
         <div className="grid gap-4 md:grid-cols-2">
           {demos.map((d) => (
-            <DemoCard key={d.host} demo={d} onSaved={() => void loadAuthor(active)} />
+            <DemoCard
+              key={d.host}
+              demo={d}
+              sources={premieregalSources.filter(
+                (s) =>
+                  s.suggestedHost === d.host &&
+                  (s.kind === "compare" || s.kind === "max" || s.kind === "update"),
+              )}
+              onSaved={() => void loadAuthor(active)}
+            />
           ))}
         </div>
       ) : null}
@@ -360,43 +462,8 @@ export function PackagesStudio() {
       ) : null}
 
       <div className="rounded-xl border border-blue-500/20 bg-card/40 p-4">
-        <h3 className="font-semibold mb-2">R2 files</h3>
-        {objects.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No objects under author prefixes.</p>
-        ) : (
-          <div className="overflow-auto max-h-80">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left text-muted-foreground border-b border-border/50">
-                  <th className="py-2 pr-2">Key</th>
-                  <th className="py-2 pr-2">Size</th>
-                  <th className="py-2 pr-2">Modified</th>
-                  <th className="py-2">Link</th>
-                </tr>
-              </thead>
-              <tbody>
-                {objects.map((o) => (
-                  <tr key={o.key} className="border-b border-border/30">
-                    <td className="py-1.5 pr-2 font-mono break-all">{o.key}</td>
-                    <td className="py-1.5 pr-2 whitespace-nowrap">{formatBytes(o.size)}</td>
-                    <td className="py-1.5 pr-2 whitespace-nowrap">
-                      {o.lastModified ? new Date(o.lastModified).toLocaleString() : "—"}
-                    </td>
-                    <td className="py-1.5">
-                      <button
-                        type="button"
-                        className="text-blue-400 hover:underline"
-                        onClick={() => copyText(o.publicUrl)}
-                      >
-                        copy
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <h3 className="font-semibold mb-3">R2 files</h3>
+        <PackagesR2Browser objects={objects} />
       </div>
 
       <div className="rounded-xl border border-blue-500/20 bg-card/40 p-4">
