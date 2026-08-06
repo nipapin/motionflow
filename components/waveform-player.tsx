@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Pause, Play } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
+import { sameOriginAudioSrc } from "@/lib/audio-proxy-url";
 import { cn } from "@/lib/utils";
 
 const BAR_COUNT = 240;
@@ -38,6 +39,7 @@ function enqueue(run: () => Promise<void>): QueueItem {
 
 // --------------- peak cache (in-memory, survives re-renders) ---------------
 const peakCache = new Map<string, number[]>();
+const durationCache = new Map<string, number>();
 
 function extractPeaks(buffer: AudioBuffer, barCount: number): number[] {
   const raw = buffer.getChannelData(0);
@@ -198,6 +200,7 @@ export function useGlobalAudioPlaybackState() {
 }
 
 // --------------- helpers ---------------
+
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
@@ -287,6 +290,7 @@ async function fetchPeaks(audioUrl: string): Promise<number[]> {
   const actx = new AudioContext();
   const decoded = await actx.decodeAudioData(buf).finally(() => actx.close());
   const peaks = extractPeaks(decoded, BAR_COUNT);
+  durationCache.set(audioUrl, decoded.duration);
 
   // 3. cache on server (fire-and-forget)
   fetch(`/api/audio-peaks?url=${encoded}`, {
@@ -352,6 +356,7 @@ export function WaveformPlayer({
   const rowRef = useRef<HTMLDivElement>(null);
 
   const url = audioUrl || "";
+  const playSrc = url ? sameOriginAudioSrc(url) : "";
 
   useEffect(() => {
     if (!url) return;
@@ -405,12 +410,19 @@ export function WaveformPlayer({
     };
   }, [url, eagerLoad]);
 
-  // Probe duration via metadata-only request.
+  // Duration from decoded peaks (CDN) or a light metadata probe (same-origin / other hosts).
   useEffect(() => {
     if (!url || duration > 0) return;
+    if (durationCache.has(url)) {
+      setDuration(durationCache.get(url)!);
+      return;
+    }
+    // Proxied CDN playback: wait for peaks / play instead of probing every row via the API.
+    if (playSrc !== url) return;
+
     const probe = new Audio();
     probe.preload = "metadata";
-    probe.src = url;
+    probe.src = playSrc;
     const onMeta = () => {
       setDuration(probe.duration);
       probe.src = "";
@@ -420,7 +432,7 @@ export function WaveformPlayer({
       probe.removeEventListener("loadedmetadata", onMeta);
       probe.src = "";
     };
-  }, [url, duration]);
+  }, [url, playSrc, duration, peaks]);
 
   // Reset internal state if the URL changes (e.g. user re-generates speech).
   const prevUrlRef = useRef(url);
@@ -438,8 +450,8 @@ export function WaveformPlayer({
 
   const getOrCreateAudio = useCallback(() => {
     if (audioRef.current) return audioRef.current;
-    if (!url) return null;
-    const audio = new Audio(url);
+    if (!playSrc) return null;
+    const audio = new Audio(playSrc);
     audio.preload = "auto";
     audioRef.current = audio;
     audio.addEventListener("loadedmetadata", () => setDuration(audio.duration));
@@ -462,7 +474,7 @@ export function WaveformPlayer({
       emitGlobalPlayback();
     });
     return audio;
-  }, [url]);
+  }, [playSrc]);
 
   const activePeaks = peaks ?? FLAT_PEAKS;
 
