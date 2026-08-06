@@ -273,6 +273,10 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
       <div className="rounded-xl border border-border/80 bg-card/40 overflow-hidden">
         {loading && projects.length === 0 ? (
           <p className="px-4 py-10 text-sm text-muted-foreground text-center">Loading…</p>
+        ) : error && projects.length === 0 ? (
+          <p className="px-4 py-10 text-sm text-muted-foreground text-center">
+            Could not load packages. Try Refresh.
+          </p>
         ) : filtered.length === 0 ? (
           <p className="px-4 py-10 text-sm text-muted-foreground text-center">
             {projects.length === 0

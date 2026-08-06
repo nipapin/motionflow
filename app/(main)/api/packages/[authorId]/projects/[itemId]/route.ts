@@ -110,6 +110,12 @@ export async function DELETE(
     if (msg === "NOT_FOUND") {
       return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
     }
+    if (msg === "DELETED_AT_UNAVAILABLE") {
+      return NextResponse.json(
+        { error: "DELETED_AT_UNAVAILABLE", message: "Soft-delete column unavailable" },
+        { status: 503 },
+      );
+    }
     console.error("[packages/project DELETE]", err);
     return NextResponse.json({ error: "SERVER_ERROR" }, { status: 500 });
   }

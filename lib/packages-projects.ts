@@ -22,6 +22,7 @@ function tableName(): string {
 }
 
 let versionColumnEnsured = false;
+let deletedAtColumnState: "unknown" | "present" | "absent" = "unknown";
 
 /** Lazy-add `version` on marketplace_items (no-op if already present). */
 export async function ensureMarketplaceItemsVersionColumn(): Promise<void> {
@@ -49,6 +50,40 @@ export async function ensureMarketplaceItemsVersionColumn(): Promise<void> {
     // Still mark attempted so we don't spam ALTER on every request if perms fail.
     versionColumnEnsured = true;
     throw err;
+  }
+}
+
+/**
+ * Ensure `deleted_at` exists for soft-delete. Returns whether SQL can filter on it.
+ * If ALTER is denied, list/get fall back to JS filtering (SELECT * without WHERE deleted_at).
+ */
+async function ensureMarketplaceItemsDeletedAtColumn(): Promise<boolean> {
+  if (deletedAtColumnState === "present") return true;
+  if (deletedAtColumnState === "absent") return false;
+
+  const pool = getPool();
+  const table = tableName();
+  try {
+    const [cols] = await pool.query<RowDataPacket[]>(
+      `SELECT COLUMN_NAME AS name
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = ?
+         AND COLUMN_NAME = 'deleted_at'
+       LIMIT 1`,
+      [table],
+    );
+    if (cols.length === 0) {
+      await pool.query(
+        `ALTER TABLE \`${table}\` ADD COLUMN \`deleted_at\` TIMESTAMP NULL DEFAULT NULL`,
+      );
+    }
+    deletedAtColumnState = "present";
+    return true;
+  } catch (err) {
+    console.error("[packages-projects] ensure deleted_at column", err);
+    deletedAtColumnState = "absent";
+    return false;
   }
 }
 
@@ -198,13 +233,19 @@ export async function listPackagesProjects(
 ): Promise<PackagesProjectDto[]> {
   assertPackagesAuthorId(authorId);
   await ensureMarketplaceItemsVersionColumn();
+  const hasDeletedAt = await ensureMarketplaceItemsDeletedAtColumn();
   const pool = getPool();
   const table = tableName();
   const [rows] = await pool.query<RowDataPacket[]>(
-    `SELECT * FROM \`${table}\`
-     WHERE author_id = ? AND deleted_at IS NULL
-     ORDER BY id DESC
-     LIMIT 500`,
+    hasDeletedAt
+      ? `SELECT * FROM \`${table}\`
+         WHERE author_id = ? AND deleted_at IS NULL
+         ORDER BY id DESC
+         LIMIT 500`
+      : `SELECT * FROM \`${table}\`
+         WHERE author_id = ?
+         ORDER BY id DESC
+         LIMIT 500`,
     [authorId],
   );
   return rows
@@ -219,12 +260,17 @@ export async function getPackagesProject(
 ): Promise<PackagesProjectDto | null> {
   assertPackagesAuthorId(authorId);
   await ensureMarketplaceItemsVersionColumn();
+  const hasDeletedAt = await ensureMarketplaceItemsDeletedAtColumn();
   const pool = getPool();
   const table = tableName();
   const [rows] = await pool.query<RowDataPacket[]>(
-    `SELECT * FROM \`${table}\`
-     WHERE id = ? AND author_id = ? AND deleted_at IS NULL
-     LIMIT 1`,
+    hasDeletedAt
+      ? `SELECT * FROM \`${table}\`
+         WHERE id = ? AND author_id = ? AND deleted_at IS NULL
+         LIMIT 1`
+      : `SELECT * FROM \`${table}\`
+         WHERE id = ? AND author_id = ?
+         LIMIT 1`,
     [itemId, authorId],
   );
   const product = rows[0] ? rowToProductLoose(rows[0]) : null;
@@ -239,6 +285,11 @@ export async function deletePackagesProject(
   assertPackagesAuthorId(authorId);
   const existing = await getPackagesProject(authorId, itemId);
   if (!existing) throw new Error("NOT_FOUND");
+
+  const hasDeletedAt = await ensureMarketplaceItemsDeletedAtColumn();
+  if (!hasDeletedAt) {
+    throw new Error("DELETED_AT_UNAVAILABLE");
+  }
 
   const pool = getPool();
   const table = tableName();
