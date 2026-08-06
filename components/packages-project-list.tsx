@@ -10,7 +10,17 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Trash2,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -122,6 +132,8 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -164,6 +176,25 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Create failed");
       setCreating(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/packages/${authorId}/projects/${deleteTarget.id}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) throw new Error(await res.text());
+      setProjects((prev) => prev.filter((p) => p.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -320,14 +351,26 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
                       {formatUpdated(p.updated_at)}
                     </TableCell>
                     <TableCell className="pr-4 text-right">
-                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8" asChild>
-                        <Link
-                          href={`/profile/packages/${authorId}/${p.id}`}
-                          aria-label={`Edit ${p.name}`}
+                      <div className="inline-flex items-center justify-end gap-0.5">
+                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8" asChild>
+                          <Link
+                            href={`/profile/packages/${authorId}/${p.id}`}
+                            aria-label={`Edit ${p.name}`}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Link>
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                          aria-label={`Delete ${p.name}`}
+                          onClick={() => setDeleteTarget(p)}
                         >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Link>
-                      </Button>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -344,6 +387,40 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
             : `${filtered.length} of ${projects.length} packages`}
         </p>
       ) : null}
+
+      <AlertDialog
+        open={deleteTarget != null}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent className="border-border bg-card">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete package?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget
+                ? `“${deleteTarget.name}” (#${deleteTarget.id}) will be removed from the packages list.`
+                : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleting}
+              onClick={() => void confirmDelete()}
+            >
+              {deleting ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
+              )}
+              Delete
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

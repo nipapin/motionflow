@@ -202,7 +202,7 @@ export async function listPackagesProjects(
   const table = tableName();
   const [rows] = await pool.query<RowDataPacket[]>(
     `SELECT * FROM \`${table}\`
-     WHERE author_id = ?
+     WHERE author_id = ? AND deleted_at IS NULL
      ORDER BY id DESC
      LIMIT 500`,
     [authorId],
@@ -223,12 +223,32 @@ export async function getPackagesProject(
   const table = tableName();
   const [rows] = await pool.query<RowDataPacket[]>(
     `SELECT * FROM \`${table}\`
-     WHERE id = ? AND author_id = ?
+     WHERE id = ? AND author_id = ? AND deleted_at IS NULL
      LIMIT 1`,
     [itemId, authorId],
   );
   const product = rows[0] ? rowToProductLoose(rows[0]) : null;
   return product ? productToPackagesProjectDto(product) : null;
+}
+
+/** Soft-delete a packages project (`deleted_at`). */
+export async function deletePackagesProject(
+  authorId: number,
+  itemId: number,
+): Promise<void> {
+  assertPackagesAuthorId(authorId);
+  const existing = await getPackagesProject(authorId, itemId);
+  if (!existing) throw new Error("NOT_FOUND");
+
+  const pool = getPool();
+  const table = tableName();
+  const [result] = await pool.query<ResultSetHeader>(
+    `UPDATE \`${table}\`
+     SET deleted_at = NOW(), updated_at = NOW()
+     WHERE id = ? AND author_id = ? AND deleted_at IS NULL`,
+    [itemId, authorId],
+  );
+  if (result.affectedRows < 1) throw new Error("NOT_FOUND");
 }
 
 export async function createPackagesProject(opts: {

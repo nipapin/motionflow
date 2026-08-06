@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getPackagesAuthorById, isPackagesAdmin } from "@/lib/packages-admin";
 import {
+  deletePackagesProject,
   getPackagesProject,
   isDownloadKeyAllowedForAuthor,
   updatePackagesProject,
@@ -84,6 +85,32 @@ export async function PATCH(
       return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
     }
     console.error("[packages/project PATCH]", err);
+    return NextResponse.json({ error: "SERVER_ERROR" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  ctx: { params: Promise<{ authorId: string; itemId: string }> },
+) {
+  if (!(await requireAdmin())) {
+    return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+  }
+  const params = await ctx.params;
+  const ids = parseIds(params.authorId, params.itemId);
+  if (!ids || !getPackagesAuthorById(ids.authorId)) {
+    return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
+  }
+
+  try {
+    await deletePackagesProject(ids.authorId, ids.itemId);
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "";
+    if (msg === "NOT_FOUND") {
+      return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
+    }
+    console.error("[packages/project DELETE]", err);
     return NextResponse.json({ error: "SERVER_ERROR" }, { status: 500 });
   }
 }
