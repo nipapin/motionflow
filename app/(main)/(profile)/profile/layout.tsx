@@ -23,8 +23,8 @@ export default async function ProfileSectionLayout({
   }
 
   return (
-    <div className="flex flex-col gap-8 lg:flex-row lg:gap-10">
-      <aside className="shrink-0 lg:w-56">
+    <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
+      <aside className="shrink-0 lg:w-56 lg:sticky lg:top-22 lg:self-start">
         <AccountSidebar
           access={sessionUser.access}
           email={sessionUser.email}

@@ -6,6 +6,7 @@ import { ArrowLeft, Loader2, Save } from "lucide-react";
 import { PackagesR2Browser, type R2BrowserObject } from "@/components/packages-r2-browser";
 import { Button } from "@/components/ui/button";
 import { getPackagesAuthorPublicById } from "@/lib/packages-admin-client";
+import { cn } from "@/lib/utils";
 
 type Project = {
   id: number;
@@ -20,6 +21,16 @@ type Project = {
   files: { main?: string; image?: string; video?: string };
 };
 
+function stripScripts(html: string): string {
+  return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
+}
+
+function toSafeHtml(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  return stripScripts(trimmed);
+}
+
 export function PackagesProjectEditor({
   authorId,
   itemId,
@@ -32,6 +43,8 @@ export function PackagesProjectEditor({
   const [name, setName] = useState("");
   const [version, setVersion] = useState("");
   const [description, setDescription] = useState("");
+  const [descMode, setDescMode] = useState<"edit" | "preview">("edit");
+  const [previewBroken, setPreviewBroken] = useState(false);
   const [r2Objects, setR2Objects] = useState<R2BrowserObject[]>([]);
   const [showPicker, setShowPicker] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -48,6 +61,7 @@ export function PackagesProjectEditor({
       setName(data.project.name);
       setVersion(data.project.version || "");
       setDescription(data.project.description || "");
+      setPreviewBroken(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Load failed");
     }
@@ -88,6 +102,7 @@ export function PackagesProjectEditor({
       if (!res.ok) throw new Error(await res.text());
       const data = (await res.json()) as { project: Project };
       setProject(data.project);
+      setDescription(data.project.description || "");
       setMsg("Saved");
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Save failed");
@@ -140,6 +155,7 @@ export function PackagesProjectEditor({
       if (!patch.ok) throw new Error(await patch.text());
       const data = (await patch.json()) as { project: Project };
       setProject(data.project);
+      if (kind === "preview") setPreviewBroken(false);
       setMsg(`${kind} uploaded`);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Upload failed");
@@ -195,6 +211,8 @@ export function PackagesProjectEditor({
     return <p className="text-sm text-muted-foreground">Loading…</p>;
   }
 
+  const descriptionPreviewHtml = toSafeHtml(description);
+
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
@@ -229,14 +247,63 @@ export function PackagesProjectEditor({
             placeholder="1.0.0"
           />
         </label>
-        <label className="block text-xs text-muted-foreground">
-          Description
-          <textarea
-            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm min-h-20"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </label>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-muted-foreground">Description (HTML)</span>
+            <div className="inline-flex rounded-md border border-border p-0.5">
+              <button
+                type="button"
+                className={cn(
+                  "rounded px-2.5 py-1 text-xs font-medium transition",
+                  descMode === "edit"
+                    ? "bg-muted text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                onClick={() => setDescMode("edit")}
+              >
+                Edit HTML
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  "rounded px-2.5 py-1 text-xs font-medium transition",
+                  descMode === "preview"
+                    ? "bg-muted text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                onClick={() => setDescMode("preview")}
+              >
+                Preview
+              </button>
+            </div>
+          </div>
+          {descMode === "edit" ? (
+            <textarea
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm min-h-40 font-mono"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              spellCheck={false}
+              placeholder="<p>Product description…</p>"
+            />
+          ) : descriptionPreviewHtml ? (
+            <div
+              className="min-h-40 rounded-lg border border-border bg-background px-4 py-3 text-sm leading-relaxed
+                [&>*+*]:mt-3
+                [&_h1]:mt-4 [&_h1]:text-xl [&_h1]:font-semibold
+                [&_h2]:mt-3 [&_h2]:text-lg [&_h2]:font-semibold
+                [&_h3]:mt-3 [&_h3]:text-base [&_h3]:font-semibold
+                [&_a]:text-blue-400 [&_a]:underline
+                [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-5
+                [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-5
+                [&_img]:my-3 [&_img]:h-auto [&_img]:max-w-full [&_img]:rounded-lg"
+              dangerouslySetInnerHTML={{ __html: descriptionPreviewHtml }}
+            />
+          ) : (
+            <div className="min-h-40 rounded-lg border border-border bg-background px-4 py-3 text-xs text-muted-foreground">
+              Nothing to preview yet.
+            </div>
+          )}
+        </div>
         <Button type="button" size="sm" disabled={busy} onClick={() => void saveMeta()}>
           <Save className="h-3.5 w-3.5 mr-1" />
           Save metadata
@@ -246,15 +313,28 @@ export function PackagesProjectEditor({
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="rounded-xl border border-blue-500/20 bg-card/40 p-4 space-y-3">
           <h3 className="font-semibold text-sm">Preview image</h3>
-          {project.previewUrl ? (
+          {project.previewUrl && !previewBroken ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={project.previewUrl}
               alt=""
               className="w-full max-h-40 object-contain rounded-lg bg-muted/30"
+              onError={() => setPreviewBroken(true)}
             />
           ) : (
-            <p className="text-xs text-muted-foreground">No preview</p>
+            <div className="space-y-1">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={author.logoUrl}
+                alt={`${author.label} logo`}
+                className="w-full max-h-40 object-contain rounded-lg bg-muted/30 p-4"
+              />
+              <p className="text-xs text-muted-foreground">
+                {project.previewUrl
+                  ? "Preview failed to load — showing author logo"
+                  : "No preview — showing author logo"}
+              </p>
+            </div>
           )}
           <label className="inline-flex">
             <input
