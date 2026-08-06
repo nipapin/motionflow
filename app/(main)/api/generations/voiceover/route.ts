@@ -33,25 +33,44 @@ const AUDIO_FORMAT = "mp3" as const;
 const SAMPLE_RATE = 32000;
 const BITRATE = 128000;
 
+const ALLOWED_EMOTIONS = new Set<string>([
+  "auto",
+  "neutral",
+  "happy",
+  "sad",
+  "angry",
+  "fearful",
+  "disgusted",
+  "surprised",
+  "calm",
+]);
+
 const GENERIC_ERROR =
   "We couldn't generate the voiceover right now. Please try again in a moment.";
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (Number.isNaN(value)) return min;
+  return Math.min(Math.max(value, min), max);
+}
 
 interface VoiceoverBody {
   text?: unknown;
   voice_id?: unknown;
   speed?: unknown;
+  volume?: unknown;
+  pitch?: unknown;
+  emotion?: unknown;
   /** MiniMax language_boost value, e.g. "Russian" | "Automatic". */
   language_boost?: unknown;
   /** Short alias accepted too, e.g. "ru" | "en". */
   language?: unknown;
   email?: unknown;
   userId?: unknown;
-  devToken?: unknown;
 }
 
 /**
  * POST /api/generations/voiceover — TTS for the CEP panel (MiniMax).
- * Auth: Bearer CEP token (preferred), web session cookie, or CEP dev identity.
+ * Auth: Bearer CEP token (preferred) or web session cookie.
  * Consumes 1 generation credit on success.
  * @see CEP/spunkram-library/docs/BACKEND_CEP_API.md §3.2
  */
@@ -94,8 +113,23 @@ export async function POST(req: NextRequest) {
 
     const voiceId = resolveVoiceId(body.voice_id) ?? "Wise_Woman";
     const languageBoost = resolveLanguageBoost(body.language_boost, body.language);
-    const rawSpeed = typeof body.speed === "number" ? body.speed : 1;
-    const speed = Math.min(Math.max(Number.isNaN(rawSpeed) ? 1 : rawSpeed, 0.5), 2);
+    const speed = clampNumber(
+      typeof body.speed === "number" ? body.speed : 1,
+      0.5,
+      2,
+    );
+    const volume = clampNumber(
+      typeof body.volume === "number" ? body.volume : 1,
+      0,
+      10,
+    );
+    const pitch = Math.round(
+      clampNumber(typeof body.pitch === "number" ? body.pitch : 0, -12, 12),
+    );
+    const emotion =
+      typeof body.emotion === "string" && ALLOWED_EMOTIONS.has(body.emotion)
+        ? body.emotion
+        : "auto";
 
     const preStatus = await generationsStatusForResolvedUser(user);
     if (preStatus.total_generations_left <= 0) {
@@ -110,6 +144,9 @@ export async function POST(req: NextRequest) {
       text,
       voice: voiceId,
       speed,
+      volume,
+      pitch,
+      emotion,
       language_boost: languageBoost,
       audio_format: AUDIO_FORMAT,
       sample_rate: SAMPLE_RATE,
@@ -123,6 +160,9 @@ export async function POST(req: NextRequest) {
           text,
           voice_id: voiceId,
           speed,
+          volume,
+          pitch,
+          emotion,
           language_boost: languageBoost,
           audio_format: AUDIO_FORMAT,
           sample_rate: SAMPLE_RATE,
@@ -213,6 +253,9 @@ export async function POST(req: NextRequest) {
       file_name: fileName,
       voice: voiceId,
       speed,
+      volume,
+      pitch,
+      emotion,
       language_boost: languageBoost,
       generations,
     });

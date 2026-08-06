@@ -10,69 +10,26 @@ export const UNAUTHORIZED_CODE = "UNAUTHORIZED" as const;
 export type CaptionsIdentityInput = {
   email?: string | null;
   userId?: string | null;
-  /** Secret shared with non-distributed CEP dev builds — required to use dev-admin in production. */
-  devToken?: string | null;
   /** Raw `Authorization` header — CEP panels send `Bearer mfcep_…` device tokens. */
   bearer?: string | null;
 };
 
 export type ResolvedCaptionsUser = {
-  /** Numeric DB id for real sessions; string for CEP local-dev admin. */
+  /** Numeric DB id for real sessions; string only if a legacy path remains. */
   id: number | string;
   email: string;
   name: string;
-  source: "session" | "cep-dev" | "cep-bearer";
-  /** When true, skip DB subscription lookup (CEP local-dev admin). */
+  source: "session" | "cep-bearer";
+  /** When true, skip DB subscription lookup. */
   treatAsSubscribed: boolean;
   /** Present for CEP device tokens — used for Spunkram entitlements. */
   cepClient?: string;
 };
 
-function isProduction(): boolean {
-  return process.env.NODE_ENV === "production";
-}
-
-/** CEP panel local-dev credentials. In production, also requires a matching `devToken` (see `isDevTokenValid`). */
-function getCepDevAdmin(): { email: string; id: string } | null {
-  const email = (
-    process.env.CEP_DEV_ADMIN_EMAIL ?? "admin@mail.ru"
-  )
-    .trim()
-    .toLowerCase();
-  const id = (process.env.CEP_DEV_ADMIN_ID ?? "dev-admin").trim();
-  if (!email && !id) return null;
-  return { email, id };
-}
-
-/**
- * Production gate for CEP dev-admin: disabled entirely in production
- * (`resolveCaptionsUser` returns null). Outside production, requires
- * `CEP_DEV_ADMIN_TOKEN` to match the caller's `devToken`.
- */
-function isDevTokenValid(token: string | null | undefined): boolean {
-  const expected = process.env.CEP_DEV_ADMIN_TOKEN?.trim();
-  if (!expected) return false;
-  return typeof token === "string" && token.trim() === expected;
-}
-
-function normalizeEmail(value: string | null | undefined): string | null {
-  if (typeof value !== "string") return null;
-  const t = value.trim().toLowerCase();
-  return t || null;
-}
-
-function normalizeId(value: string | null | undefined): string | null {
-  if (typeof value !== "string" && typeof value !== "number") return null;
-  const t = String(value).trim();
-  return t || null;
-}
-
 /**
  * Resolve caller for captions CEP / web:
  * 1) CEP Bearer device token (`Authorization: Bearer mfcep_…`, see lib/cep-auth.ts)
  * 2) Motion Flow session cookie
- * 3) CEP body identity matching CEP_DEV_ADMIN_* — in production also requires
- *    a valid `devToken` (see `isDevTokenValid`), always available outside prod.
  */
 export async function resolveCaptionsUser(
   identity: CaptionsIdentityInput = {},
@@ -97,29 +54,7 @@ export async function resolveCaptionsUser(
     return fromSession(session);
   }
 
-  const dev = getCepDevAdmin();
-  if (!dev) return null;
-
-  // Never allow the shared cep-dev backdoor against production — it skipped
-  // generation metering (string user id). Use a real device Bearer instead.
-  if (isProduction()) return null;
-
-  if (!isDevTokenValid(identity.devToken)) return null;
-
-  const email = normalizeEmail(identity.email);
-  const userId = normalizeId(identity.userId);
-
-  const emailOk = Boolean(email && email === dev.email);
-  const idOk = Boolean(userId && userId === dev.id);
-  if (!emailOk && !idOk) return null;
-
-  return {
-    id: dev.id,
-    email: dev.email,
-    name: "Admin (dev)",
-    source: "cep-dev",
-    treatAsSubscribed: true,
-  };
+  return null;
 }
 
 function fromSession(session: SessionUser): ResolvedCaptionsUser {
@@ -156,14 +91,7 @@ export function identityFromJsonBody(body: unknown): CaptionsIdentityInput {
         ? String(user.id)
         : null;
 
-  const devToken =
-    typeof b.devToken === "string"
-      ? b.devToken
-      : typeof user?.devToken === "string"
-        ? user.devToken
-        : null;
-
-  return { email, userId, devToken };
+  return { email, userId };
 }
 
 /** Authorization header for CEP Bearer auth (pass alongside body/form identity). */
@@ -177,11 +105,9 @@ export function bearerFromRequest(req: {
 export function identityFromFormData(form: FormData): CaptionsIdentityInput {
   const emailRaw = form.get("email");
   const userIdRaw = form.get("userId");
-  const devTokenRaw = form.get("devToken");
   return {
     email: typeof emailRaw === "string" ? emailRaw : null,
     userId: typeof userIdRaw === "string" ? userIdRaw : null,
-    devToken: typeof devTokenRaw === "string" ? devTokenRaw : null,
   };
 }
 

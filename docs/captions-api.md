@@ -152,8 +152,8 @@ Cookie: <session>   # опционально, если есть web-сессия
   "file": "mogrt",
   "brand": "gal",
   "user": {
-    "id": "dev-admin",
-    "email": "admin@mail.ru"
+    "id": "user_…",
+    "email": "user@example.com"
   }
 }
 ```
@@ -166,7 +166,7 @@ Cookie: <session>   # опционально, если есть web-сессия
 | `user.id` / `user.email` | `string` | для CEP | Identity панели (см. CEP auth ниже) |
 | `userId` / `email` | `string` | альтернатива | Топ-level поля вместо `user` |
 
-Приоритет auth: **session cookie** → иначе CEP body identity (только non-production).
+Приоритет auth: **Bearer CEP token** → **session cookie**.
 
 | `file` | Ответ |
 |--------|--------|
@@ -305,27 +305,14 @@ CEP читает `code` с любого `!res.ok` — статус `403` обя�
 
 ---
 
-## CEP panel auth (локальная разработка)
+## CEP panel auth
 
-См. также `captions-cep/docs/cep-client-auth.md`.
+Панель авторизуется через device-code login:
 
-Панель шлёт identity в body после flyout **Sign in as admin@mail.ru**:
-
-| Поле | Значение |
-|------|----------|
-| `email` | `admin@mail.ru` |
-| `id` / `userId` | `dev-admin` |
-
-На бэкенде (только `NODE_ENV !== "production"`):
-
-```env
-CEP_DEV_ADMIN_EMAIL=admin@mail.ru
-CEP_DEV_ADMIN_ID=dev-admin
-```
-
-(дефолты те же, если env не задан.)
-
-В **production** CEP body-identity отключён — нужна настоящая session cookie.
+1. `POST /api/cep/auth/device` → verification URL
+2. Пользователь подтверждает в браузере
+3. `POST /api/cep/auth/token` → Bearer token
+4. Дальше все gated-запросы: `Authorization: Bearer <token>`
 
 Каталог и media остаются публичными: ошибки входа показываются только на **выборе стиля (definition)** / Transcribe / download проекта — не при просмотре каталога.
 

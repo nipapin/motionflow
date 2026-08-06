@@ -15,6 +15,14 @@ const MAX_EXTRA_KEYS = 20;
 const MAX_EXTRA_VALUE = 500;
 const STACK_TG_LIMIT = 1500;
 const RATE_WINDOW_MS = 60_000;
+/** Allow a few identical reports per minute (manual retries / CEP double-fire). */
+const RATE_MAX = 3;
+
+const CORS_HEADERS: Record<string, string> = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
 
 type SupportSeverity = "error" | "warning" | "info";
 
@@ -30,6 +38,7 @@ type ReportBody = {
     error_code?: string;
     severity: SupportSeverity;
     stack?: string;
+    extension_name?: string;
     extension_version: string;
     host: HostPayload;
     os: string;
@@ -67,7 +76,7 @@ function isRateLimited(key: string): boolean {
         rateBuckets.set(key, { count: 1, resetAt: now + RATE_WINDOW_MS });
         return false;
     }
-    if (entry.count >= 1) return true;
+    if (entry.count >= RATE_MAX) return true;
     entry.count += 1;
     return false;
 }
@@ -153,6 +162,7 @@ function parseBody(raw: unknown): ReportBody | null {
         error_code: clip(o.error_code, 128) || undefined,
         severity: parseSeverity(o.severity),
         stack: clip(o.stack, MAX_STACK) || undefined,
+        extension_name: clip(o.extension_name, 128) || undefined,
         extension_version,
         host,
         os,
@@ -173,6 +183,7 @@ function formatTelegramMessage(
 
     const lines = [
         "🚨 <b>CEP error</b>",
+        `extension: <b>${escapeHtml(report.extension_name || report.client)}</b>`,
         `severity: <code>error</code>`,
         `action: <code>${escapeHtml(report.action)}</code>`,
         `error: ${escapeHtml(report.error)}`,
@@ -216,6 +227,10 @@ function formatTelegramMessage(
  * Only `severity: "error"` is forwarded to Telegram; warning/info accepted as no-op.
  * Bearer optional (enriches message with user email when present).
  */
+export async function OPTIONS() {
+    return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+}
+
 export async function POST(req: NextRequest) {
     try {
         let json: unknown;
@@ -224,7 +239,7 @@ export async function POST(req: NextRequest) {
         } catch {
             return NextResponse.json(
                 { error: "INVALID_BODY", message: "Expected JSON body" },
-                { status: 400 },
+                { status: 400, headers: CORS_HEADERS },
             );
         }
 
@@ -232,7 +247,7 @@ export async function POST(req: NextRequest) {
         if (!report) {
             return NextResponse.json(
                 { error: "INVALID_BODY", message: "Missing or invalid report fields" },
-                { status: 400 },
+                { status: 400, headers: CORS_HEADERS },
             );
         }
 
@@ -240,7 +255,7 @@ export async function POST(req: NextRequest) {
         if (report.severity !== "error") {
             return NextResponse.json(
                 { ok: true, delivered: false, reason: "severity_filtered" },
-                { status: 202 },
+                { status: 202, headers: CORS_HEADERS },
             );
         }
 
@@ -249,7 +264,7 @@ export async function POST(req: NextRequest) {
         if (isRateLimited(rateKey)) {
             return NextResponse.json(
                 { error: "RATE_LIMITED", message: "Too many reports" },
-                { status: 429 },
+                { status: 429, headers: CORS_HEADERS },
             );
         }
 
@@ -264,11 +279,18 @@ export async function POST(req: NextRequest) {
 
         // Await so PM2/logs show Telegram result and the client learns if it landed.
         let telegram = false;
+        let telegram_error: string | undefined;
+        let telegram_diag: Record<string, unknown> | undefined;
         try {
-            telegram = await sendTelegramSupportReport(text);
+            const tg = await sendTelegramSupportReport(text);
+            telegram = tg.ok;
+            telegram_error = tg.error;
+            telegram_diag = tg.diag as Record<string, unknown> | undefined;
         } catch (err) {
             console.error("[cep/support/report] telegram threw:", err);
             telegram = false;
+            telegram_error =
+                err instanceof Error ? err.message : "telegram_threw";
         }
 
         return NextResponse.json(
@@ -280,16 +302,18 @@ export async function POST(req: NextRequest) {
                     ? {}
                     : {
                           telegram_error:
-                              "Telegram send failed or env missing — check GROUP_CHAT_ID / TOPIC_ID / TELEGRAM_BOT_TOKEN (no quotes) and pm2 logs for [telegram]",
+                              telegram_error ||
+                              "Telegram send failed — check pm2 logs for [telegram]",
+                          telegram_diag,
                       }),
             },
-            { status: 202 },
+            { status: 202, headers: CORS_HEADERS },
         );
     } catch (err) {
         console.error("[cep/support/report]", err);
         return NextResponse.json(
             { error: "SERVER_ERROR", message: "Could not accept report" },
-            { status: 500 },
+            { status: 500, headers: CORS_HEADERS },
         );
     }
 }

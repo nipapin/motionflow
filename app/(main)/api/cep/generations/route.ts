@@ -36,7 +36,6 @@ async function readIdentity(req: NextRequest): Promise<CaptionsIdentityInput> {
     return {
       email: searchParams.get("email"),
       userId: searchParams.get("userId"),
-      devToken: searchParams.get("devToken"),
       bearer,
     };
   }
@@ -56,7 +55,7 @@ async function handleStatus(req: NextRequest) {
     }
 
     if (typeof user.id !== "number") {
-      // cep-dev has no billable quota — do not report fake unlimited credits.
+      // Non-numeric ids are not billable — do not report fake unlimited credits.
       return billableAccountRequiredResponse();
     }
 

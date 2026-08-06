@@ -71,7 +71,7 @@ async function cepQuota(user: ResolvedCaptionsUser & { id: number }) {
 export async function generationsStatusForResolvedUser(
   user: ResolvedCaptionsUser,
 ): Promise<GenerationStatus> {
-  // cep-dev / string ids are never billable — report zero so clients cannot
+  // Non-numeric ids are never billable — report zero so clients cannot
   // treat them as unlimited.
   if (!isBillableCepUser(user)) return emptyStatus();
 
