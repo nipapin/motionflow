@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchPexelsVideos, type FootageVideo, type FootageVideoSearchResult } from "@/lib/pexels-videos";
+import {
+  fetchPexelsVideos,
+  type FootageVideo,
+  type FootageVideoSearchResult,
+} from "@/lib/pexels-videos";
+import { guardStockRequest } from "@/lib/cep-stock-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -7,6 +12,9 @@ export const dynamic = "force-dynamic";
 export type { FootageVideo, FootageVideoSearchResult };
 
 export async function GET(req: NextRequest) {
+  const gate = await guardStockRequest(req);
+  if ("response" in gate) return gate.response;
+
   try {
     const { searchParams } = new URL(req.url);
     const query = (searchParams.get("query") ?? "").trim();

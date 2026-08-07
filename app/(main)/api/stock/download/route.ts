@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth/get-session-user";
+import { guardStockRequest } from "@/lib/cep-stock-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -101,7 +101,6 @@ async function resolveUnsplashDownloadUrl(id: string): Promise<string> {
   if (!sourceUrl) throw new Error("Unsplash response did not include a downloadable image URL.");
 
   if (downloadLocation) {
-    // Unsplash requires pinging download_location for attribution tracking.
     void fetch(downloadLocation, {
       headers: {
         Authorization: `Client-ID ${accessKey}`,
@@ -141,12 +140,11 @@ async function resolvePexelsVideoUrl(id: string): Promise<string> {
   return sourceUrl;
 }
 
+/** Authenticated + rate-limited entry. */
 export async function GET(req: NextRequest) {
   try {
-    const user = await getSessionUser();
-    if (!user) {
-      return NextResponse.json({ error: "Please sign in to download." }, { status: 401 });
-    }
+    const gate = await guardStockRequest(req);
+    if ("response" in gate) return gate.response;
 
     const { searchParams } = new URL(req.url);
     const provider = searchParams.get("provider") as Provider | null;
@@ -155,24 +153,34 @@ export async function GET(req: NextRequest) {
 
     if (!provider || !kind || !id) {
       return NextResponse.json(
-        { error: "Missing required query params: provider, kind, id." },
+        {
+          error: "MISSING_PARAMS",
+          message: "Missing required query params: provider, kind, id.",
+        },
         { status: 400 },
       );
     }
 
     if (provider === "unsplash" && kind !== "image") {
-      return NextResponse.json({ error: "Unsplash downloads support images only." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Unsplash downloads support images only." },
+        { status: 400 },
+      );
     }
     if (provider === "pexels" && kind !== "video") {
-      return NextResponse.json({ error: "Pexels downloads support videos only." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Pexels downloads support videos only." },
+        { status: 400 },
+      );
     }
     if (provider !== "unsplash" && provider !== "pexels") {
       return NextResponse.json({ error: "Unsupported provider." }, { status: 400 });
     }
 
-    const sourceUrl = provider === "unsplash"
-      ? await resolveUnsplashDownloadUrl(id)
-      : await resolvePexelsVideoUrl(id);
+    const sourceUrl =
+      provider === "unsplash"
+        ? await resolveUnsplashDownloadUrl(id)
+        : await resolvePexelsVideoUrl(id);
 
     const upstream = await fetch(sourceUrl, { cache: "no-store" });
     if (!upstream.ok || !upstream.body) {

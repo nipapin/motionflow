@@ -93,9 +93,10 @@
 
 **Задачи next-app**
 
+- [x] `/api/stock/download` accepts CEP Bearer (`mfcep_…`) or web session (CEP cutover).
 - [ ] Registry ключей: `client` / `author_id` → `{ unsplashAccessKey, pexelsApiKey }` (env map или encrypted secrets table; не отдавать ключи клиенту).
 - [ ] `/api/stock/unsplash`, `/api/stock/unsplash/[id]`, `/api/stock/pexels/videos`, `/api/stock/download`:
-  - резолв автора из Bearer CEP / session web;
+  - резолв автора из Bearer CEP / session web (download: done);
   - вызов upstream с ключом этого автора;
   - единый response shape для CEP и web.
 - [ ] Attribution / download tracking на стороне next-app (замена AtomX `track_download`), если нужен audit.

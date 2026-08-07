@@ -5,8 +5,10 @@
   "scripts": {
     "build": "next build",
     "dev": "next dev",
+    "dev:ws": "node --env-file=.env server.mjs",
     "lint": "eslint .",
-    "start": "next start",
+    "start": "node server.mjs",
+    "start:next": "next start",
     "deploy:pm2": "pm2 reload ecosystem.config.cjs --update-env || pm2 start ecosystem.config.cjs",
     "deploy": "git pull && npm ci && npm run build && npm run deploy:pm2"
   },
@@ -77,6 +79,7 @@
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^1.1.2",
+    "ws": "^8.21.3",
     "zod": "3.25.76"
   },
   "devDependencies": {
@@ -86,6 +89,7 @@
     "@types/nodemailer": "^8.0.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/ws": "^8.18.1",
     "baseline-browser-mapping": "^2.10.18",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",

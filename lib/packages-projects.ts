@@ -11,6 +11,11 @@ import {
   packagesProjectsTableName,
 } from "@/lib/packages-authors-db";
 import { r2PublicUrlForKey } from "@/lib/r2-storage";
+import {
+  packSlug,
+  publishCepPackEvent,
+  type CepPackEventType,
+} from "@/lib/cep-events";
 
 export type PackagesProjectHost = "PR" | "AE";
 
@@ -207,6 +212,7 @@ export async function deletePackagesProject(
 ): Promise<void> {
   await assertPackagesAuthorId(authorId);
   await ensurePackagesProjectsTable();
+  const existing = await getPackagesProject(authorId, itemId);
   const pool = getPool();
   const table = packagesProjectsTableName();
   const [result] = await pool.query<ResultSetHeader>(
@@ -216,6 +222,20 @@ export async function deletePackagesProject(
     [itemId, authorId],
   );
   if (result.affectedRows < 1) throw new Error("NOT_FOUND");
+  if (existing?.visible) {
+    void publishCepPackEvent({
+      type: "pack.deleted",
+      id: String(existing.id),
+      name: existing.name,
+      pack_name: packSlug(existing.name),
+      host: existing.host,
+      version: existing.version,
+      image_url: existing.previewUrl,
+      visible: false,
+      ts: Date.now(),
+      author_id: authorId,
+    });
+  }
 }
 
 export async function createPackagesProject(opts: {
@@ -407,6 +427,29 @@ export async function updatePackagesProject(
 
   const updated = await getPackagesProject(authorId, itemId);
   if (!updated) throw new Error("UPDATE_FAILED");
+
+  const wasVisible = existing.visible;
+  const nowVisible = updated.visible;
+  let eventType: CepPackEventType | null = null;
+  if (!wasVisible && nowVisible) eventType = "pack.created";
+  else if (wasVisible && !nowVisible) eventType = "pack.deleted";
+  else if (nowVisible) eventType = "pack.updated";
+
+  if (eventType) {
+    void publishCepPackEvent({
+      type: eventType,
+      id: String(updated.id),
+      name: updated.name,
+      pack_name: packSlug(updated.name),
+      host: updated.host,
+      version: updated.version,
+      image_url: updated.previewUrl,
+      visible: updated.visible,
+      ts: Date.now(),
+      author_id: authorId,
+    });
+  }
+
   return updated;
 }
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { guardStockRequest } from "@/lib/cep-stock-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -118,6 +119,9 @@ function matchesOrientation(photo: UnsplashPhoto, orientation: string | null): b
 }
 
 export async function GET(req: NextRequest) {
+  const gate = await guardStockRequest(req);
+  if ("response" in gate) return gate.response;
+
   const accessKey = process.env.UNSPLASH_ACCESS_KEY;
   if (!accessKey) {
     return NextResponse.json(

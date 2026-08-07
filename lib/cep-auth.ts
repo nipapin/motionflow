@@ -506,6 +506,16 @@ export async function resolveCepBearerUser(
 ): Promise<CepBearerUser | null> {
   const token = bearerTokenFromHeader(authorizationHeader);
   if (!token) return null;
+  return resolveCepToken(token);
+}
+
+/**
+ * Resolve a raw `mfcep_…` token (WS auth frame, etc.).
+ */
+export async function resolveCepToken(
+  token: string | null | undefined,
+): Promise<CepBearerUser | null> {
+  if (!token || !token.startsWith("mfcep_")) return null;
   await ensureSchema();
 
   const pool = getPool();
