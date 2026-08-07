@@ -23,6 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -99,6 +100,7 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
   const [query, setQuery] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [togglingId, setTogglingId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -141,6 +143,37 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Create failed");
       setCreating(false);
+    }
+  };
+
+  const toggleVisible = async (project: Project, visible: boolean) => {
+    setTogglingId(project.id);
+    setError(null);
+    const prev = project.visible;
+    setProjects((list) =>
+      list.map((p) => (p.id === project.id ? { ...p, visible } : p)),
+    );
+    try {
+      const res = await fetch(
+        `/api/packages/${authorId}/projects/${project.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ visible }),
+        },
+      );
+      if (!res.ok) throw new Error(await res.text());
+      const data = (await res.json()) as { project: Project };
+      setProjects((list) =>
+        list.map((p) => (p.id === data.project.id ? { ...p, ...data.project } : p)),
+      );
+    } catch (e) {
+      setProjects((list) =>
+        list.map((p) => (p.id === project.id ? { ...p, visible: prev } : p)),
+      );
+      setError(e instanceof Error ? e.message : "Could not update visibility");
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -301,17 +334,28 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
                     )}
                   </TableCell>
                   <TableCell>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "font-normal",
-                        p.visible
-                          ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-                          : "bg-muted text-muted-foreground border-border",
-                      )}
-                    >
-                      {p.visible ? "Visible" : "Hidden"}
-                    </Badge>
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <Switch
+                        checked={p.visible}
+                        disabled={togglingId === p.id}
+                        onCheckedChange={(checked) => void toggleVisible(p, checked)}
+                        aria-label={`Show ${p.name} in CEP`}
+                      />
+                      <span
+                        className={cn(
+                          "text-xs",
+                          p.visible ? "text-emerald-400" : "text-muted-foreground",
+                        )}
+                      >
+                        {togglingId === p.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : p.visible ? (
+                          "On"
+                        ) : (
+                          "Off"
+                        )}
+                      </span>
+                    </label>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {formatUpdated(p.updated_at)}
