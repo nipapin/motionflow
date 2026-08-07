@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getPackagesAuthorById, isPackagesAdmin } from "@/lib/packages-admin";
-import { listR2ObjectsForAuthor } from "@/lib/r2-list";
+import { listR2BucketForAuthor } from "@/lib/r2-list";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** List R2 objects under the author's allowed prefixes (for bind-existing picker). */
+/** List one level of the author's R2 bucket (Delimiter=/). */
 export async function GET(
   req: NextRequest,
   ctx: { params: Promise<{ authorId: string }> },
@@ -22,11 +22,13 @@ export async function GET(
 
   const prefix = req.nextUrl.searchParams.get("prefix");
   try {
-    const objects = await listR2ObjectsForAuthor(author, prefix);
+    const listing = await listR2BucketForAuthor(author, prefix);
     return NextResponse.json({
       author_id: authorId,
       bucket: author.r2Bucket,
-      objects,
+      prefix: listing.prefix,
+      folders: listing.folders,
+      objects: listing.files,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";

@@ -60,6 +60,8 @@ export function PackagesProjectEditor({
   const [visible, setVisible] = useState(false);
   const [previewBroken, setPreviewBroken] = useState(false);
   const [r2Objects, setR2Objects] = useState<R2BrowserObject[]>([]);
+  const [r2Folders, setR2Folders] = useState<{ name: string; prefix: string }[]>([]);
+  const [r2Prefix, setR2Prefix] = useState("");
   const [r2Error, setR2Error] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -93,21 +95,32 @@ export function PackagesProjectEditor({
     }
   }, [authorId, itemId]);
 
-  const loadR2 = useCallback(async () => {
+  const loadR2 = useCallback(async (nextPrefix = "") => {
     setR2Error(null);
     try {
-      const res = await fetch(`/api/packages/${authorId}/r2`);
+      const qs = nextPrefix
+        ? `?prefix=${encodeURIComponent(nextPrefix)}`
+        : "";
+      const res = await fetch(`/api/packages/${authorId}/r2${qs}`);
       if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+        const body = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          message?: string;
+        };
         setR2Error(body.message || body.error || "Could not list bucket");
         setR2Objects([]);
+        setR2Folders([]);
         return;
       }
       const data = (await res.json()) as {
         objects: R2BrowserObject[];
+        folders?: { name: string; prefix: string }[];
+        prefix?: string;
         bucket?: string | null;
       };
       setR2Objects(data.objects || []);
+      setR2Folders(data.folders || []);
+      setR2Prefix(data.prefix || nextPrefix || "");
       if (data.bucket) setAuthorBucket(data.bucket);
     } catch {
       setR2Error("Could not list bucket");
@@ -119,7 +132,7 @@ export function PackagesProjectEditor({
   }, [load]);
 
   useEffect(() => {
-    if (authorBucket) void loadR2();
+    if (authorBucket) void loadR2("");
   }, [authorBucket, loadR2]);
 
   const saveMeta = async (extra?: { visible?: boolean }) => {
@@ -435,6 +448,9 @@ export function PackagesProjectEditor({
         ) : (
           <PackagesR2Browser
             objects={r2Objects}
+            folders={r2Folders}
+            prefix={r2Prefix}
+            onNavigate={(p) => void loadR2(p)}
             onSelectFile={(o) => void bindR2(o)}
             selectLabel="Use as pack zip"
           />
@@ -463,7 +479,7 @@ export function PackagesProjectEditor({
               size="sm"
               variant="ghost"
               disabled={busy}
-              onClick={() => void loadR2()}
+              onClick={() => void loadR2(r2Prefix)}
             >
               Refresh bucket
             </Button>

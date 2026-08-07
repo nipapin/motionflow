@@ -11,6 +11,32 @@ export type R2ListedObject = {
   publicUrl: string | null;
 };
 
+export type R2BucketFolder = {
+  name: string;
+  prefix: string;
+};
+
+export type R2BucketListing = {
+  prefix: string;
+  folders: R2BucketFolder[];
+  files: R2ListedObject[];
+};
+
+function publicUrlFor(bucket: string, key: string): string | null {
+  try {
+    const publicBucket = getR2Bucket();
+    if (bucket !== publicBucket) return null;
+    return r2PublicUrlForKey(key);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Flat listing (no delimiter). Used by legacy studio/r2sync callers.
+ * Prefer {@link listR2BucketLevel} for UI browsers — large pack folders
+ * otherwise fill the maxKeys budget and hide sibling roots.
+ */
 export async function listR2ObjectsUnderPrefix(
   prefix: string,
   opts?: { maxKeys?: number; bucket?: string | null },
@@ -20,13 +46,6 @@ export async function listR2ObjectsUnderPrefix(
   const maxKeys = opts?.maxKeys ?? 500;
   const out: R2ListedObject[] = [];
   let token: string | undefined;
-  const publicBucket = (() => {
-    try {
-      return getR2Bucket();
-    } catch {
-      return null;
-    }
-  })();
 
   do {
     const res = await client.send(
@@ -40,19 +59,11 @@ export async function listR2ObjectsUnderPrefix(
     for (const obj of res.Contents ?? []) {
       const key = obj.Key;
       if (!key || key.endsWith("/")) continue;
-      let publicUrl: string | null = null;
-      if (publicBucket && bucket === publicBucket) {
-        try {
-          publicUrl = r2PublicUrlForKey(key);
-        } catch {
-          publicUrl = null;
-        }
-      }
       out.push({
         key,
         size: Number(obj.Size ?? 0),
         lastModified: obj.LastModified ? obj.LastModified.toISOString() : null,
-        publicUrl,
+        publicUrl: publicUrlFor(bucket, key),
       });
       if (out.length >= maxKeys) return out;
     }
@@ -62,7 +73,73 @@ export async function listR2ObjectsUnderPrefix(
   return out;
 }
 
-/** List objects in the author's configured R2 bucket (entire bucket). */
+/**
+ * One directory level via Delimiter="/", like the Cloudflare R2 dashboard.
+ * Avoids drowning in nested files under a single pack folder.
+ */
+export async function listR2BucketLevel(opts: {
+  bucket: string;
+  prefix?: string | null;
+  maxKeys?: number;
+}): Promise<R2BucketListing> {
+  const client = getR2Client();
+  const bucket = opts.bucket.trim();
+  const prefix = (opts.prefix || "").replace(/^\/+/, "");
+  const normalizedPrefix =
+    prefix && !prefix.endsWith("/") ? `${prefix}/` : prefix;
+  const maxKeys = opts.maxKeys ?? 1000;
+
+  const folders: R2BucketFolder[] = [];
+  const files: R2ListedObject[] = [];
+  const seenFolders = new Set<string>();
+  let token: string | undefined;
+
+  do {
+    const res = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: normalizedPrefix,
+        Delimiter: "/",
+        ContinuationToken: token,
+        MaxKeys: Math.min(1000, maxKeys),
+      }),
+    );
+
+    for (const cp of res.CommonPrefixes ?? []) {
+      const folderPrefix = (cp.Prefix || "").replace(/^\/+/, "");
+      if (!folderPrefix || seenFolders.has(folderPrefix)) continue;
+      seenFolders.add(folderPrefix);
+      const name = folderPrefix
+        .slice(normalizedPrefix.length)
+        .replace(/\/$/, "");
+      if (!name) continue;
+      folders.push({ name, prefix: folderPrefix });
+    }
+
+    for (const obj of res.Contents ?? []) {
+      const key = obj.Key;
+      if (!key || key.endsWith("/")) continue;
+      // Only direct children (Delimiter already scopes this, but guard).
+      const rest = key.slice(normalizedPrefix.length);
+      if (!rest || rest.includes("/")) continue;
+      files.push({
+        key,
+        size: Number(obj.Size ?? 0),
+        lastModified: obj.LastModified ? obj.LastModified.toISOString() : null,
+        publicUrl: publicUrlFor(bucket, key),
+      });
+    }
+
+    token = res.IsTruncated ? res.NextContinuationToken : undefined;
+  } while (token);
+
+  folders.sort((a, b) => a.name.localeCompare(b.name));
+  files.sort((a, b) => a.key.localeCompare(b.key));
+
+  return { prefix: normalizedPrefix, folders, files };
+}
+
+/** List one level of the author's configured R2 bucket. */
 export async function listR2ObjectsForAuthor(
   author: PackagesAuthor,
   prefixOverride?: string | null,
@@ -71,11 +148,32 @@ export async function listR2ObjectsForAuthor(
     throw new Error("BUCKET_NOT_CONFIGURED");
   }
 
-  const prefix = prefixOverride?.trim().replace(/^\/+/, "") || "";
-  const objects = await listR2ObjectsUnderPrefix(prefix, {
+  const listing = await listR2BucketLevel({
     bucket: author.r2Bucket,
-    maxKeys: 1000,
+    prefix: prefixOverride,
   });
-  objects.sort((a, b) => (b.lastModified || "").localeCompare(a.lastModified || ""));
-  return objects;
+
+  // Legacy callers expect a flat object list; include folder placeholders
+  // so older UIs still show directory names.
+  const folderStubs: R2ListedObject[] = listing.folders.map((f) => ({
+    key: `${f.prefix}.keep`,
+    size: 0,
+    lastModified: null,
+    publicUrl: null,
+  }));
+
+  return [...folderStubs, ...listing.files];
+}
+
+export async function listR2BucketForAuthor(
+  author: PackagesAuthor,
+  prefixOverride?: string | null,
+): Promise<R2BucketListing> {
+  if (!author.r2Bucket?.trim()) {
+    throw new Error("BUCKET_NOT_CONFIGURED");
+  }
+  return listR2BucketLevel({
+    bucket: author.r2Bucket,
+    prefix: prefixOverride,
+  });
 }

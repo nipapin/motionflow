@@ -226,32 +226,54 @@ function FileActions({
   );
 }
 
+export type R2BrowserFolder = {
+  name: string;
+  prefix: string;
+};
+
 export function PackagesR2Browser({
   objects,
+  folders,
+  prefix = "",
+  onNavigate,
   onSelectFile,
   selectLabel = "Select",
+  emptyLabel = "No objects in this folder.",
 }: {
   objects: R2BrowserObject[];
-  /** When set, files show a select action instead of (or in addition to) copy. */
+  /** Server-side folder listing (Delimiter=/). When set with onNavigate, browse by level. */
+  folders?: R2BrowserFolder[];
+  /** Current listing prefix (trailing slash or empty). */
+  prefix?: string;
+  onNavigate?: (nextPrefix: string) => void;
   onSelectFile?: (obj: R2BrowserObject) => void;
   selectLabel?: string;
+  emptyLabel?: string;
 }) {
-  const root = useMemo(
-    () => commonRootPrefix(objects.map((o) => o.key)),
-    [objects],
-  );
+  const serverMode = Boolean(onNavigate && folders);
+  const root = useMemo(() => {
+    if (serverMode) return "";
+    return commonRootPrefix(objects.map((o) => o.key));
+  }, [serverMode, objects]);
+
   const [view, setView] = useState<ViewMode>("list");
-  const [currentPath, setCurrentPath] = useState(root);
-  /** For columns view: selected path at each depth (absolute folder paths). */
-  const [columnSelection, setColumnSelection] = useState<string[]>([root]);
+  const [currentPath, setCurrentPath] = useState(serverMode ? prefix : root);
+  const [columnSelection, setColumnSelection] = useState<string[]>([
+    serverMode ? prefix : root,
+  ]);
 
   useEffect(() => {
+    if (serverMode) {
+      setCurrentPath(prefix);
+      setColumnSelection([prefix]);
+      return;
+    }
     setCurrentPath(root);
     setColumnSelection([root]);
-  }, [root, objects]);
+  }, [serverMode, prefix, root, objects, folders]);
 
   useEffect(() => {
-    if (view !== "columns") return;
+    if (serverMode || view !== "columns") return;
     const next: string[] = [root];
     if (currentPath.startsWith(root)) {
       let acc = root;
@@ -261,19 +283,46 @@ export function PackagesR2Browser({
       }
     }
     setColumnSelection(next);
-  }, [view, root, currentPath]);
+  }, [serverMode, view, root, currentPath]);
 
-  const crumbs = useMemo(
-    () => breadcrumbParts(root, currentPath),
-    [root, currentPath],
-  );
+  const crumbs = useMemo(() => {
+    if (serverMode) {
+      const parts: { label: string; path: string }[] = [
+        { label: "bucket", path: "" },
+      ];
+      let acc = "";
+      for (const seg of prefix.split("/").filter(Boolean)) {
+        acc = `${acc}${seg}/`;
+        parts.push({ label: seg, path: acc });
+      }
+      return parts;
+    }
+    return breadcrumbParts(root, currentPath);
+  }, [serverMode, prefix, root, currentPath]);
 
-  const listEntries = useMemo(
-    () => entriesInFolder(objects, currentPath),
-    [objects, currentPath],
-  );
+  const listEntries = useMemo(() => {
+    if (serverMode) {
+      const folderEntries: FsEntry[] = (folders ?? []).map((f) => ({
+        name: f.name,
+        path: f.prefix,
+        kind: "folder" as const,
+        size: 0,
+        lastModified: null,
+        publicUrl: null,
+      }));
+      const fileEntries: FsEntry[] = objects.map((obj) => ({
+        name: obj.key.split("/").pop() || obj.key,
+        path: obj.key,
+        kind: "file" as const,
+        size: obj.size,
+        lastModified: obj.lastModified,
+        publicUrl: obj.publicUrl,
+      }));
+      return [...folderEntries, ...fileEntries];
+    }
+    return entriesInFolder(objects, currentPath);
+  }, [serverMode, folders, objects, currentPath]);
 
-  /** Each entry is the folder whose children are shown in that column. */
   const columnPaths = useMemo(() => {
     const paths = columnSelection.length > 0 ? columnSelection : [root];
     return paths[0] === root ? paths : [root];
@@ -292,12 +341,20 @@ export function PackagesR2Browser({
   };
 
   const openFolder = (path: string) => {
+    if (serverMode && onNavigate) {
+      onNavigate(path);
+      return;
+    }
     setCurrentPath(path);
     syncColumnsToPath(path);
   };
 
   const selectInColumn = (columnIndex: number, entry: FsEntry) => {
     if (entry.kind === "folder") {
+      if (serverMode && onNavigate) {
+        onNavigate(entry.path);
+        return;
+      }
       const newPaths = [...columnPaths.slice(0, columnIndex + 1), entry.path];
       setColumnSelection(newPaths);
       setCurrentPath(entry.path);
@@ -307,9 +364,35 @@ export function PackagesR2Browser({
     setCurrentPath(columnPaths[columnIndex] ?? root);
   };
 
-  if (objects.length === 0) {
+  const atRoot = serverMode ? !prefix : currentPath === root;
+  const goUp = () => {
+    if (serverMode) {
+      const parent = prefix.replace(/\/$/, "").split("/").slice(0, -1).join("/");
+      onNavigate?.(parent ? `${parent}/` : "");
+      return;
+    }
+    openFolder(parentFolder(root, currentPath));
+  };
+
+  if (!serverMode && objects.length === 0) {
+    return <p className="text-sm text-muted-foreground">{emptyLabel}</p>;
+  }
+
+  if (serverMode && listEntries.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">No objects under author prefixes.</p>
+      <div className="space-y-2">
+        {!atRoot ? (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+            onClick={goUp}
+          >
+            <Folder className="h-3.5 w-3.5 text-amber-400/70" />
+            Up one level
+          </button>
+        ) : null}
+        <p className="text-sm text-muted-foreground">{emptyLabel}</p>
+      </div>
     );
   }
 
@@ -330,7 +413,7 @@ export function PackagesR2Browser({
                 onClick={() => openFolder(c.path)}
                 className={cn(
                   "truncate rounded px-1.5 py-0.5 font-medium transition",
-                  c.path === currentPath
+                  (serverMode ? c.path === prefix : c.path === currentPath)
                     ? "bg-blue-500/15 text-blue-300"
                     : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
                 )}
@@ -355,13 +438,13 @@ export function PackagesR2Browser({
               </tr>
             </thead>
             <tbody>
-              {currentPath !== root ? (
+              {!atRoot ? (
                 <tr className="border-b border-border/30 hover:bg-foreground/3">
                   <td className="py-1.5 px-3" colSpan={4}>
                     <button
                       type="button"
                       className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground"
-                      onClick={() => openFolder(parentFolder(root, currentPath))}
+                      onClick={goUp}
                     >
                       <Folder className="h-4 w-4 text-amber-400/70" />
                       ..
@@ -426,11 +509,11 @@ export function PackagesR2Browser({
 
       {view === "grid" ? (
         <div className="max-h-96 overflow-auto rounded-lg border border-border/40 p-3">
-          {currentPath !== root ? (
+          {!atRoot ? (
             <button
               type="button"
               className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-border/50 bg-background/40 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => openFolder(parentFolder(root, currentPath))}
+              onClick={goUp}
             >
               <Folder className="h-3.5 w-3.5 text-amber-400/70" />
               Up one level
@@ -463,7 +546,18 @@ export function PackagesR2Browser({
                       {entry.kind === "file" ? formatBytes(entry.size) : "Folder"}
                     </span>
                   </button>
-                  {entry.kind === "file" && entry.publicUrl ? (
+                  {entry.kind === "file" && onSelectFile ? (
+                    <button
+                      type="button"
+                      className="text-[10px] text-blue-400 opacity-0 transition group-hover:opacity-100 hover:underline"
+                      onClick={() => {
+                        const obj = objects.find((o) => o.key === entry.path);
+                        if (obj) onSelectFile(obj);
+                      }}
+                    >
+                      {selectLabel}
+                    </button>
+                  ) : entry.kind === "file" && entry.publicUrl ? (
                     <button
                       type="button"
                       className="text-[10px] text-blue-400 opacity-0 transition group-hover:opacity-100 hover:underline"
@@ -481,7 +575,7 @@ export function PackagesR2Browser({
         </div>
       ) : null}
 
-      {view === "columns" ? (
+      {view === "columns" && !serverMode ? (
         <div className="flex max-h-96 overflow-x-auto overflow-y-hidden rounded-lg border border-border/40">
           {columnPaths.map((folderPath, colIndex) => {
             const entries = entriesInFolder(objects, folderPath);
@@ -509,28 +603,14 @@ export function PackagesR2Browser({
                         <li key={entry.path}>
                           <button
                             type="button"
-                            onClick={() => selectInColumn(colIndex, entry)}
                             className={cn(
-                              "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs transition",
-                              selected
-                                ? "bg-blue-600/25 text-blue-100"
-                                : "hover:bg-foreground/5",
+                              "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs hover:bg-foreground/5",
+                              selected && "bg-blue-500/15 text-blue-200",
                             )}
+                            onClick={() => selectInColumn(colIndex, entry)}
                           >
                             <EntryIcon kind={entry.kind} className="h-3.5 w-3.5 shrink-0" />
-                            <span className="min-w-0 flex-1 truncate font-medium">
-                              {entry.name}
-                            </span>
-                            {entry.kind === "folder" ? (
-                              <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/70" />
-                            ) : (
-                              <FileActions
-                      entry={entry}
-                      objects={objects}
-                      onSelectFile={onSelectFile}
-                      selectLabel={selectLabel}
-                    />
-                            )}
+                            <span className="truncate">{entry.name}</span>
                           </button>
                         </li>
                       );
@@ -543,9 +623,16 @@ export function PackagesR2Browser({
         </div>
       ) : null}
 
+      {view === "columns" && serverMode ? (
+        <p className="text-xs text-muted-foreground">
+          Columns view needs a flat listing. Use List or Grid while browsing by folder level.
+        </p>
+      ) : null}
+
       <p className="text-[11px] text-muted-foreground">
-        {objects.length} object{objects.length === 1 ? "" : "s"} · folder structure from
-        object keys
+        {serverMode
+          ? `${listEntries.length} item${listEntries.length === 1 ? "" : "s"} at this level`
+          : `${objects.length} objects · folder structure from object keys`}
       </p>
     </div>
   );
