@@ -168,42 +168,21 @@ export function PackagesProjectEditor({
     setBusy(true);
     setMsg(null);
     try {
-      const pre = await fetch(
-        `/api/packages/${authorId}/projects/${itemId}/presign`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            kind,
-            filename: file.name,
-            contentType: file.type || undefined,
-          }),
-        },
+      const form = new FormData();
+      form.set("kind", kind);
+      form.set("file", file);
+      const res = await fetch(
+        `/api/packages/${authorId}/projects/${itemId}/upload`,
+        { method: "POST", body: form },
       );
-      if (!pre.ok) throw new Error(await pre.text());
-      const signed = (await pre.json()) as {
-        putUrl: string;
-        bindValue: string;
-      };
-      const put = await fetch(signed.putUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type || "application/octet-stream" },
-        body: file,
-      });
-      if (!put.ok) throw new Error(`Upload failed ${put.status}`);
-
-      const patchBody =
-        kind === "preview"
-          ? { previewKeyOrUrl: signed.bindValue }
-          : { downloadKey: signed.bindValue };
-
-      const patch = await fetch(`/api/packages/${authorId}/projects/${itemId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patchBody),
-      });
-      if (!patch.ok) throw new Error(await patch.text());
-      const data = (await patch.json()) as { project: Project };
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as {
+          message?: string;
+          error?: string;
+        };
+        throw new Error(body.message || body.error || `Upload failed (${res.status})`);
+      }
+      const data = (await res.json()) as { project: Project };
       setProject(data.project);
       if (kind === "preview") setPreviewBroken(false);
       setMsg(kind === "preview" ? "Preview uploaded" : "Zip uploaded");
@@ -373,7 +352,9 @@ export function PackagesProjectEditor({
           <StepBadge n={2} done={step2Done} current={step1Done && !step2Done} />
           <div>
             <h2 className="text-sm font-semibold">Preview image</h2>
-            <p className="text-xs text-muted-foreground">Shown in the CEP pack list</p>
+            <p className="text-xs text-muted-foreground">
+              Shown in the CEP pack list (uploaded via server to the public CDN)
+            </p>
           </div>
         </header>
         <div className="flex flex-wrap items-start gap-4">
@@ -470,7 +451,7 @@ export function PackagesProjectEditor({
               }}
             />
             <Button type="button" size="sm" variant="outline" disabled={busy} asChild>
-              <span>Or upload zip</span>
+              <span>Or upload small zip (≤4 MB)</span>
             </Button>
           </label>
           {authorBucket ? (
@@ -485,6 +466,9 @@ export function PackagesProjectEditor({
             </Button>
           ) : null}
         </div>
+        <p className="text-[11px] text-muted-foreground">
+          Large packs: upload the zip to the author bucket in Cloudflare, then bind it above.
+        </p>
       </section>
 
       {/* Step 4 — Publish */}
