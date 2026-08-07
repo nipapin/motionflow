@@ -16,7 +16,7 @@ export type R2BrowserObject = {
   key: string;
   size: number;
   lastModified: string | null;
-  publicUrl: string;
+  publicUrl: string | null;
 };
 
 type ViewMode = "list" | "grid" | "columns";

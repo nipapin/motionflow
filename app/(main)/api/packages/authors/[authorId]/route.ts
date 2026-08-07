@@ -3,9 +3,11 @@ import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getPackagesAuthorById, isPackagesAdmin } from "@/lib/packages-admin";
 import { packagesAuthorLogoUrl } from "@/lib/packages-admin-client";
 import {
+  listDistinctAuthorBuckets,
   updatePackagesAuthorRow,
   type PackagesAuthorPatch,
 } from "@/lib/packages-authors-db";
+import { isPackagesBucketAllowed } from "@/lib/packages-r2-buckets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,11 +29,6 @@ function authorDto(a: NonNullable<Awaited<ReturnType<typeof getPackagesAuthorByI
     slug: a.slug,
     label: a.label,
     r2_bucket: a.r2Bucket,
-    r2_prefix: a.r2Prefix,
-    demo_pr_key: a.demoPrKey,
-    demo_ae_key: a.demoAeKey,
-    demo_pr_version: a.demoPrVersion,
-    demo_ae_version: a.demoAeVersion,
     logoUrl: packagesAuthorLogoUrl(a.slug),
   };
 }
@@ -71,6 +68,13 @@ export async function PATCH(
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "INVALID_JSON" }, { status: 400 });
+  }
+
+  if (body.r2_bucket !== undefined && body.r2_bucket !== null && body.r2_bucket !== "") {
+    const extra = await listDistinctAuthorBuckets();
+    if (!isPackagesBucketAllowed(body.r2_bucket, extra)) {
+      return NextResponse.json({ error: "BUCKET_NOT_ALLOWED" }, { status: 400 });
+    }
   }
 
   try {

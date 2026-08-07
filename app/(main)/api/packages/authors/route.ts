@@ -20,11 +20,6 @@ export async function GET() {
         slug: a.slug,
         label: a.label,
         r2_bucket: a.r2Bucket,
-        r2_prefix: a.r2Prefix,
-        demo_pr_key: a.demoPrKey,
-        demo_ae_key: a.demoAeKey,
-        demo_pr_version: a.demoPrVersion,
-        demo_ae_version: a.demoAeVersion,
         logoUrl: packagesAuthorLogoUrl(a.slug),
       })),
     });

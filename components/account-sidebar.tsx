@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   User,
   ShoppingBag,
@@ -13,8 +13,9 @@ import {
   LayoutDashboard,
   Package,
   ChevronDown,
+  Settings2,
 } from "lucide-react";
-import { PACKAGES_AUTHORS } from "@/lib/packages-admin-client";
+import { PACKAGES_AUTHORS, packagesAuthorLogoUrl } from "@/lib/packages-admin-client";
 import { cn } from "@/lib/utils";
 
 const accountNav = [
@@ -34,6 +35,8 @@ function isActive(normalized: string, href: string): boolean {
   return normalized === href || normalized.startsWith(`${href}/`);
 }
 
+type SidebarAuthor = { id: number; label: string; slug?: string };
+
 interface AccountSidebarProps {
   access: number;
   email?: string | null;
@@ -43,9 +46,34 @@ interface AccountSidebarProps {
 export function AccountSidebar({ access, showPackages }: AccountSidebarProps) {
   const pathname = usePathname();
   const normalized = pathname.replace(/\/$/, "") || "/";
-  const packagesOpen =
-    normalized.startsWith("/profile/packages") || undefined;
-  const [open, setOpen] = useState(Boolean(packagesOpen));
+  const onPackages = normalized.startsWith("/profile/packages");
+  const [manualOpen, setManualOpen] = useState(onPackages);
+  const [authors, setAuthors] = useState<SidebarAuthor[]>(PACKAGES_AUTHORS);
+
+  // Keep Packages submenu open while on any packages route (fixes collapse trapping nav).
+  useEffect(() => {
+    if (onPackages) setManualOpen(true);
+  }, [onPackages]);
+
+  useEffect(() => {
+    if (!showPackages) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/packages/authors");
+        if (!res.ok) return;
+        const data = (await res.json()) as { authors: SidebarAuthor[] };
+        if (!cancelled && data.authors?.length) setAuthors(data.authors);
+      } catch {
+        /* keep seed */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showPackages]);
+
+  const packagesOpen = onPackages || manualOpen;
 
   return (
     <nav className="flex flex-col gap-4">
@@ -80,33 +108,48 @@ export function AccountSidebar({ access, showPackages }: AccountSidebarProps) {
           })}
           {showPackages ? (
             <li>
-              <button
-                type="button"
-                onClick={() => setOpen((v) => !v)}
+              <div
                 className={cn(
-                  "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium smooth",
-                  isActive(normalized, "/profile/packages")
+                  "flex items-center rounded-lg text-sm font-medium smooth",
+                  onPackages
                     ? "bg-linear-to-r from-blue-600 to-blue-500 text-white shadow-md shadow-blue-500/20"
                     : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
                 )}
               >
-                <Package
+                <Link
+                  href="/profile/packages"
+                  className="flex flex-1 items-center gap-3 px-3 py-2.5 min-w-0"
+                >
+                  <Package
+                    className={cn(
+                      "h-5 w-5 shrink-0",
+                      onPackages ? "text-white" : "text-blue-400",
+                    )}
+                  />
+                  <span className="truncate">Packages</span>
+                </Link>
+                <button
+                  type="button"
+                  aria-label={packagesOpen ? "Collapse Packages" : "Expand Packages"}
                   className={cn(
-                    "h-5 w-5 shrink-0",
-                    isActive(normalized, "/profile/packages")
-                      ? "text-white"
-                      : "text-blue-400",
+                    "shrink-0 px-2.5 py-2.5 rounded-r-lg",
+                    onPackages ? "text-white/80 hover:text-white" : "hover:text-foreground",
                   )}
-                />
-                <span className="flex-1 text-left">Packages</span>
-                <ChevronDown
-                  className={cn(
-                    "h-4 w-4 shrink-0 transition",
-                    open && "rotate-180",
-                  )}
-                />
-              </button>
-              {open ? (
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (onPackages) return; // stay open on packages routes
+                    setManualOpen((v) => !v);
+                  }}
+                >
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 transition",
+                      packagesOpen && "rotate-180",
+                    )}
+                  />
+                </button>
+              </div>
+              {packagesOpen ? (
                 <ul className="mt-0.5 ml-4 border-l border-border/50 pl-2 space-y-0.5">
                   <li>
                     <Link
@@ -114,8 +157,8 @@ export function AccountSidebar({ access, showPackages }: AccountSidebarProps) {
                       className={cn(
                         "block rounded-md px-2.5 py-1.5 text-xs font-medium",
                         normalized === "/profile/packages"
-                          ? "text-blue-300"
-                          : "text-muted-foreground hover:text-foreground",
+                          ? "bg-blue-500/15 text-blue-200"
+                          : "text-muted-foreground hover:text-foreground hover:bg-foreground/5",
                       )}
                     >
                       All authors
@@ -125,30 +168,38 @@ export function AccountSidebar({ access, showPackages }: AccountSidebarProps) {
                     <Link
                       href="/profile/packages/authors"
                       className={cn(
-                        "block rounded-md px-2.5 py-1.5 text-xs font-medium",
+                        "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium",
                         normalized === "/profile/packages/authors" ||
                           normalized.startsWith("/profile/packages/authors/")
                           ? "bg-blue-500/15 text-blue-200"
                           : "text-muted-foreground hover:text-foreground hover:bg-foreground/5",
                       )}
                     >
+                      <Settings2 className="h-3 w-3 shrink-0 opacity-70" />
                       Authors settings
                     </Link>
                   </li>
-                  {PACKAGES_AUTHORS.map((a) => {
+                  {authors.map((a) => {
                     const href = `/profile/packages/${a.id}`;
-                    const active = normalized === href || normalized.startsWith(`${href}/`);
+                    const active =
+                      normalized === href || normalized.startsWith(`${href}/`);
                     return (
                       <li key={a.id}>
                         <Link
                           href={href}
                           className={cn(
-                            "block rounded-md px-2.5 py-1.5 text-xs font-medium",
+                            "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium",
                             active
                               ? "bg-blue-500/15 text-blue-200"
                               : "text-muted-foreground hover:text-foreground hover:bg-foreground/5",
                           )}
                         >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={packagesAuthorLogoUrl(a.slug || a.id)}
+                            alt=""
+                            className="h-3.5 w-3.5 rounded object-contain"
+                          />
                           {a.label}
                         </Link>
                       </li>

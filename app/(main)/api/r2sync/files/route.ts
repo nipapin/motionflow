@@ -36,8 +36,8 @@ export async function GET(req: NextRequest) {
     );
     return NextResponse.json({ author, objects }, { headers: CORS });
   } catch (err) {
-    if (err instanceof Error && err.message === "PREFIX_NOT_ALLOWED") {
-      return NextResponse.json({ error: "PREFIX_NOT_ALLOWED" }, { status: 403, headers: CORS });
+    if (err instanceof Error && err.message === "BUCKET_NOT_CONFIGURED") {
+      return NextResponse.json({ error: "BUCKET_NOT_CONFIGURED" }, { status: 400, headers: CORS });
     }
     console.error("[r2sync/files]", err);
     return NextResponse.json({ error: "SERVER_ERROR" }, { status: 500, headers: CORS });

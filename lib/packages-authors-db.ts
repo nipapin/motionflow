@@ -168,11 +168,6 @@ export async function getPackagesAuthorRow(
 export type PackagesAuthorPatch = {
   label?: string;
   r2_bucket?: string | null;
-  r2_prefix?: string;
-  demo_pr_key?: string | null;
-  demo_ae_key?: string | null;
-  demo_pr_version?: string | null;
-  demo_ae_version?: string | null;
 };
 
 export async function updatePackagesAuthorRow(
@@ -192,60 +187,30 @@ export async function updatePackagesAuthorRow(
         ? patch.r2_bucket.trim().slice(0, 255)
         : null
       : existing.r2_bucket;
-  const r2_prefix =
-    patch.r2_prefix !== undefined
-      ? patch.r2_prefix.trim().replace(/^\/+/, "").slice(0, 512) ||
-        existing.r2_prefix
-      : existing.r2_prefix;
-
-  const demo_pr_key =
-    patch.demo_pr_key !== undefined
-      ? patch.demo_pr_key?.trim()
-        ? patch.demo_pr_key.trim().replace(/^\/+/, "").slice(0, 512)
-        : null
-      : existing.demo_pr_key;
-  const demo_ae_key =
-    patch.demo_ae_key !== undefined
-      ? patch.demo_ae_key?.trim()
-        ? patch.demo_ae_key.trim().replace(/^\/+/, "").slice(0, 512)
-        : null
-      : existing.demo_ae_key;
-  const demo_pr_version =
-    patch.demo_pr_version !== undefined
-      ? patch.demo_pr_version?.trim()
-        ? patch.demo_pr_version.trim().slice(0, 64)
-        : null
-      : existing.demo_pr_version;
-  const demo_ae_version =
-    patch.demo_ae_version !== undefined
-      ? patch.demo_ae_version?.trim()
-        ? patch.demo_ae_version.trim().slice(0, 64)
-        : null
-      : existing.demo_ae_version;
 
   const pool = getPool();
   await pool.query<ResultSetHeader>(
     `UPDATE \`${AUTHORS_TABLE}\`
-     SET label = ?, r2_bucket = ?, r2_prefix = ?,
-         demo_pr_key = ?, demo_ae_key = ?,
-         demo_pr_version = ?, demo_ae_version = ?,
-         updated_at = NOW()
+     SET label = ?, r2_bucket = ?, updated_at = NOW()
      WHERE id = ?`,
-    [
-      label,
-      r2_bucket,
-      r2_prefix.endsWith("/") ? r2_prefix : `${r2_prefix}/`,
-      demo_pr_key,
-      demo_ae_key,
-      demo_pr_version,
-      demo_ae_version,
-      id,
-    ],
+    [label, r2_bucket, id],
   );
 
   const updated = await getPackagesAuthorRow(id);
   if (!updated) throw new Error("UPDATE_FAILED");
   return updated;
+}
+
+export async function listDistinctAuthorBuckets(): Promise<string[]> {
+  await seedPackagesAuthors();
+  const pool = getPool();
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT DISTINCT r2_bucket AS bucket FROM \`${AUTHORS_TABLE}\`
+     WHERE r2_bucket IS NOT NULL AND TRIM(r2_bucket) <> ''`,
+  );
+  return rows
+    .map((r) => String(r.bucket ?? "").trim())
+    .filter(Boolean);
 }
 
 export function packagesAuthorsTableName(): string {

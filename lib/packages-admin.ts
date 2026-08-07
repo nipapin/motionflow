@@ -15,33 +15,16 @@ export type PackagesAuthor = {
   id: number;
   slug: PackagesAuthorSlug;
   label: string;
-  /** Empty / null → use default public/private env buckets. */
+  /** R2 bucket for this author's packs; null = not configured. */
   r2Bucket: string | null;
-  /** Single allowlisted prefix (normalized with trailing slash). */
-  r2Prefix: string;
-  /** Compatibility: always `[r2Prefix]`. */
-  r2Prefixes: string[];
-  demoPrKey: string | null;
-  demoAeKey: string | null;
-  demoPrVersion: string | null;
-  demoAeVersion: string | null;
 };
 
 function rowToPackagesAuthor(row: PackagesAuthorRow): PackagesAuthor {
-  const r2Prefix = row.r2_prefix.endsWith("/")
-    ? row.r2_prefix
-    : `${row.r2_prefix}/`;
   return {
     id: row.id,
     slug: row.slug,
     label: row.label,
     r2Bucket: row.r2_bucket,
-    r2Prefix,
-    r2Prefixes: [r2Prefix],
-    demoPrKey: row.demo_pr_key,
-    demoAeKey: row.demo_ae_key,
-    demoPrVersion: row.demo_pr_version,
-    demoAeVersion: row.demo_ae_version,
   };
 }
 
@@ -83,10 +66,13 @@ export async function getPackagesAuthorById(
   return row ? rowToPackagesAuthor(row) : null;
 }
 
-/** Key must sit under the author's allowed prefix. */
-export function isKeyAllowedForAuthor(author: PackagesAuthor, key: string): boolean {
-  const normalized = key.replace(/^\/+/, "");
-  return author.r2Prefixes.some((p) => normalized.startsWith(p));
+/** Any object key is allowed once the author has a configured bucket. */
+export function isKeyAllowedForAuthor(
+  author: PackagesAuthor,
+  key: string,
+): boolean {
+  if (!author.r2Bucket?.trim()) return false;
+  return Boolean(key.replace(/^\/+/, ""));
 }
 
 /**

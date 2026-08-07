@@ -84,8 +84,7 @@ export async function POST(
   const ext = filename.includes(".")
     ? filename.slice(filename.lastIndexOf(".") + 1)
     : "png";
-  const prefix = author.r2Prefix || "public/downloads/";
-  const key = `${prefix}packages/${itemId}/preview-${Date.now()}.${ext}`;
+  const key = `packages/${authorId}/${itemId}/preview-${Date.now()}.${ext}`;
   const command = new PutObjectCommand({
     Bucket: publicBucket,
     Key: key,

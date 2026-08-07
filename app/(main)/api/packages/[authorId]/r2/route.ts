@@ -23,11 +23,18 @@ export async function GET(
   const prefix = req.nextUrl.searchParams.get("prefix");
   try {
     const objects = await listR2ObjectsForAuthor(author, prefix);
-    return NextResponse.json({ author_id: authorId, objects });
+    return NextResponse.json({
+      author_id: authorId,
+      bucket: author.r2Bucket,
+      objects,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";
-    if (msg === "PREFIX_NOT_ALLOWED") {
-      return NextResponse.json({ error: "PREFIX_NOT_ALLOWED" }, { status: 403 });
+    if (msg === "BUCKET_NOT_CONFIGURED") {
+      return NextResponse.json(
+        { error: "BUCKET_NOT_CONFIGURED", message: "Set the author R2 bucket first" },
+        { status: 400 },
+      );
     }
     console.error("[packages/r2]", err);
     return NextResponse.json({ error: "SERVER_ERROR" }, { status: 500 });

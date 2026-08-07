@@ -365,9 +365,10 @@ export function isDownloadKeyAllowedForAuthor(
   key: string,
 ): boolean {
   const normalized = key.replace(/^\/+/, "");
-  if (author.r2Prefixes.some((p) => normalized.startsWith(p))) return true;
+  if (!normalized) return false;
+  // Author bucket is the allowlist — any key from that bucket may be bound.
+  if (author.r2Bucket?.trim()) return true;
   if (normalized.startsWith(`secure/packages/${author.id}/`)) return true;
-  if (normalized.startsWith("secure/market/items/")) return true;
   return false;
 }
 

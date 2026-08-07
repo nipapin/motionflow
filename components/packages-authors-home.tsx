@@ -41,7 +41,7 @@ export function PackagesAuthorsHome() {
             Packages
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Choose an author to manage CEP packages (meta in DB, files on R2).
+            Choose an author to create CEP packs. Set each author’s R2 bucket under Authors settings.
           </p>
         </div>
         <Link

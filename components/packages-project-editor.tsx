@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Loader2, Save } from "lucide-react";
+import { ArrowLeft, Check, Loader2, Save } from "lucide-react";
 import { PackagesR2Browser, type R2BrowserObject } from "@/components/packages-r2-browser";
 import { Button } from "@/components/ui/button";
 import { getPackagesAuthorPublicById } from "@/lib/packages-admin-client";
@@ -24,6 +24,23 @@ type Project = {
   visible: boolean;
 };
 
+function StepBadge({ n, done, current }: { n: number; done: boolean; current: boolean }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold shrink-0",
+        done
+          ? "bg-emerald-500/20 text-emerald-400"
+          : current
+            ? "bg-blue-500/20 text-blue-300"
+            : "bg-muted text-muted-foreground",
+      )}
+    >
+      {done ? <Check className="h-3.5 w-3.5" /> : n}
+    </span>
+  );
+}
+
 export function PackagesProjectEditor({
   authorId,
   itemId,
@@ -33,6 +50,7 @@ export function PackagesProjectEditor({
 }) {
   const author = getPackagesAuthorPublicById(authorId);
   const [project, setProject] = useState<Project | null>(null);
+  const [authorBucket, setAuthorBucket] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [version, setVersion] = useState("");
   const [host, setHost] = useState<"PR" | "AE">("AE");
@@ -42,7 +60,7 @@ export function PackagesProjectEditor({
   const [visible, setVisible] = useState(false);
   const [previewBroken, setPreviewBroken] = useState(false);
   const [r2Objects, setR2Objects] = useState<R2BrowserObject[]>([]);
-  const [showPicker, setShowPicker] = useState(false);
+  const [r2Error, setR2Error] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -50,9 +68,12 @@ export function PackagesProjectEditor({
   const load = useCallback(async () => {
     setError(null);
     try {
-      const res = await fetch(`/api/packages/${authorId}/projects/${itemId}`);
-      if (!res.ok) throw new Error(await res.text());
-      const data = (await res.json()) as { project: Project };
+      const [projRes, authorRes] = await Promise.all([
+        fetch(`/api/packages/${authorId}/projects/${itemId}`),
+        fetch(`/api/packages/authors/${authorId}`),
+      ]);
+      if (!projRes.ok) throw new Error(await projRes.text());
+      const data = (await projRes.json()) as { project: Project };
       setProject(data.project);
       setName(data.project.name);
       setVersion(data.project.version || "");
@@ -62,19 +83,34 @@ export function PackagesProjectEditor({
       setDetailsUrl(data.project.details_url || "");
       setVisible(Boolean(data.project.visible));
       setPreviewBroken(false);
+
+      if (authorRes.ok) {
+        const a = (await authorRes.json()) as { author: { r2_bucket: string | null } };
+        setAuthorBucket(a.author.r2_bucket);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Load failed");
     }
   }, [authorId, itemId]);
 
   const loadR2 = useCallback(async () => {
+    setR2Error(null);
     try {
       const res = await fetch(`/api/packages/${authorId}/r2`);
-      if (!res.ok) return;
-      const data = (await res.json()) as { objects: R2BrowserObject[] };
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+        setR2Error(body.message || body.error || "Could not list bucket");
+        setR2Objects([]);
+        return;
+      }
+      const data = (await res.json()) as {
+        objects: R2BrowserObject[];
+        bucket?: string | null;
+      };
       setR2Objects(data.objects || []);
+      if (data.bucket) setAuthorBucket(data.bucket);
     } catch {
-      /* ignore */
+      setR2Error("Could not list bucket");
     }
   }, [authorId]);
 
@@ -83,10 +119,10 @@ export function PackagesProjectEditor({
   }, [load]);
 
   useEffect(() => {
-    if (showPicker) void loadR2();
-  }, [showPicker, loadR2]);
+    if (authorBucket) void loadR2();
+  }, [authorBucket, loadR2]);
 
-  const saveMeta = async () => {
+  const saveMeta = async (extra?: { visible?: boolean }) => {
     setBusy(true);
     setMsg(null);
     try {
@@ -100,12 +136,13 @@ export function PackagesProjectEditor({
           min_extension_version: minExt || null,
           min_host_version: minHost || null,
           details_url: detailsUrl || null,
-          visible,
+          visible: extra?.visible ?? visible,
         }),
       });
       if (!res.ok) throw new Error(await res.text());
       const data = (await res.json()) as { project: Project };
       setProject(data.project);
+      if (extra?.visible !== undefined) setVisible(extra.visible);
       setMsg("Saved");
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Save failed");
@@ -134,7 +171,6 @@ export function PackagesProjectEditor({
       const signed = (await pre.json()) as {
         putUrl: string;
         bindValue: string;
-        key: string;
       };
       const put = await fetch(signed.putUrl, {
         method: "PUT",
@@ -157,7 +193,7 @@ export function PackagesProjectEditor({
       const data = (await patch.json()) as { project: Project };
       setProject(data.project);
       if (kind === "preview") setPreviewBroken(false);
-      setMsg(`${kind} uploaded`);
+      setMsg(kind === "preview" ? "Preview uploaded" : "Zip uploaded");
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Upload failed");
     } finally {
@@ -180,8 +216,7 @@ export function PackagesProjectEditor({
       if (!res.ok) throw new Error(await res.text());
       const data = (await res.json()) as { project: Project };
       setProject(data.project);
-      setShowPicker(false);
-      setMsg(`Bound ${obj.key}`);
+      setMsg(`Linked ${obj.key}`);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Bind failed");
     } finally {
@@ -212,6 +247,10 @@ export function PackagesProjectEditor({
     return <p className="text-sm text-muted-foreground">Loading…</p>;
   }
 
+  const step1Done = Boolean(name.trim() && version.trim());
+  const step2Done = Boolean(project.previewUrl);
+  const step3Done = Boolean(project.downloadKey);
+
   return (
     <div className="space-y-6 w-full">
       <div>
@@ -225,119 +264,121 @@ export function PackagesProjectEditor({
         <h1 className="text-2xl font-semibold tracking-tight">{project.name}</h1>
         <p className="text-xs text-muted-foreground mt-1">
           #{project.id} · {author.label}
+          {authorBucket ? ` · bucket ${authorBucket}` : " · no bucket set"}
         </p>
       </div>
 
-      <div className="rounded-xl border border-blue-500/20 bg-card/40 p-4 space-y-3">
-        <label className="block text-xs text-muted-foreground">
-          Name
-          <input
-            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </label>
-        <label className="block text-xs text-muted-foreground">
-          Version
-          <input
-            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-            value={version}
-            onChange={(e) => setVersion(e.target.value)}
-            placeholder="1.0.0"
-          />
-        </label>
-        <div>
-          <span className="text-xs text-muted-foreground">Application</span>
-          <div className="mt-1 inline-flex rounded-md border border-border p-0.5">
-            {(
-              [
-                { id: "PR" as const, label: "Premiere" },
-                { id: "AE" as const, label: "After Effects" },
-              ] as const
-            ).map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                className={cn(
-                  "rounded px-3 py-1.5 text-xs font-medium transition",
-                  host === opt.id
-                    ? "bg-muted text-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-                onClick={() => setHost(opt.id)}
-              >
-                {opt.label}
-              </button>
-            ))}
+      {/* Step 1 — Basics */}
+      <section className="rounded-xl border border-blue-500/20 bg-card/40 p-5 space-y-4">
+        <header className="flex items-center gap-2.5">
+          <StepBadge n={1} done={step1Done} current />
+          <div>
+            <h2 className="text-sm font-semibold">Basics</h2>
+            <p className="text-xs text-muted-foreground">Name, host app, versions, details link</p>
           </div>
+        </header>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-xs text-muted-foreground sm:col-span-2">
+            Name
+            <input
+              className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </label>
+          <label className="block text-xs text-muted-foreground">
+            Version
+            <input
+              className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              value={version}
+              onChange={(e) => setVersion(e.target.value)}
+              placeholder="1.0.0"
+            />
+          </label>
+          <div>
+            <span className="text-xs text-muted-foreground">Application</span>
+            <div className="mt-1.5 inline-flex rounded-md border border-border p-0.5">
+              {(
+                [
+                  { id: "PR" as const, label: "Premiere" },
+                  { id: "AE" as const, label: "After Effects" },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  className={cn(
+                    "rounded px-3 py-1.5 text-xs font-medium transition",
+                    host === opt.id
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                  onClick={() => setHost(opt.id)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <label className="block text-xs text-muted-foreground">
+            Min extension version
+            <input
+              className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              value={minExt}
+              onChange={(e) => setMinExt(e.target.value)}
+              placeholder="1.0.0"
+            />
+          </label>
+          <label className="block text-xs text-muted-foreground">
+            Min host application version
+            <input
+              className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              value={minHost}
+              onChange={(e) => setMinHost(e.target.value)}
+              placeholder="24.0"
+            />
+          </label>
+          <label className="block text-xs text-muted-foreground sm:col-span-2">
+            Details (resource URL)
+            <input
+              className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              value={detailsUrl}
+              onChange={(e) => setDetailsUrl(e.target.value)}
+              placeholder="https://…"
+            />
+          </label>
         </div>
-        <label className="block text-xs text-muted-foreground">
-          Min extension version
-          <input
-            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-            value={minExt}
-            onChange={(e) => setMinExt(e.target.value)}
-            placeholder="1.0.0"
-          />
-        </label>
-        <label className="block text-xs text-muted-foreground">
-          Min host application version
-          <input
-            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-            value={minHost}
-            onChange={(e) => setMinHost(e.target.value)}
-            placeholder="24.0"
-          />
-        </label>
-        <label className="block text-xs text-muted-foreground">
-          Details (resource URL)
-          <input
-            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-            value={detailsUrl}
-            onChange={(e) => setDetailsUrl(e.target.value)}
-            placeholder="https://…"
-          />
-        </label>
-        <label className="flex items-center gap-2 text-sm cursor-pointer">
-          <input
-            type="checkbox"
-            className="rounded border-border"
-            checked={visible}
-            onChange={(e) => setVisible(e.target.checked)}
-          />
-          Visible in CEP extension
-        </label>
         <Button type="button" size="sm" disabled={busy} onClick={() => void saveMeta()}>
           <Save className="h-3.5 w-3.5 mr-1" />
-          Save metadata
+          Save basics
         </Button>
-      </div>
+      </section>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-xl border border-blue-500/20 bg-card/40 p-4 space-y-3">
-          <h3 className="font-semibold text-sm">Preview image</h3>
+      {/* Step 2 — Preview */}
+      <section className="rounded-xl border border-blue-500/20 bg-card/40 p-5 space-y-4">
+        <header className="flex items-center gap-2.5">
+          <StepBadge n={2} done={step2Done} current={step1Done && !step2Done} />
+          <div>
+            <h2 className="text-sm font-semibold">Preview image</h2>
+            <p className="text-xs text-muted-foreground">Shown in the CEP pack list</p>
+          </div>
+        </header>
+        <div className="flex flex-wrap items-start gap-4">
           {project.previewUrl && !previewBroken ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={project.previewUrl}
               alt=""
-              className="w-full max-h-40 object-contain rounded-lg bg-muted/30"
+              className="h-32 w-32 rounded-lg object-contain bg-muted/30"
               onError={() => setPreviewBroken(true)}
             />
           ) : (
-            <div className="space-y-1">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={author.logoUrl}
-                alt={`${author.label} logo`}
-                className="w-full max-h-40 object-contain rounded-lg bg-muted/30 p-4"
-              />
-              <p className="text-xs text-muted-foreground">
-                {project.previewUrl
-                  ? "Preview failed to load — showing author logo"
-                  : "No preview — showing author logo"}
-              </p>
-            </div>
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={author.logoUrl}
+              alt=""
+              className="h-32 w-32 rounded-lg object-contain bg-muted/30 p-3"
+            />
           )}
           <label className="inline-flex">
             <input
@@ -356,44 +397,116 @@ export function PackagesProjectEditor({
             </Button>
           </label>
         </div>
+      </section>
 
-        <div className="rounded-xl border border-blue-500/20 bg-card/40 p-4 space-y-3">
-          <h3 className="font-semibold text-sm">Download zip</h3>
-          <p className="text-xs text-muted-foreground break-all">
-            {project.downloadKey || "No zip linked"}
+      {/* Step 3 — Zip from bucket */}
+      <section className="rounded-xl border border-blue-500/20 bg-card/40 p-5 space-y-4">
+        <header className="flex items-center gap-2.5">
+          <StepBadge n={3} done={step3Done} current={step1Done && step2Done && !step3Done} />
+          <div>
+            <h2 className="text-sm font-semibold">Download archive</h2>
+            <p className="text-xs text-muted-foreground">
+              Pick a zip from the author bucket
+              {authorBucket ? ` (${authorBucket})` : ""}
+            </p>
+          </div>
+        </header>
+
+        <p className="text-xs break-all text-muted-foreground">
+          {project.downloadKey ? (
+            <>
+              Linked: <span className="text-foreground font-mono">{project.downloadKey}</span>
+            </>
+          ) : (
+            "No zip linked yet"
+          )}
+        </p>
+
+        {!authorBucket ? (
+          <p className="text-sm text-amber-400/90">
+            Set an R2 bucket in{" "}
+            <Link href="/profile/packages/authors" className="underline hover:text-amber-300">
+              Authors settings
+            </Link>{" "}
+            to browse files.
           </p>
-          <div className="flex flex-wrap gap-2">
-            <label className="inline-flex">
-              <input
-                type="file"
-                accept=".zip,application/zip"
-                className="hidden"
-                disabled={busy}
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void uploadAsset("zip", f);
-                  e.target.value = "";
-                }}
-              />
-              <Button type="button" size="sm" variant="outline" disabled={busy} asChild>
-                <span>Upload zip</span>
-              </Button>
-            </label>
+        ) : r2Error ? (
+          <p className="text-sm text-destructive">{r2Error}</p>
+        ) : (
+          <PackagesR2Browser
+            objects={r2Objects}
+            onSelectFile={(o) => void bindR2(o)}
+            selectLabel="Use as pack zip"
+          />
+        )}
+
+        <div className="flex flex-wrap gap-2 pt-1">
+          <label className="inline-flex">
+            <input
+              type="file"
+              accept=".zip,application/zip"
+              className="hidden"
+              disabled={busy}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void uploadAsset("zip", f);
+                e.target.value = "";
+              }}
+            />
+            <Button type="button" size="sm" variant="outline" disabled={busy} asChild>
+              <span>Or upload zip</span>
+            </Button>
+          </label>
+          {authorBucket ? (
             <Button
               type="button"
               size="sm"
-              variant="outline"
+              variant="ghost"
               disabled={busy}
-              onClick={() => setShowPicker((v) => !v)}
+              onClick={() => void loadR2()}
             >
-              {showPicker ? "Hide R2 picker" : "Bind from R2"}
+              Refresh bucket
             </Button>
-          </div>
-          {showPicker ? (
-            <PackagesR2Browser objects={r2Objects} onSelectFile={(o) => void bindR2(o)} />
           ) : null}
         </div>
-      </div>
+      </section>
+
+      {/* Step 4 — Publish */}
+      <section className="rounded-xl border border-blue-500/20 bg-card/40 p-5 space-y-4">
+        <header className="flex items-center gap-2.5">
+          <StepBadge
+            n={4}
+            done={visible}
+            current={step1Done && step2Done && step3Done && !visible}
+          />
+          <div>
+            <h2 className="text-sm font-semibold">Visibility</h2>
+            <p className="text-xs text-muted-foreground">Show this pack in the CEP extension</p>
+          </div>
+        </header>
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input
+            type="checkbox"
+            className="rounded border-border"
+            checked={visible}
+            onChange={(e) => setVisible(e.target.checked)}
+          />
+          Visible in CEP extension
+        </label>
+        <Button
+          type="button"
+          size="sm"
+          disabled={busy}
+          onClick={() => void saveMeta({ visible })}
+        >
+          {busy ? (
+            <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+          ) : (
+            <Save className="h-3.5 w-3.5 mr-1" />
+          )}
+          Save visibility
+        </Button>
+      </section>
 
       {msg ? <p className="text-xs text-muted-foreground">{msg}</p> : null}
     </div>

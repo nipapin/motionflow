@@ -27,8 +27,8 @@ export async function GET(req: NextRequest) {
     );
     return NextResponse.json({ author, objects });
   } catch (err) {
-    if (err instanceof Error && err.message === "PREFIX_NOT_ALLOWED") {
-      return NextResponse.json({ error: "PREFIX_NOT_ALLOWED" }, { status: 403 });
+    if (err instanceof Error && err.message === "BUCKET_NOT_CONFIGURED") {
+      return NextResponse.json({ error: "BUCKET_NOT_CONFIGURED" }, { status: 400 });
     }
     console.error("[studio/packages/r2]", err);
     return NextResponse.json({ error: "SERVER_ERROR" }, { status: 500 });
