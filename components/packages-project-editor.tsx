@@ -2,10 +2,27 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Check, ImageIcon, Loader2, RefreshCw, Save } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  ChevronsUpDown,
+  ImageIcon,
+  Loader2,
+  RefreshCw,
+  Save,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { getPackagesAuthorPublicById } from "@/lib/packages-admin-client";
@@ -32,11 +49,17 @@ type ZipOption = {
   size: number;
 };
 
-const selectClass = cn(
-  "border-input h-9 w-full rounded-md border bg-transparent px-3 text-sm outline-none",
-  "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
-  "disabled:cursor-not-allowed disabled:opacity-50",
-);
+function zipFileName(key: string): string {
+  const parts = key.split("/").filter(Boolean);
+  return parts[parts.length - 1] || key;
+}
+
+function formatBytes(n: number): string {
+  if (!n || n <= 0) return "";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 export function PackagesProjectEditor({
   authorId,
@@ -60,6 +83,7 @@ export function PackagesProjectEditor({
   const [zips, setZips] = useState<ZipOption[]>([]);
   const [zipsError, setZipsError] = useState<string | null>(null);
   const [zipsLoading, setZipsLoading] = useState(false);
+  const [zipPickerOpen, setZipPickerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [msgOk, setMsgOk] = useState(false);
@@ -365,7 +389,14 @@ export function PackagesProjectEditor({
           </div>
 
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="zip-file">Project source</Label>
+            <div className="flex items-baseline justify-between gap-2">
+              <Label htmlFor="zip-file">Project source</Label>
+              {authorBucket && !zipsLoading && !zipsError ? (
+                <span className="text-[12px] text-muted-foreground">
+                  {zips.length} zip{zips.length === 1 ? "" : "s"}
+                </span>
+              ) : null}
+            </div>
             {!authorBucket ? (
               <p className="rounded-lg bg-amber-500/10 px-3 py-2.5 text-sm text-amber-700 dark:text-amber-300/90">
                 Set an R2 bucket in{" "}
@@ -383,22 +414,88 @@ export function PackagesProjectEditor({
               </p>
             ) : (
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <select
-                  id="zip-file"
-                  className={cn(selectClass, "min-w-0 flex-1")}
-                  value={downloadKey}
-                  disabled={busy || zipsLoading}
-                  onChange={(e) => setDownloadKey(e.target.value)}
-                >
-                  <option value="">
-                    {zipsLoading ? "Loading…" : "Select a zip…"}
-                  </option>
-                  {zipOptions.map((z) => (
-                    <option key={z.key} value={z.key}>
-                      {z.key}
-                    </option>
-                  ))}
-                </select>
+                <Popover open={zipPickerOpen} onOpenChange={setZipPickerOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      id="zip-file"
+                      type="button"
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={zipPickerOpen}
+                      disabled={busy || zipsLoading}
+                      className="h-9 min-w-0 flex-1 justify-between font-normal"
+                    >
+                      <span className="truncate text-left">
+                        {zipsLoading
+                          ? "Loading zips…"
+                          : downloadKey
+                            ? zipFileName(downloadKey)
+                            : "Select a zip…"}
+                      </span>
+                      <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    className="w-(--radix-popover-trigger-width) p-0"
+                    align="start"
+                  >
+                    <Command>
+                      <CommandInput placeholder="Search zip files…" />
+                      <CommandList className="max-h-72">
+                        <CommandEmpty>No zip found.</CommandEmpty>
+                        <CommandGroup>
+                          {downloadKey ? (
+                            <CommandItem
+                              value="__clear__"
+                              onSelect={() => {
+                                setDownloadKey("");
+                                setZipPickerOpen(false);
+                              }}
+                              className="text-muted-foreground"
+                            >
+                              Clear selection
+                            </CommandItem>
+                          ) : null}
+                          {zipOptions.map((z) => (
+                            <CommandItem
+                              key={z.key}
+                              value={z.key}
+                              onSelect={() => {
+                                setDownloadKey(z.key);
+                                setZipPickerOpen(false);
+                              }}
+                              className="items-start gap-2"
+                            >
+                              <Check
+                                className={cn(
+                                  "mt-0.5 h-3.5 w-3.5 shrink-0",
+                                  downloadKey === z.key
+                                    ? "opacity-100"
+                                    : "opacity-0",
+                                )}
+                              />
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate font-medium">
+                                  {zipFileName(z.key)}
+                                </span>
+                                {z.key !== zipFileName(z.key) ? (
+                                  <span className="block truncate text-[11px] text-muted-foreground">
+                                    {z.key}
+                                  </span>
+                                ) : null}
+                              </span>
+                              {z.size > 0 ? (
+                                <span className="shrink-0 text-[11px] text-muted-foreground">
+                                  {formatBytes(z.size)}
+                                </span>
+                              ) : null}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
                 <Button
                   type="button"
                   size="sm"

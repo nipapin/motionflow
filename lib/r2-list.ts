@@ -178,7 +178,10 @@ export async function listR2BucketForAuthor(
   });
 }
 
-/** Flat list of `.zip` keys in the author's bucket (any depth). */
+/**
+ * List `.zip` objects in the **root** of the author's bucket only
+ * (Delimiter="/", no nested folders). Packs live as leaf keys at bucket root.
+ */
 export async function listR2ZipsForAuthor(
   author: PackagesAuthor,
   opts?: { maxKeys?: number },
@@ -186,11 +189,14 @@ export async function listR2ZipsForAuthor(
   if (!author.r2Bucket?.trim()) {
     throw new Error("BUCKET_NOT_CONFIGURED");
   }
-  const all = await listR2ObjectsUnderPrefix("", {
+
+  const listing = await listR2BucketLevel({
     bucket: author.r2Bucket,
-    maxKeys: opts?.maxKeys ?? 2000,
+    prefix: "",
+    maxKeys: opts?.maxKeys ?? 1000,
   });
-  return all
+
+  return listing.files
     .filter((o) => o.key.toLowerCase().endsWith(".zip"))
     .sort((a, b) => a.key.localeCompare(b.key));
 }
