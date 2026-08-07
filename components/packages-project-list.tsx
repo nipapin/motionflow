@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ArrowLeft,
   Check,
+  Copy,
   Loader2,
   Package,
   Pencil,
@@ -101,6 +102,7 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [cloningId, setCloningId] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -222,6 +224,23 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Create failed");
       setCreating(false);
+    }
+  };
+
+  const cloneProject = async (project: Project) => {
+    setCloningId(project.id);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/packages/${authorId}/projects/${project.id}/clone`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+      );
+      if (!res.ok) throw new Error(await res.text());
+      const data = (await res.json()) as { project: Project };
+      window.location.href = `/profile/packages/${authorId}/${data.project.id}`;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Clone failed");
+      setCloningId(null);
     }
   };
 
@@ -604,6 +623,22 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
                   </TableCell>
                   <TableCell className="pr-3 text-right">
                     <div className="inline-flex items-center justify-end gap-0.5">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                        aria-label={`Clone ${p.name} for ${p.host === "PR" ? "After Effects" : "Premiere"}`}
+                        title={`Clone → ${p.host === "PR" ? "After Effects" : "Premiere"}`}
+                        disabled={cloningId != null}
+                        onClick={() => void cloneProject(p)}
+                      >
+                        {cloningId === p.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Copy className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
                       <Button
                         type="button"
                         variant="ghost"

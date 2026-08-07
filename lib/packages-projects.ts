@@ -250,6 +250,56 @@ export async function createPackagesProject(opts: {
   return created;
 }
 
+/**
+ * Duplicate a project for the other host (or an explicit host).
+ * Copies metadata + preview; clears download zip (host builds usually differ)
+ * and starts as hidden so CEP is not updated until reviewed.
+ */
+export async function clonePackagesProject(
+  authorId: number,
+  sourceId: number,
+  opts?: { host?: PackagesProjectHost | string },
+): Promise<PackagesProjectDto> {
+  await assertPackagesAuthorId(authorId);
+  await ensurePackagesProjectsTable();
+
+  const source = await getPackagesProject(authorId, sourceId);
+  if (!source) throw new Error("NOT_FOUND");
+
+  const host =
+    opts?.host != null
+      ? normalizeHost(String(opts.host))
+      : source.host === "PR"
+        ? "AE"
+        : "PR";
+
+  const pool = getPool();
+  const table = packagesProjectsTableName();
+  const [result] = await pool.query<ResultSetHeader>(
+    `INSERT INTO \`${table}\`
+      (author_id, name, version, host,
+       min_extension_version, min_host_version, details_url,
+       preview_key, download_key, price, visible, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 0, NOW(), NOW())`,
+    [
+      authorId,
+      source.name.slice(0, 255),
+      source.version,
+      host,
+      source.min_extension_version,
+      source.min_host_version,
+      source.details_url,
+      source.previewKey,
+      source.price,
+    ],
+  );
+
+  const id = Number(result.insertId);
+  const created = await getPackagesProject(authorId, id);
+  if (!created) throw new Error("CLONE_FAILED");
+  return created;
+}
+
 export type PackagesProjectPatch = {
   name?: string;
   version?: string | null;
