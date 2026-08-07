@@ -3,11 +3,10 @@ import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getPackagesAuthorById, isPackagesAdmin } from "@/lib/packages-admin";
 import { packagesAuthorLogoUrl } from "@/lib/packages-admin-client";
 import {
-  listDistinctAuthorBuckets,
   updatePackagesAuthorRow,
   type PackagesAuthorPatch,
 } from "@/lib/packages-authors-db";
-import { isPackagesBucketAllowed } from "@/lib/packages-r2-buckets";
+import { normalizePackagesBucketName } from "@/lib/packages-r2-buckets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -70,15 +69,20 @@ export async function PATCH(
     return NextResponse.json({ error: "INVALID_JSON" }, { status: 400 });
   }
 
-  if (body.r2_bucket !== undefined && body.r2_bucket !== null && body.r2_bucket !== "") {
-    const extra = await listDistinctAuthorBuckets();
-    if (!isPackagesBucketAllowed(body.r2_bucket, extra)) {
-      return NextResponse.json({ error: "BUCKET_NOT_ALLOWED" }, { status: 400 });
+  const patch: PackagesAuthorPatch = { ...body };
+  if (body.r2_bucket !== undefined) {
+    const normalized = normalizePackagesBucketName(body.r2_bucket);
+    if (!normalized.ok) {
+      return NextResponse.json(
+        { error: "INVALID_BUCKET", message: normalized.error },
+        { status: 400 },
+      );
     }
+    patch.r2_bucket = normalized.value;
   }
 
   try {
-    await updatePackagesAuthorRow(authorId, body);
+    await updatePackagesAuthorRow(authorId, patch);
     const author = await getPackagesAuthorById(authorId);
     if (!author) return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
     return NextResponse.json({ author: authorDto(author) });

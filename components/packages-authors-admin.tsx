@@ -16,7 +16,6 @@ type AuthorDto = {
 
 export function PackagesAuthorsAdmin() {
   const [authors, setAuthors] = useState<AuthorDto[]>([]);
-  const [buckets, setBuckets] = useState<string[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [label, setLabel] = useState("");
   const [r2Bucket, setR2Bucket] = useState("");
@@ -29,19 +28,11 @@ export function PackagesAuthorsAdmin() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [authorsRes, bucketsRes] = await Promise.all([
-        fetch("/api/packages/authors"),
-        fetch("/api/packages/buckets"),
-      ]);
-      if (!authorsRes.ok) throw new Error(await authorsRes.text());
-      const authorsData = (await authorsRes.json()) as { authors: AuthorDto[] };
-      setAuthors(authorsData.authors || []);
-      setSelectedId((prev) => prev ?? authorsData.authors?.[0]?.id ?? null);
-
-      if (bucketsRes.ok) {
-        const bucketsData = (await bucketsRes.json()) as { buckets: string[] };
-        setBuckets(bucketsData.buckets || []);
-      }
+      const res = await fetch("/api/packages/authors");
+      if (!res.ok) throw new Error(await res.text());
+      const data = (await res.json()) as { authors: AuthorDto[] };
+      setAuthors(data.authors || []);
+      setSelectedId((prev) => prev ?? data.authors?.[0]?.id ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Load failed");
     }
@@ -58,12 +49,6 @@ export function PackagesAuthorsAdmin() {
     setMsg(null);
   }, [selected]);
 
-  const bucketOptions = (() => {
-    const set = new Set(buckets);
-    if (r2Bucket && !set.has(r2Bucket)) set.add(r2Bucket);
-    return Array.from(set);
-  })();
-
   const saveAuthor = async () => {
     if (!selectedId) return;
     setBusy(true);
@@ -74,14 +59,21 @@ export function PackagesAuthorsAdmin() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           label,
-          r2_bucket: r2Bucket || null,
+          r2_bucket: r2Bucket.trim() || null,
         }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as {
+          message?: string;
+          error?: string;
+        };
+        throw new Error(body.message || body.error || `Save failed (${res.status})`);
+      }
       const data = (await res.json()) as { author: AuthorDto };
       setAuthors((prev) =>
         prev.map((a) => (a.id === data.author.id ? { ...a, ...data.author } : a)),
       );
+      setR2Bucket(data.author.r2_bucket || "");
       setMsg("Saved");
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Save failed");
@@ -102,7 +94,7 @@ export function PackagesAuthorsAdmin() {
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">Authors</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Assign an R2 bucket per author. Pack editors browse that bucket to attach zip archives.
+          Set each author’s R2 bucket name here. Pack editors browse that bucket to attach zips.
         </p>
       </div>
 
@@ -127,7 +119,12 @@ export function PackagesAuthorsAdmin() {
                   alt=""
                   className="h-7 w-7 rounded object-contain bg-muted/40 p-0.5"
                 />
-                <span className="truncate font-medium">{a.label}</span>
+                <div className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{a.label}</span>
+                  <span className="block truncate text-[11px] text-muted-foreground font-mono">
+                    {a.r2_bucket || "no bucket"}
+                  </span>
+                </div>
               </button>
             </li>
           ))}
@@ -147,23 +144,19 @@ export function PackagesAuthorsAdmin() {
               />
             </label>
             <label className="block text-xs text-muted-foreground">
-              R2 bucket
-              <select
+              R2 bucket name
+              <input
                 className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono"
                 value={r2Bucket}
                 onChange={(e) => setR2Bucket(e.target.value)}
-              >
-                <option value="">— Not set —</option>
-                {bucketOptions.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
+                placeholder="spunkram-library"
+                autoComplete="off"
+                spellCheck={false}
+              />
             </label>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Packs for this author will list objects from the selected bucket so you can bind a zip
-              to each project.
+              Exact Cloudflare R2 bucket name for this author. Leave empty to clear. Credentials
+              stay in server R2 env; only the bucket name is stored per author.
             </p>
             <Button type="button" size="sm" disabled={busy} onClick={() => void saveAuthor()}>
               {busy ? (

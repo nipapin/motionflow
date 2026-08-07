@@ -201,18 +201,6 @@ export async function updatePackagesAuthorRow(
   return updated;
 }
 
-export async function listDistinctAuthorBuckets(): Promise<string[]> {
-  await seedPackagesAuthors();
-  const pool = getPool();
-  const [rows] = await pool.query<RowDataPacket[]>(
-    `SELECT DISTINCT r2_bucket AS bucket FROM \`${AUTHORS_TABLE}\`
-     WHERE r2_bucket IS NOT NULL AND TRIM(r2_bucket) <> ''`,
-  );
-  return rows
-    .map((r) => String(r.bucket ?? "").trim())
-    .filter(Boolean);
-}
-
 export function packagesAuthorsTableName(): string {
   return AUTHORS_TABLE;
 }
