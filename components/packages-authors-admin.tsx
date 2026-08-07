@@ -2,9 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Loader2, Save } from "lucide-react";
+import { ArrowLeft, Check, Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { packagesAuthorLogoUrl } from "@/lib/packages-admin-client";
+import { cn } from "@/lib/utils";
 
 type AuthorDto = {
   id: number;
@@ -22,12 +26,15 @@ export function PackagesAuthorsAdmin() {
   const [label, setLabel] = useState("");
   const [r2Bucket, setR2Bucket] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
+  const [msgOk, setMsgOk] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const selected = authors.find((a) => a.id === selectedId) ?? null;
 
   const load = useCallback(async () => {
+    setLoading(true);
     setError(null);
     setBucketsError(null);
     try {
@@ -49,6 +56,8 @@ export function PackagesAuthorsAdmin() {
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Load failed");
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -65,7 +74,6 @@ export function PackagesAuthorsAdmin() {
 
   const bucketOptions = (() => {
     const set = new Set(buckets);
-    // Keep currently saved bucket visible even if ListBuckets briefly omits it.
     if (r2Bucket) set.add(r2Bucket);
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   })();
@@ -96,111 +104,187 @@ export function PackagesAuthorsAdmin() {
       );
       setR2Bucket(data.author.r2_bucket || "");
       setMsg("Saved");
+      setMsgOk(true);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Save failed");
+      setMsgOk(false);
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="space-y-5 w-full">
-      <div>
-        <Link
-          href="/profile/packages"
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-2"
+    <div className="mx-auto max-w-5xl space-y-8">
+      <header className="space-y-4">
+        <nav className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
+          <Link
+            href="/profile/packages"
+            className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Packages
+          </Link>
+          <span className="text-muted-foreground/40" aria-hidden>
+            /
+          </span>
+          <span className="text-foreground/80">Authors</span>
+        </nav>
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight">Authors</h1>
+          <p className="mt-1 max-w-lg text-[15px] leading-relaxed text-muted-foreground">
+            Display name and R2 bucket for each author. Pack editors browse that bucket for zips.
+          </p>
+        </div>
+      </header>
+
+      {error ? (
+        <div
+          role="alert"
+          className="rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive"
         >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          Packages
-        </Link>
-        <h1 className="text-2xl font-semibold tracking-tight">Authors</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Pick an R2 bucket from your account for each author. Pack editors browse that bucket.
-        </p>
-      </div>
+          {error}
+        </div>
+      ) : null}
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
-
-      <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
-        <ul className="space-y-1">
-          {authors.map((a) => (
-            <li key={a.id}>
-              <button
-                type="button"
-                onClick={() => setSelectedId(a.id)}
-                className={`w-full flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm transition ${
-                  selectedId === a.id
-                    ? "border-blue-500/40 bg-blue-500/10"
-                    : "border-border/60 bg-card/30 hover:bg-foreground/5"
-                }`}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={a.logoUrl || packagesAuthorLogoUrl(a.slug)}
-                  alt=""
-                  className="h-7 w-7 rounded object-contain bg-muted/40 p-0.5"
-                />
-                <div className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">{a.label}</span>
-                  <span className="block truncate text-[11px] text-muted-foreground font-mono">
-                    {a.r2_bucket || "no bucket"}
-                  </span>
-                </div>
-              </button>
-            </li>
-          ))}
-        </ul>
-
-        {selected ? (
-          <div className="rounded-xl border border-blue-500/20 bg-card/40 p-5 space-y-4 max-w-xl">
-            <p className="text-xs text-muted-foreground">
-              #{selected.id} · {selected.slug}
-            </p>
-            <label className="block text-xs text-muted-foreground">
-              Label
-              <input
-                className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-              />
-            </label>
-            <label className="block text-xs text-muted-foreground">
-              R2 bucket
-              <select
-                className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono"
-                value={r2Bucket}
-                onChange={(e) => setR2Bucket(e.target.value)}
-                disabled={busy || (bucketOptions.length === 0 && !r2Bucket)}
-              >
-                <option value="">— Not set —</option>
-                {bucketOptions.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {bucketsError ? (
-              <p className="text-xs text-destructive">{bucketsError}</p>
-            ) : (
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Buckets are loaded live from R2 (ListBuckets) using the server API token.
-              </p>
-            )}
-            <Button type="button" size="sm" disabled={busy} onClick={() => void saveAuthor()}>
-              {busy ? (
-                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-              ) : (
-                <Save className="h-3.5 w-3.5 mr-1" />
-              )}
-              Save
-            </Button>
-            {msg ? <p className="text-xs text-muted-foreground">{msg}</p> : null}
+      {loading ? (
+        <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-14 w-full rounded-lg" />
+            ))}
           </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">Select an author.</p>
-        )}
-      </div>
+          <Skeleton className="h-56 w-full rounded-xl" />
+        </div>
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
+          <ul className="space-y-1" role="listbox" aria-label="Authors">
+            {authors.map((a) => {
+              const active = selectedId === a.id;
+              return (
+                <li key={a.id}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={active}
+                    onClick={() => setSelectedId(a.id)}
+                    className={cn(
+                      "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      active
+                        ? "bg-foreground/6 text-foreground"
+                        : "text-muted-foreground hover:bg-foreground/3 hover:text-foreground",
+                    )}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={a.logoUrl || packagesAuthorLogoUrl(a.slug)}
+                      alt=""
+                      className="h-8 w-8 shrink-0 rounded-md bg-muted/50 object-contain p-0.5"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <span className="block truncate font-medium text-foreground">
+                        {a.label}
+                      </span>
+                      <span className="block truncate font-mono text-[11px] text-muted-foreground">
+                        {a.r2_bucket || "No bucket"}
+                      </span>
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+
+          {selected ? (
+            <div className="space-y-6 rounded-xl border border-border/50 px-5 py-6 sm:px-7">
+              <div>
+                <p className="text-[13px] text-muted-foreground">
+                  #{selected.id} · {selected.slug}
+                </p>
+                <h2 className="mt-1 text-lg font-semibold tracking-tight">{selected.label}</h2>
+              </div>
+
+              <div className="max-w-md space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="author-label">Display name</Label>
+                  <Input
+                    id="author-label"
+                    value={label}
+                    onChange={(e) => setLabel(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="author-bucket">R2 bucket</Label>
+                  <select
+                    id="author-bucket"
+                    className={cn(
+                      "border-input h-9 w-full rounded-md border bg-transparent px-3 font-mono text-sm outline-none",
+                      "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
+                      "disabled:cursor-not-allowed disabled:opacity-50",
+                    )}
+                    value={r2Bucket}
+                    onChange={(e) => setR2Bucket(e.target.value)}
+                    disabled={busy || (bucketOptions.length === 0 && !r2Bucket)}
+                  >
+                    <option value="">— Not set —</option>
+                    {bucketOptions.map((b) => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
+                  </select>
+                  {bucketsError ? (
+                    <p className="text-[13px] text-destructive">{bucketsError}</p>
+                  ) : (
+                    <p className="text-[13px] leading-relaxed text-muted-foreground">
+                      Loaded live from R2 via ListBuckets.
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-9 gap-1.5"
+                    disabled={busy}
+                    onClick={() => void saveAuthor()}
+                  >
+                    {busy ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Save className="h-3.5 w-3.5" />
+                    )}
+                    Save
+                  </Button>
+                  {msg ? (
+                    <p
+                      className={cn(
+                        "text-[13px]",
+                        msgOk
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : "text-destructive",
+                      )}
+                      role="status"
+                    >
+                      {msgOk ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Check className="h-3.5 w-3.5" aria-hidden />
+                          {msg}
+                        </span>
+                      ) : (
+                        msg
+                      )}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Select an author.</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

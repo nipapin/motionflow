@@ -177,3 +177,20 @@ export async function listR2BucketForAuthor(
     prefix: prefixOverride,
   });
 }
+
+/** Flat list of `.zip` keys in the author's bucket (any depth). */
+export async function listR2ZipsForAuthor(
+  author: PackagesAuthor,
+  opts?: { maxKeys?: number },
+): Promise<R2ListedObject[]> {
+  if (!author.r2Bucket?.trim()) {
+    throw new Error("BUCKET_NOT_CONFIGURED");
+  }
+  const all = await listR2ObjectsUnderPrefix("", {
+    bucket: author.r2Bucket,
+    maxKeys: opts?.maxKeys ?? 2000,
+  });
+  return all
+    .filter((o) => o.key.toLowerCase().endsWith(".zip"))
+    .sort((a, b) => a.key.localeCompare(b.key));
+}

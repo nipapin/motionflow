@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import type { RowDataPacket } from "mysql2";
-import { getPool } from "@/lib/db";
+import { getPool, withDbRetry } from "@/lib/db";
 import {
   SESSION_COOKIE_NAME,
   LARAVEL_COOKIE_NAME,
@@ -35,19 +35,21 @@ export type SessionUser = {
 
 async function loadUserById(id: number): Promise<SessionUser | null> {
   try {
-    const pool = getPool();
-    const [rows] = await pool.execute<UserRow[]>(
-      "SELECT id, email, name, password, google_id, access FROM users WHERE id = ? LIMIT 1",
-      [id],
-    );
-    const u = rows[0];
-    if (!u) return null;
-    const payload = await authUserPayloadFromRow(u);
-    const accessNum = Number(u.access ?? 0);
-    return {
-      ...payload,
-      access: Number.isFinite(accessNum) ? accessNum : 0,
-    };
+    return await withDbRetry(async () => {
+      const pool = getPool();
+      const [rows] = await pool.execute<UserRow[]>(
+        "SELECT id, email, name, password, google_id, access FROM users WHERE id = ? LIMIT 1",
+        [id],
+      );
+      const u = rows[0];
+      if (!u) return null;
+      const payload = await authUserPayloadFromRow(u);
+      const accessNum = Number(u.access ?? 0);
+      return {
+        ...payload,
+        access: Number.isFinite(accessNum) ? accessNum : 0,
+      };
+    });
   } catch (e) {
     console.error("[getSessionUser]", e);
     return null;

@@ -4,10 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
+  Check,
   Loader2,
+  Package,
   Pencil,
   Plus,
   RefreshCw,
+  Save,
   Search,
   Trash2,
 } from "lucide-react";
@@ -20,9 +23,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import {
   Table,
@@ -80,7 +84,7 @@ function ProjectThumb({
       src={src}
       alt=""
       className={cn(
-        "h-11 w-11 rounded-lg shrink-0 bg-muted/50",
+        "h-10 w-10 shrink-0 rounded-md bg-muted/50",
         src === logoUrl ? "object-contain p-1.5" : "object-cover",
       )}
       onError={() => {
@@ -102,6 +106,14 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
   const [deleting, setDeleting] = useState(false);
   const [togglingId, setTogglingId] = useState<number | null>(null);
 
+  const [displayLabel, setDisplayLabel] = useState(author?.label ?? "");
+  const [r2Bucket, setR2Bucket] = useState("");
+  const [buckets, setBuckets] = useState<string[]>([]);
+  const [bucketsError, setBucketsError] = useState<string | null>(null);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [settingsMsg, setSettingsMsg] = useState<string | null>(null);
+  const [settingsOk, setSettingsOk] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -117,9 +129,76 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
     }
   }, [authorId]);
 
+  const loadAuthorSettings = useCallback(async () => {
+    setBucketsError(null);
+    try {
+      const [authorRes, bucketsRes] = await Promise.all([
+        fetch(`/api/packages/authors/${authorId}`),
+        fetch("/api/packages/buckets"),
+      ]);
+      if (authorRes.ok) {
+        const data = (await authorRes.json()) as {
+          author: { label: string; r2_bucket: string | null };
+        };
+        setDisplayLabel(data.author.label);
+        setR2Bucket(data.author.r2_bucket || "");
+      }
+      if (bucketsRes.ok) {
+        const data = (await bucketsRes.json()) as { buckets: string[] };
+        setBuckets(data.buckets || []);
+      } else {
+        setBuckets([]);
+        setBucketsError("Could not load R2 buckets");
+      }
+    } catch {
+      setBucketsError("Could not load author settings");
+    }
+  }, [authorId]);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadAuthorSettings();
+  }, [load, loadAuthorSettings]);
+
+  const bucketOptions = (() => {
+    const set = new Set(buckets);
+    if (r2Bucket) set.add(r2Bucket);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  })();
+
+  const saveAuthorSettings = async () => {
+    setSettingsBusy(true);
+    setSettingsMsg(null);
+    try {
+      const res = await fetch(`/api/packages/authors/${authorId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: displayLabel,
+          r2_bucket: r2Bucket.trim() || null,
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as {
+          message?: string;
+          error?: string;
+        };
+        throw new Error(body.message || body.error || `Save failed (${res.status})`);
+      }
+      const data = (await res.json()) as {
+        author: { label: string; r2_bucket: string | null };
+      };
+      setDisplayLabel(data.author.label);
+      setR2Bucket(data.author.r2_bucket || "");
+      setSettingsMsg("Saved");
+      setSettingsOk(true);
+    } catch (e) {
+      setSettingsMsg(e instanceof Error ? e.message : "Save failed");
+      setSettingsOk(false);
+    } finally {
+      setSettingsBusy(false);
+    }
+  };
 
   const q = query.trim().toLowerCase();
   const filtered = q
@@ -200,107 +279,273 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
     return <p className="text-sm text-destructive">Unknown author.</p>;
   }
 
+  const showSkeleton = loading && projects.length === 0;
+
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Link href="/profile/packages" className="hover:text-foreground inline-flex items-center gap-1">
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Packages
-            </Link>
-            <span aria-hidden>·</span>
-            <span className="text-foreground/80">{author.label}</span>
-          </div>
-          <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2.5">
+    <div className="w-full space-y-8">
+      <header className="space-y-5">
+        <nav className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
+          <Link
+            href="/profile/packages"
+            className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Packages
+          </Link>
+          <span className="text-muted-foreground/40" aria-hidden>
+            /
+          </span>
+          <span className="text-foreground/80">{displayLabel || author.label}</span>
+        </nav>
+
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="flex items-start gap-3.5">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={author.logoUrl}
               alt=""
-              className="h-8 w-8 rounded-md object-contain bg-muted/40 p-1"
+              className="mt-0.5 h-11 w-11 rounded-lg bg-muted/60 object-contain p-1.5"
             />
-            {author.label}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            CEP packages · author_id {author.id}
-          </p>
+            <div>
+              <h1 className="text-3xl font-semibold tracking-tight">
+                {displayLabel || author.label}
+              </h1>
+              <p className="mt-1 text-[15px] text-muted-foreground">
+                CEP packages for this author
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            className="h-9 gap-1.5"
+            onClick={() => void createProject()}
+            disabled={creating}
+          >
+            {creating ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Plus className="h-3.5 w-3.5" />
+            )}
+            New package
+          </Button>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          onClick={() => void createProject()}
-          disabled={creating}
-        >
-          {creating ? (
-            <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-          ) : (
-            <Plus className="h-3.5 w-3.5 mr-1" />
-          )}
-          Create package
-        </Button>
-      </div>
+      </header>
+
+      <section className="rounded-xl border border-border/50 px-4 py-4 sm:px-5">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-semibold tracking-tight">Author settings</h2>
+            <p className="mt-0.5 text-[13px] text-muted-foreground">
+              Display name and R2 bucket used for zip archives.
+            </p>
+          </div>
+          {settingsMsg ? (
+            <p
+              className={cn(
+                "text-[13px]",
+                settingsOk
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : "text-destructive",
+              )}
+              role="status"
+            >
+              {settingsOk ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Check className="h-3.5 w-3.5" aria-hidden />
+                  {settingsMsg}
+                </span>
+              ) : (
+                settingsMsg
+              )}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+          <div className="min-w-0 flex-1 space-y-2">
+            <Label htmlFor="author-display-name">Display name</Label>
+            <Input
+              id="author-display-name"
+              value={displayLabel}
+              onChange={(e) => setDisplayLabel(e.target.value)}
+            />
+          </div>
+          <div className="min-w-0 flex-[1.4] space-y-2">
+            <Label htmlFor="author-r2-bucket">R2 bucket</Label>
+            <select
+              id="author-r2-bucket"
+              className={cn(
+                "border-input h-9 w-full rounded-md border bg-transparent px-3 font-mono text-sm outline-none",
+                "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
+                "disabled:cursor-not-allowed disabled:opacity-50",
+              )}
+              value={r2Bucket}
+              onChange={(e) => setR2Bucket(e.target.value)}
+              disabled={settingsBusy || (bucketOptions.length === 0 && !r2Bucket)}
+            >
+              <option value="">— Not set —</option>
+              {bucketOptions.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
+            {bucketsError ? (
+              <p className="text-[12px] text-destructive">{bucketsError}</p>
+            ) : null}
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            className="h-9 shrink-0 gap-1.5"
+            disabled={settingsBusy}
+            onClick={() => void saveAuthorSettings()}
+          >
+            {settingsBusy ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Save className="h-3.5 w-3.5" />
+            )}
+            Save
+          </Button>
+        </div>
+      </section>
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-55 flex-1 max-w-sm">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <div className="relative min-w-56 max-w-sm flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search packages…"
-            className="h-9 pl-8"
+            placeholder="Search by name, version, host…"
+            className="h-9 pl-9"
+            aria-label="Search packages"
           />
         </div>
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           size="sm"
+          className="h-9 gap-1.5 text-muted-foreground"
           onClick={() => void load()}
           disabled={loading}
         >
-          <RefreshCw className={cn("h-3.5 w-3.5 mr-1", loading && "animate-spin")} />
+          <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
           Refresh
         </Button>
+        {!loading && projects.length > 0 ? (
+          <span className="ml-auto text-[13px] text-muted-foreground">
+            {filtered.length === projects.length
+              ? `${projects.length} package${projects.length === 1 ? "" : "s"}`
+              : `${filtered.length} of ${projects.length}`}
+          </span>
+        ) : null}
       </div>
 
       {error ? (
-        <div className="rounded-xl border border-destructive/30 px-4 py-3 text-sm text-destructive">
+        <div
+          role="alert"
+          className="rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        >
           {error}
         </div>
       ) : null}
 
-      <div className="rounded-xl border border-border/80 bg-card/40 overflow-hidden">
-        {loading && projects.length === 0 ? (
-          <p className="px-4 py-10 text-sm text-muted-foreground text-center">Loading…</p>
+      <div className="overflow-hidden rounded-xl border border-border/50">
+        {showSkeleton ? (
+          <div className="space-y-0 divide-y divide-border/50">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 px-4 py-3.5">
+                <Skeleton className="h-10 w-10 rounded-md" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-3.5 w-40" />
+                  <Skeleton className="h-3 w-16" />
+                </div>
+                <Skeleton className="hidden h-3 w-20 sm:block" />
+                <Skeleton className="hidden h-5 w-12 sm:block" />
+              </div>
+            ))}
+          </div>
         ) : error && projects.length === 0 ? (
-          <p className="px-4 py-10 text-sm text-muted-foreground text-center">
-            Could not load packages. Try Refresh.
-          </p>
+          <div className="px-6 py-14 text-center">
+            <p className="text-sm text-muted-foreground">Could not load packages.</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-4"
+              onClick={() => void load()}
+            >
+              Try again
+            </Button>
+          </div>
         ) : filtered.length === 0 ? (
-          <p className="px-4 py-10 text-sm text-muted-foreground text-center">
-            {projects.length === 0
-              ? "No packages yet. Create one to attach preview, version, and an R2 download."
-              : "No packages match your search."}
-          </p>
+          <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+              <Package className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <p className="text-sm font-medium text-foreground">
+              {projects.length === 0 ? "No packages yet" : "No matches"}
+            </p>
+            <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+              {projects.length === 0
+                ? "Create a package to attach a preview, version, and R2 download zip."
+                : "Try a different search term."}
+            </p>
+            {projects.length === 0 ? (
+              <Button
+                type="button"
+                size="sm"
+                className="mt-5 gap-1.5"
+                onClick={() => void createProject()}
+                disabled={creating}
+              >
+                {creating ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Plus className="h-3.5 w-3.5" />
+                )}
+                Create package
+              </Button>
+            ) : null}
+          </div>
         ) : (
           <Table>
             <TableHeader>
-              <TableRow className="hover:bg-transparent border-border/60">
-                <TableHead className="pl-4">Package</TableHead>
-                <TableHead>Host</TableHead>
-                <TableHead>Version</TableHead>
-                <TableHead>Download</TableHead>
-                <TableHead>CEP</TableHead>
-                <TableHead>Updated</TableHead>
-                <TableHead className="pr-4 text-right">Actions</TableHead>
+              <TableRow className="border-border/50 hover:bg-transparent">
+                <TableHead className="h-10 pl-4 text-[12px] font-medium text-muted-foreground">
+                  Package
+                </TableHead>
+                <TableHead className="h-10 text-[12px] font-medium text-muted-foreground">
+                  Host
+                </TableHead>
+                <TableHead className="h-10 text-[12px] font-medium text-muted-foreground">
+                  Version
+                </TableHead>
+                <TableHead className="h-10 text-[12px] font-medium text-muted-foreground">
+                  Download
+                </TableHead>
+                <TableHead className="h-10 text-[12px] font-medium text-muted-foreground">
+                  In CEP
+                </TableHead>
+                <TableHead className="h-10 text-[12px] font-medium text-muted-foreground">
+                  Updated
+                </TableHead>
+                <TableHead className="h-10 pr-4 text-right text-[12px] font-medium text-muted-foreground">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((p) => (
-                <TableRow key={p.id} className="border-border/50">
+                <TableRow
+                  key={p.id}
+                  className="border-border/40 transition-colors hover:bg-foreground/2.5"
+                >
                   <TableCell className="pl-4 whitespace-normal">
                     <Link
                       href={`/profile/packages/${authorId}/${p.id}`}
-                      className="flex items-center gap-3 min-w-0 group"
+                      className="group flex min-w-0 items-center gap-3"
                     >
                       <ProjectThumb
                         previewUrl={p.previewUrl}
@@ -308,33 +553,30 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
                         label={author.label}
                       />
                       <div className="min-w-0">
-                        <p className="font-medium truncate group-hover:text-blue-400 transition-colors">
+                        <p className="truncate text-sm font-medium transition-colors group-hover:text-foreground">
                           {p.name}
                         </p>
-                        <span className="text-[11px] text-muted-foreground">#{p.id}</span>
+                        <span className="text-[12px] text-muted-foreground">#{p.id}</span>
                       </div>
                     </Link>
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-xs">
+                  <TableCell className="text-[13px] text-muted-foreground">
                     {p.host === "PR" ? "Premiere" : "After Effects"}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="font-mono text-[13px] text-muted-foreground">
                     {p.version ? `v${p.version}` : "—"}
                   </TableCell>
                   <TableCell>
                     {p.downloadKey ? (
-                      <Badge
-                        variant="outline"
-                        className="bg-blue-500/10 text-blue-400 border-blue-500/30 font-normal"
-                      >
-                        Zip linked
-                      </Badge>
+                      <span className="inline-flex items-center rounded-md bg-emerald-500/10 px-2 py-0.5 text-[12px] font-medium text-emerald-600 dark:text-emerald-400">
+                        Linked
+                      </span>
                     ) : (
-                      <span className="text-xs text-muted-foreground">No download</span>
+                      <span className="text-[13px] text-muted-foreground">—</span>
                     )}
                   </TableCell>
                   <TableCell>
-                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                    <label className="inline-flex cursor-pointer items-center gap-2">
                       <Switch
                         checked={p.visible}
                         disabled={togglingId === p.id}
@@ -343,8 +585,8 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
                       />
                       <span
                         className={cn(
-                          "text-xs",
-                          p.visible ? "text-emerald-400" : "text-muted-foreground",
+                          "w-6 text-[12px]",
+                          p.visible ? "text-foreground" : "text-muted-foreground",
                         )}
                       >
                         {togglingId === p.id ? (
@@ -357,12 +599,18 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
                       </span>
                     </label>
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
+                  <TableCell className="text-[13px] text-muted-foreground">
                     {formatUpdated(p.updated_at)}
                   </TableCell>
-                  <TableCell className="pr-4 text-right">
+                  <TableCell className="pr-3 text-right">
                     <div className="inline-flex items-center justify-end gap-0.5">
-                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8" asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                        asChild
+                      >
                         <Link
                           href={`/profile/packages/${authorId}/${p.id}`}
                           aria-label={`Edit ${p.name}`}
@@ -389,14 +637,6 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
         )}
       </div>
 
-      {!loading && projects.length > 0 ? (
-        <p className="text-xs text-muted-foreground">
-          {filtered.length === projects.length
-            ? `${projects.length} package${projects.length === 1 ? "" : "s"}`
-            : `${filtered.length} of ${projects.length} packages`}
-        </p>
-      ) : null}
-
       <AlertDialog
         open={deleteTarget != null}
         onOpenChange={(open) => {
@@ -408,7 +648,7 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
             <AlertDialogTitle>Hide package from list?</AlertDialogTitle>
             <AlertDialogDescription>
               {deleteTarget
-                ? `“${deleteTarget.name}” (#${deleteTarget.id}) will be soft-deleted (kept in the database, removed from this list and CEP).`
+                ? `“${deleteTarget.name}” (#${deleteTarget.id}) will be soft-deleted — kept in the database, removed from this list and CEP.`
                 : null}
             </AlertDialogDescription>
           </AlertDialogHeader>

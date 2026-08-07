@@ -13,7 +13,7 @@ import {
   LayoutDashboard,
   Package,
   ChevronDown,
-  Settings2,
+  Users,
 } from "lucide-react";
 import { PACKAGES_AUTHORS, packagesAuthorLogoUrl } from "@/lib/packages-admin-client";
 import { cn } from "@/lib/utils";
@@ -35,6 +35,9 @@ function isActive(normalized: string, href: string): boolean {
   return normalized === href || normalized.startsWith(`${href}/`);
 }
 
+const navItemBase =
+  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium smooth";
+
 type SidebarAuthor = { id: number; label: string; slug?: string };
 
 interface AccountSidebarProps {
@@ -50,7 +53,6 @@ export function AccountSidebar({ access, showPackages }: AccountSidebarProps) {
   const [manualOpen, setManualOpen] = useState(onPackages);
   const [authors, setAuthors] = useState<SidebarAuthor[]>(PACKAGES_AUTHORS);
 
-  // Keep Packages submenu open while on any packages route (fixes collapse trapping nav).
   useEffect(() => {
     if (onPackages) setManualOpen(true);
   }, [onPackages]);
@@ -89,7 +91,7 @@ export function AccountSidebar({ access, showPackages }: AccountSidebarProps) {
                 <Link
                   href={href}
                   className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium smooth",
+                    navItemBase,
                     active
                       ? "bg-linear-to-r from-blue-600 to-blue-500 text-white shadow-md shadow-blue-500/20"
                       : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
@@ -118,7 +120,7 @@ export function AccountSidebar({ access, showPackages }: AccountSidebarProps) {
               >
                 <Link
                   href="/profile/packages"
-                  className="flex flex-1 items-center gap-3 px-3 py-2.5 min-w-0"
+                  className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5"
                 >
                   <Package
                     className={cn(
@@ -132,51 +134,34 @@ export function AccountSidebar({ access, showPackages }: AccountSidebarProps) {
                   type="button"
                   aria-label={packagesOpen ? "Collapse Packages" : "Expand Packages"}
                   className={cn(
-                    "shrink-0 px-2.5 py-2.5 rounded-r-lg",
+                    "shrink-0 rounded-r-lg px-2.5 py-2.5",
                     onPackages ? "text-white/80 hover:text-white" : "hover:text-foreground",
                   )}
                   onClick={(e) => {
                     e.preventDefault();
-                    if (onPackages) return; // stay open on packages routes
+                    if (onPackages) return;
                     setManualOpen((v) => !v);
                   }}
                 >
                   <ChevronDown
-                    className={cn(
-                      "h-4 w-4 transition",
-                      packagesOpen && "rotate-180",
-                    )}
+                    className={cn("h-4 w-4 transition", packagesOpen && "rotate-180")}
                   />
                 </button>
               </div>
               {packagesOpen ? (
-                <ul className="mt-0.5 ml-4 border-l border-border/50 pl-2 space-y-0.5">
+                <ul className="mt-0.5 flex flex-col gap-0.5 pl-2">
                   <li>
                     <Link
                       href="/profile/packages"
                       className={cn(
-                        "block rounded-md px-2.5 py-1.5 text-xs font-medium",
+                        navItemBase,
                         normalized === "/profile/packages"
-                          ? "bg-blue-500/15 text-blue-200"
-                          : "text-muted-foreground hover:text-foreground hover:bg-foreground/5",
+                          ? "bg-foreground/10 text-foreground"
+                          : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
                       )}
                     >
+                      <Users className="h-5 w-5 shrink-0 text-muted-foreground" />
                       All authors
-                    </Link>
-                  </li>
-                  <li>
-                    <Link
-                      href="/profile/packages/authors"
-                      className={cn(
-                        "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium",
-                        normalized === "/profile/packages/authors" ||
-                          normalized.startsWith("/profile/packages/authors/")
-                          ? "bg-blue-500/15 text-blue-200"
-                          : "text-muted-foreground hover:text-foreground hover:bg-foreground/5",
-                      )}
-                    >
-                      <Settings2 className="h-3 w-3 shrink-0 opacity-70" />
-                      Authors settings
                     </Link>
                   </li>
                   {authors.map((a) => {
@@ -188,19 +173,19 @@ export function AccountSidebar({ access, showPackages }: AccountSidebarProps) {
                         <Link
                           href={href}
                           className={cn(
-                            "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium",
+                            navItemBase,
                             active
-                              ? "bg-blue-500/15 text-blue-200"
-                              : "text-muted-foreground hover:text-foreground hover:bg-foreground/5",
+                              ? "bg-foreground/10 text-foreground"
+                              : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
                           )}
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={packagesAuthorLogoUrl(a.slug || a.id)}
                             alt=""
-                            className="h-3.5 w-3.5 rounded object-contain"
+                            className="h-5 w-5 shrink-0 rounded object-contain"
                           />
-                          {a.label}
+                          <span className="truncate">{a.label}</span>
                         </Link>
                       </li>
                     );
@@ -220,7 +205,10 @@ export function AccountSidebar({ access, showPackages }: AccountSidebarProps) {
           <div className="flex flex-col gap-0.5">
             <Link
               href="https://authors.motionflow.pro"
-              className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium smooth text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
+              className={cn(
+                navItemBase,
+                "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+              )}
             >
               <LayoutDashboard className="h-5 w-5 shrink-0 text-blue-400" />
               <span className="truncate">Dashboard</span>
