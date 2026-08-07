@@ -23,7 +23,7 @@ export default async function PackagesProjectPage({
   const { authorId: authorRaw, itemId: itemRaw } = await params;
   const authorId = Number(authorRaw);
   const itemId = Number(itemRaw);
-  if (!getPackagesAuthorById(authorId) || !Number.isFinite(itemId) || itemId <= 0) {
+  if (!(await getPackagesAuthorById(authorId)) || !Number.isFinite(itemId) || itemId <= 0) {
     notFound();
   }
 

@@ -5,6 +5,7 @@ import {
   assertPackagesAuthorId,
   createPackagesProject,
   listPackagesProjects,
+  type PackagesProjectHost,
 } from "@/lib/packages-projects";
 
 export const runtime = "nodejs";
@@ -31,7 +32,7 @@ export async function GET(
   const authorId = parseAuthorId((await ctx.params).authorId);
   if (!authorId) return NextResponse.json({ error: "BAD_AUTHOR" }, { status: 400 });
   try {
-    assertPackagesAuthorId(authorId);
+    await assertPackagesAuthorId(authorId);
   } catch {
     return NextResponse.json({ error: "UNKNOWN_AUTHOR" }, { status: 404 });
   }
@@ -55,12 +56,13 @@ export async function POST(
   const authorId = parseAuthorId((await ctx.params).authorId);
   if (!authorId) return NextResponse.json({ error: "BAD_AUTHOR" }, { status: 400 });
   try {
-    assertPackagesAuthorId(authorId);
+    await assertPackagesAuthorId(authorId);
   } catch {
     return NextResponse.json({ error: "UNKNOWN_AUTHOR" }, { status: 404 });
   }
 
-  let body: { name?: string; version?: string; description?: string } = {};
+  let body: { name?: string; version?: string; host?: PackagesProjectHost | string } =
+    {};
   try {
     body = await req.json();
   } catch {
@@ -72,7 +74,7 @@ export async function POST(
       authorId,
       name: body.name,
       version: body.version,
-      description: body.description,
+      host: body.host,
     });
     return NextResponse.json({ project }, { status: 201 });
   } catch (err) {

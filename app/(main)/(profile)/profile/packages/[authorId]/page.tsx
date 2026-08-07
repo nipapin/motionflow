@@ -21,7 +21,7 @@ export default async function PackagesAuthorPage({
   if (!isPackagesAdmin(user.email)) redirect("/profile");
 
   const authorId = Number((await params).authorId);
-  if (!getPackagesAuthorById(authorId)) notFound();
+  if (!(await getPackagesAuthorById(authorId))) notFound();
 
   return <PackagesProjectList authorId={authorId} />;
 }

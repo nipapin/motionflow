@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: gate.error }, { status: gate.status, headers: CORS });
   }
 
-  const author = getPackagesAuthorBySlug(req.nextUrl.searchParams.get("author"));
+  const author = await getPackagesAuthorBySlug(req.nextUrl.searchParams.get("author"));
   if (!author) {
     return NextResponse.json({ error: "MISSING_AUTHOR" }, { status: 400, headers: CORS });
   }

@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
   }
 
-  const author = getPackagesAuthorBySlug(req.nextUrl.searchParams.get("author"));
+  const author = await getPackagesAuthorBySlug(req.nextUrl.searchParams.get("author"));
   if (!author) {
     return NextResponse.json({ error: "MISSING_AUTHOR" }, { status: 400 });
   }

@@ -17,7 +17,7 @@ export async function GET(
   }
 
   const authorId = Number((await ctx.params).authorId);
-  const author = getPackagesAuthorById(authorId);
+  const author = await getPackagesAuthorById(authorId);
   if (!author) return NextResponse.json({ error: "UNKNOWN_AUTHOR" }, { status: 404 });
 
   const prefix = req.nextUrl.searchParams.get("prefix");

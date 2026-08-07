@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "INVALID_JSON" }, { status: 400, headers: CORS });
   }
 
-  const author = getPackagesAuthorBySlug(body.author);
+  const author = await getPackagesAuthorBySlug(body.author);
   const key = (body.key || "").replace(/^\/+/, "");
   if (!author || !key) {
     return NextResponse.json({ error: "MISSING_PARAMS" }, { status: 400, headers: CORS });
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
 
   const contentType = body.contentType?.trim() || "application/octet-stream";
   const client = getR2Client();
-  const bucket = getR2Bucket();
+  const bucket = author.r2Bucket?.trim() || getR2Bucket();
   const putUrl = await getSignedUrl(
     client,
     new PutObjectCommand({

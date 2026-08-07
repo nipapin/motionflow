@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "INVALID_JSON" }, { status: 400, headers: CORS });
   }
 
-  const author = getPackagesAuthorBySlug(body.author);
+  const author = await getPackagesAuthorBySlug(body.author);
   const key = (body.key || "").replace(/^\/+/, "");
   if (!author || !key) {
     return NextResponse.json({ error: "MISSING_PARAMS" }, { status: 400, headers: CORS });

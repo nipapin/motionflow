@@ -13,23 +13,16 @@ type Project = {
   author_id: number;
   name: string;
   version: string | null;
-  description: string;
+  host: "PR" | "AE";
+  min_extension_version: string | null;
+  min_host_version: string | null;
+  details_url: string | null;
   previewUrl: string | null;
-  videoPreviewUrl: string | null;
   downloadKey: string | null;
   downloadUrl: string | null;
-  files: { main?: string; image?: string; video?: string };
+  price: number;
+  visible: boolean;
 };
-
-function stripScripts(html: string): string {
-  return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
-}
-
-function toSafeHtml(raw: string): string {
-  const trimmed = raw.trim();
-  if (!trimmed) return "";
-  return stripScripts(trimmed);
-}
 
 export function PackagesProjectEditor({
   authorId,
@@ -42,8 +35,11 @@ export function PackagesProjectEditor({
   const [project, setProject] = useState<Project | null>(null);
   const [name, setName] = useState("");
   const [version, setVersion] = useState("");
-  const [description, setDescription] = useState("");
-  const [descMode, setDescMode] = useState<"edit" | "preview">("edit");
+  const [host, setHost] = useState<"PR" | "AE">("AE");
+  const [minExt, setMinExt] = useState("");
+  const [minHost, setMinHost] = useState("");
+  const [detailsUrl, setDetailsUrl] = useState("");
+  const [visible, setVisible] = useState(false);
   const [previewBroken, setPreviewBroken] = useState(false);
   const [r2Objects, setR2Objects] = useState<R2BrowserObject[]>([]);
   const [showPicker, setShowPicker] = useState(false);
@@ -60,7 +56,11 @@ export function PackagesProjectEditor({
       setProject(data.project);
       setName(data.project.name);
       setVersion(data.project.version || "");
-      setDescription(data.project.description || "");
+      setHost(data.project.host === "PR" ? "PR" : "AE");
+      setMinExt(data.project.min_extension_version || "");
+      setMinHost(data.project.min_host_version || "");
+      setDetailsUrl(data.project.details_url || "");
+      setVisible(Boolean(data.project.visible));
       setPreviewBroken(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Load failed");
@@ -96,13 +96,16 @@ export function PackagesProjectEditor({
         body: JSON.stringify({
           name,
           version: version || null,
-          description,
+          host,
+          min_extension_version: minExt || null,
+          min_host_version: minHost || null,
+          details_url: detailsUrl || null,
+          visible,
         }),
       });
       if (!res.ok) throw new Error(await res.text());
       const data = (await res.json()) as { project: Project };
       setProject(data.project);
-      setDescription(data.project.description || "");
       setMsg("Saved");
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Save failed");
@@ -111,7 +114,7 @@ export function PackagesProjectEditor({
     }
   };
 
-  const uploadAsset = async (kind: "preview" | "video" | "zip", file: File) => {
+  const uploadAsset = async (kind: "preview" | "zip", file: File) => {
     setBusy(true);
     setMsg(null);
     try {
@@ -143,9 +146,7 @@ export function PackagesProjectEditor({
       const patchBody =
         kind === "preview"
           ? { previewKeyOrUrl: signed.bindValue }
-          : kind === "video"
-            ? { videoKeyOrUrl: signed.bindValue }
-            : { downloadKey: signed.bindValue };
+          : { downloadKey: signed.bindValue };
 
       const patch = await fetch(`/api/packages/${authorId}/projects/${itemId}`, {
         method: "PATCH",
@@ -211,8 +212,6 @@ export function PackagesProjectEditor({
     return <p className="text-sm text-muted-foreground">Loading…</p>;
   }
 
-  const descriptionPreviewHtml = toSafeHtml(description);
-
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
@@ -247,63 +246,67 @@ export function PackagesProjectEditor({
             placeholder="1.0.0"
           />
         </label>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs text-muted-foreground">Description (HTML)</span>
-            <div className="inline-flex rounded-md border border-border p-0.5">
+        <div>
+          <span className="text-xs text-muted-foreground">Application</span>
+          <div className="mt-1 inline-flex rounded-md border border-border p-0.5">
+            {(
+              [
+                { id: "PR" as const, label: "Premiere" },
+                { id: "AE" as const, label: "After Effects" },
+              ] as const
+            ).map((opt) => (
               <button
+                key={opt.id}
                 type="button"
                 className={cn(
-                  "rounded px-2.5 py-1 text-xs font-medium transition",
-                  descMode === "edit"
+                  "rounded px-3 py-1.5 text-xs font-medium transition",
+                  host === opt.id
                     ? "bg-muted text-foreground"
                     : "text-muted-foreground hover:text-foreground",
                 )}
-                onClick={() => setDescMode("edit")}
+                onClick={() => setHost(opt.id)}
               >
-                Edit HTML
+                {opt.label}
               </button>
-              <button
-                type="button"
-                className={cn(
-                  "rounded px-2.5 py-1 text-xs font-medium transition",
-                  descMode === "preview"
-                    ? "bg-muted text-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-                onClick={() => setDescMode("preview")}
-              >
-                Preview
-              </button>
-            </div>
+            ))}
           </div>
-          {descMode === "edit" ? (
-            <textarea
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm min-h-40 font-mono"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              spellCheck={false}
-              placeholder="<p>Product description…</p>"
-            />
-          ) : descriptionPreviewHtml ? (
-            <div
-              className="min-h-40 rounded-lg border border-border bg-background px-4 py-3 text-sm leading-relaxed
-                [&>*+*]:mt-3
-                [&_h1]:mt-4 [&_h1]:text-xl [&_h1]:font-semibold
-                [&_h2]:mt-3 [&_h2]:text-lg [&_h2]:font-semibold
-                [&_h3]:mt-3 [&_h3]:text-base [&_h3]:font-semibold
-                [&_a]:text-blue-400 [&_a]:underline
-                [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-5
-                [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-5
-                [&_img]:my-3 [&_img]:h-auto [&_img]:max-w-full [&_img]:rounded-lg"
-              dangerouslySetInnerHTML={{ __html: descriptionPreviewHtml }}
-            />
-          ) : (
-            <div className="min-h-40 rounded-lg border border-border bg-background px-4 py-3 text-xs text-muted-foreground">
-              Nothing to preview yet.
-            </div>
-          )}
         </div>
+        <label className="block text-xs text-muted-foreground">
+          Min extension version
+          <input
+            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+            value={minExt}
+            onChange={(e) => setMinExt(e.target.value)}
+            placeholder="1.0.0"
+          />
+        </label>
+        <label className="block text-xs text-muted-foreground">
+          Min host application version
+          <input
+            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+            value={minHost}
+            onChange={(e) => setMinHost(e.target.value)}
+            placeholder="24.0"
+          />
+        </label>
+        <label className="block text-xs text-muted-foreground">
+          Details (resource URL)
+          <input
+            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+            value={detailsUrl}
+            onChange={(e) => setDetailsUrl(e.target.value)}
+            placeholder="https://…"
+          />
+        </label>
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input
+            type="checkbox"
+            className="rounded border-border"
+            checked={visible}
+            onChange={(e) => setVisible(e.target.checked)}
+          />
+          Visible in CEP extension
+        </label>
         <Button type="button" size="sm" disabled={busy} onClick={() => void saveMeta()}>
           <Save className="h-3.5 w-3.5 mr-1" />
           Save metadata
@@ -348,102 +351,51 @@ export function PackagesProjectEditor({
                 e.target.value = "";
               }}
             />
-            <span className="inline-flex h-8 cursor-pointer items-center rounded-md border border-input bg-background px-3 text-xs font-medium">
-              Upload preview
-            </span>
+            <Button type="button" size="sm" variant="outline" disabled={busy} asChild>
+              <span>Upload preview</span>
+            </Button>
           </label>
         </div>
 
         <div className="rounded-xl border border-blue-500/20 bg-card/40 p-4 space-y-3">
-          <h3 className="font-semibold text-sm">Video preview</h3>
-          {project.videoPreviewUrl ? (
-            <video
-              src={project.videoPreviewUrl}
-              className="w-full max-h-40 rounded-lg bg-muted/30"
-              controls
-              muted
-            />
-          ) : (
-            <p className="text-xs text-muted-foreground">No video</p>
-          )}
-          <label className="inline-flex">
-            <input
-              type="file"
-              accept="video/*"
-              className="hidden"
+          <h3 className="font-semibold text-sm">Download zip</h3>
+          <p className="text-xs text-muted-foreground break-all">
+            {project.downloadKey || "No zip linked"}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <label className="inline-flex">
+              <input
+                type="file"
+                accept=".zip,application/zip"
+                className="hidden"
+                disabled={busy}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void uploadAsset("zip", f);
+                  e.target.value = "";
+                }}
+              />
+              <Button type="button" size="sm" variant="outline" disabled={busy} asChild>
+                <span>Upload zip</span>
+              </Button>
+            </label>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
               disabled={busy}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void uploadAsset("video", f);
-                e.target.value = "";
-              }}
-            />
-            <span className="inline-flex h-8 cursor-pointer items-center rounded-md border border-input bg-background px-3 text-xs font-medium">
-              Upload video
-            </span>
-          </label>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-blue-500/20 bg-card/40 p-4 space-y-3">
-        <h3 className="font-semibold text-sm">Download archive (R2)</h3>
-        <p className="text-xs text-muted-foreground break-all">
-          {project.downloadKey || "Not linked"}
-        </p>
-        {project.downloadUrl ? (
-          <a
-            href={project.downloadUrl}
-            className="text-xs text-blue-400 hover:underline break-all"
-            target="_blank"
-            rel="noreferrer"
-          >
-            {project.downloadUrl}
-          </a>
-        ) : null}
-        <div className="flex flex-wrap gap-2">
-          <label className="inline-flex">
-            <input
-              type="file"
-              accept=".zip,application/zip"
-              className="hidden"
-              disabled={busy}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void uploadAsset("zip", f);
-                e.target.value = "";
-              }}
-            />
-            <span className="inline-flex h-8 cursor-pointer items-center rounded-md border border-input bg-background px-3 text-xs font-medium">
-              Upload zip
-            </span>
-          </label>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            disabled={busy}
-            onClick={() => setShowPicker((v) => !v)}
-          >
-            {showPicker ? "Hide R2 picker" : "Select existing R2 file"}
-          </Button>
-        </div>
-        {showPicker ? (
-          <div className="pt-2 border-t border-border/40">
-            <PackagesR2Browser
-              objects={r2Objects}
-              onSelectFile={(obj) => void bindR2(obj)}
-              selectLabel="Use as download"
-            />
+              onClick={() => setShowPicker((v) => !v)}
+            >
+              {showPicker ? "Hide R2 picker" : "Bind from R2"}
+            </Button>
           </div>
-        ) : null}
+          {showPicker ? (
+            <PackagesR2Browser objects={r2Objects} onSelectFile={(o) => void bindR2(o)} />
+          ) : null}
+        </div>
       </div>
 
-      {msg ? (
-        <p className="text-xs text-muted-foreground flex items-center gap-1">
-          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-          {msg}
-        </p>
-      ) : null}
+      {msg ? <p className="text-xs text-muted-foreground">{msg}</p> : null}
     </div>
   );
 }

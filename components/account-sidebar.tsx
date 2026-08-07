@@ -121,6 +121,20 @@ export function AccountSidebar({ access, showPackages }: AccountSidebarProps) {
                       All authors
                     </Link>
                   </li>
+                  <li>
+                    <Link
+                      href="/profile/packages/authors"
+                      className={cn(
+                        "block rounded-md px-2.5 py-1.5 text-xs font-medium",
+                        normalized === "/profile/packages/authors" ||
+                          normalized.startsWith("/profile/packages/authors/")
+                          ? "bg-blue-500/15 text-blue-200"
+                          : "text-muted-foreground hover:text-foreground hover:bg-foreground/5",
+                      )}
+                    >
+                      Authors settings
+                    </Link>
+                  </li>
                   {PACKAGES_AUTHORS.map((a) => {
                     const href = `/profile/packages/${a.id}`;
                     const active = normalized === href || normalized.startsWith(`${href}/`);

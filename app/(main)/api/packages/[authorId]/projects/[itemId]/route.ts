@@ -35,7 +35,7 @@ export async function GET(
   }
   const params = await ctx.params;
   const ids = parseIds(params.authorId, params.itemId);
-  if (!ids || !getPackagesAuthorById(ids.authorId)) {
+  if (!ids || !(await getPackagesAuthorById(ids.authorId))) {
     return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
   }
 
@@ -58,12 +58,12 @@ export async function PATCH(
   }
   const params = await ctx.params;
   const ids = parseIds(params.authorId, params.itemId);
-  const author = ids ? getPackagesAuthorById(ids.authorId) : null;
+  const author = ids ? await getPackagesAuthorById(ids.authorId) : null;
   if (!ids || !author) {
     return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
   }
 
-  let body: PackagesProjectPatch & { downloadKey?: string | null };
+  let body: PackagesProjectPatch;
   try {
     body = await req.json();
   } catch {
@@ -98,7 +98,7 @@ export async function DELETE(
   }
   const params = await ctx.params;
   const ids = parseIds(params.authorId, params.itemId);
-  if (!ids || !getPackagesAuthorById(ids.authorId)) {
+  if (!ids || !(await getPackagesAuthorById(ids.authorId))) {
     return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
   }
 
@@ -109,12 +109,6 @@ export async function DELETE(
     const msg = err instanceof Error ? err.message : "";
     if (msg === "NOT_FOUND") {
       return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
-    }
-    if (msg === "DELETED_AT_UNAVAILABLE") {
-      return NextResponse.json(
-        { error: "DELETED_AT_UNAVAILABLE", message: "Soft-delete column unavailable" },
-        { status: 503 },
-      );
     }
     console.error("[packages/project DELETE]", err);
     return NextResponse.json({ error: "SERVER_ERROR" }, { status: 500 });

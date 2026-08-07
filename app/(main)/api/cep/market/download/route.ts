@@ -4,19 +4,18 @@ import {
   getCepClientConfig,
   requireCepClientConfig,
 } from "@/lib/cep-client-registry";
-import { userCanDownloadCepPack } from "@/lib/cep-entitlements";
-import { getMarketItemsByAuthorId } from "@/lib/market-items";
-import { motionflowItemDownloadUrl } from "@/lib/motionflow-urls";
 import {
-  getPurchaseCodeForOwnedItem,
-} from "@/lib/purchases";
+  resolveCepPackDownload,
+  userCanDownloadCepPack,
+} from "@/lib/cep-entitlements";
+import { getPackagesProjectDownloadUrl } from "@/lib/packages-download";
 
 export const runtime = "nodejs";
 
 /**
  * GET /api/cep/market/download?pack_id=
- * Server-side gate: sold_items | author subscription | free pack.
- * Redirects to the Motionflow item download URL when allowed.
+ * Server-side gate: author subscription | free pack.
+ * Redirects to the project zip (public CDN or private presign).
  */
 export async function GET(req: NextRequest) {
   try {
@@ -59,28 +58,26 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const products = await getMarketItemsByAuthorId(cfg.authorId, 500);
-    const product = products.find((p) => p.id === packId);
-    if (!product) {
+    const resolved = await resolveCepPackDownload({ packId, cfg });
+    if (!resolved) {
       return NextResponse.json(
         { error: "NOT_FOUND", message: "Pack not found" },
         { status: 404 },
       );
     }
 
-    // Prefer web download URL; include purchase_code when owned for upstream gate.
-    const downloadUrl = motionflowItemDownloadUrl(
-      product,
-      product.id,
-      product.name,
+    const downloadUrl = await getPackagesProjectDownloadUrl(
+      resolved.project,
+      resolved.author,
     );
-    const purchaseCode = await getPurchaseCodeForOwnedItem(user.id, packId);
-    const target = new URL(downloadUrl);
-    if (purchaseCode) {
-      target.searchParams.set("code", purchaseCode);
+    if (!downloadUrl) {
+      return NextResponse.json(
+        { error: "NO_DOWNLOAD", message: "Pack file not available" },
+        { status: 404 },
+      );
     }
 
-    return NextResponse.redirect(target.toString(), 302);
+    return NextResponse.redirect(downloadUrl, 302);
   } catch (err) {
     console.error("[cep/market/download]", err);
     return NextResponse.json(

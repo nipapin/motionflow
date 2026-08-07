@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
-  Film,
   Loader2,
   Pencil,
   Plus,
@@ -40,46 +39,12 @@ type Project = {
   author_id: number;
   name: string;
   version: string | null;
+  host: "PR" | "AE";
   previewUrl: string | null;
-  videoPreviewUrl: string | null;
   downloadKey: string | null;
-  access: number;
+  visible: boolean;
   updated_at: string;
 };
-
-function accessBadge(access: number): {
-  label: string;
-  className: string;
-} {
-  if (access === 1) {
-    return {
-      label: "Active",
-      className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-    };
-  }
-  if (access === -10) {
-    return {
-      label: "Processing",
-      className: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-    };
-  }
-  if (access === 0) {
-    return {
-      label: "Pending",
-      className: "bg-muted text-muted-foreground border-border",
-    };
-  }
-  if (access === -1) {
-    return {
-      label: "Blocked",
-      className: "bg-destructive/15 text-destructive border-destructive/30",
-    };
-  }
-  return {
-    label: `Status ${access}`,
-    className: "bg-muted text-muted-foreground border-border",
-  };
-}
 
 function formatUpdated(iso: string): string {
   try {
@@ -157,7 +122,7 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
   const q = query.trim().toLowerCase();
   const filtered = q
     ? projects.filter((p) =>
-        `${p.name} ${p.version ?? ""} ${p.id}`.toLowerCase().includes(q),
+        `${p.name} ${p.version ?? ""} ${p.id} ${p.host}`.toLowerCase().includes(q),
       )
     : projects;
 
@@ -224,7 +189,7 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
             {author.label}
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage package instances · author_id {author.id}
+            CEP packages · author_id {author.id}
           </p>
         </div>
         <Button
@@ -288,97 +253,93 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
             <TableHeader>
               <TableRow className="hover:bg-transparent border-border/60">
                 <TableHead className="pl-4">Package</TableHead>
+                <TableHead>Host</TableHead>
                 <TableHead>Version</TableHead>
                 <TableHead>Download</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>CEP</TableHead>
                 <TableHead>Updated</TableHead>
                 <TableHead className="pr-4 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((p) => {
-                const status = accessBadge(p.access ?? 0);
-                return (
-                  <TableRow key={p.id} className="border-border/50">
-                    <TableCell className="pl-4 whitespace-normal">
-                      <Link
-                        href={`/profile/packages/${authorId}/${p.id}`}
-                        className="flex items-center gap-3 min-w-0 group"
-                      >
-                        <ProjectThumb
-                          previewUrl={p.previewUrl}
-                          logoUrl={author.logoUrl}
-                          label={author.label}
-                        />
-                        <div className="min-w-0">
-                          <p className="font-medium truncate group-hover:text-blue-400 transition-colors">
-                            {p.name}
-                          </p>
-                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                            <span className="text-[11px] text-muted-foreground">#{p.id}</span>
-                            {p.videoPreviewUrl ? (
-                              <span className="inline-flex items-center gap-1 text-[11px] text-blue-400">
-                                <Film className="h-3 w-3" />
-                                Video
-                              </span>
-                            ) : null}
-                            {!p.previewUrl ? (
-                              <span className="text-[11px] text-muted-foreground">
-                                Author logo
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                      </Link>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {p.version ? `v${p.version}` : "—"}
-                    </TableCell>
-                    <TableCell>
-                      {p.downloadKey ? (
-                        <Badge
-                          variant="outline"
-                          className="bg-blue-500/10 text-blue-400 border-blue-500/30 font-normal"
-                        >
-                          Zip linked
-                        </Badge>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">No download</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={cn("font-normal", status.className)}>
-                        {status.label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {formatUpdated(p.updated_at)}
-                    </TableCell>
-                    <TableCell className="pr-4 text-right">
-                      <div className="inline-flex items-center justify-end gap-0.5">
-                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8" asChild>
-                          <Link
-                            href={`/profile/packages/${authorId}/${p.id}`}
-                            aria-label={`Edit ${p.name}`}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Link>
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                          aria-label={`Delete ${p.name}`}
-                          onClick={() => setDeleteTarget(p)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+              {filtered.map((p) => (
+                <TableRow key={p.id} className="border-border/50">
+                  <TableCell className="pl-4 whitespace-normal">
+                    <Link
+                      href={`/profile/packages/${authorId}/${p.id}`}
+                      className="flex items-center gap-3 min-w-0 group"
+                    >
+                      <ProjectThumb
+                        previewUrl={p.previewUrl}
+                        logoUrl={author.logoUrl}
+                        label={author.label}
+                      />
+                      <div className="min-w-0">
+                        <p className="font-medium truncate group-hover:text-blue-400 transition-colors">
+                          {p.name}
+                        </p>
+                        <span className="text-[11px] text-muted-foreground">#{p.id}</span>
                       </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-xs">
+                    {p.host === "PR" ? "Premiere" : "After Effects"}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {p.version ? `v${p.version}` : "—"}
+                  </TableCell>
+                  <TableCell>
+                    {p.downloadKey ? (
+                      <Badge
+                        variant="outline"
+                        className="bg-blue-500/10 text-blue-400 border-blue-500/30 font-normal"
+                      >
+                        Zip linked
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">No download</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "font-normal",
+                        p.visible
+                          ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                          : "bg-muted text-muted-foreground border-border",
+                      )}
+                    >
+                      {p.visible ? "Visible" : "Hidden"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {formatUpdated(p.updated_at)}
+                  </TableCell>
+                  <TableCell className="pr-4 text-right">
+                    <div className="inline-flex items-center justify-end gap-0.5">
+                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8" asChild>
+                        <Link
+                          href={`/profile/packages/${authorId}/${p.id}`}
+                          aria-label={`Edit ${p.name}`}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Link>
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        aria-label={`Delete ${p.name}`}
+                        onClick={() => setDeleteTarget(p)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         )}
@@ -400,10 +361,10 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
       >
         <AlertDialogContent className="border-border bg-card">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete package?</AlertDialogTitle>
+            <AlertDialogTitle>Hide package from list?</AlertDialogTitle>
             <AlertDialogDescription>
               {deleteTarget
-                ? `“${deleteTarget.name}” (#${deleteTarget.id}) will be removed from the packages list.`
+                ? `“${deleteTarget.name}” (#${deleteTarget.id}) will be soft-deleted (kept in the database, removed from this list and CEP).`
                 : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -420,7 +381,7 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
               ) : (
                 <Trash2 className="h-3.5 w-3.5 mr-1" />
               )}
-              Delete
+              Soft-delete
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -2,16 +2,20 @@ import "server-only";
 import type { RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
 import type { CepClientConfig } from "@/lib/cep-client-registry";
-import { getMarketItemsByAuthorId } from "@/lib/market-items";
 import {
-  motionflowItemDownloadUrl,
-  motionflowItemPageUrl,
   motionflowMainSiteUrl,
   motionflowSiteOrigin,
 } from "@/lib/motionflow-urls";
-import { productThumbnailUrl } from "@/lib/product-ui";
 import type { Product } from "@/lib/product-types";
-import { getPurchasesForUser, userOwnsItem } from "@/lib/purchases";
+import { getPurchasesForUser } from "@/lib/purchases";
+import {
+  getPackagesAuthorById,
+} from "@/lib/packages-admin";
+import {
+  getPackagesProjectById,
+  listVisiblePackagesProjects,
+  type PackagesProjectDto,
+} from "@/lib/packages-projects";
 import {
   resolveSpunkramSubscriptionTierId,
   type SpunkramSubscriptionTierId,
@@ -216,22 +220,6 @@ export function productHostType(product: Product): "AE" | "PR" | null {
   return null;
 }
 
-function extractYoutubeId(raw: string | null | undefined): string | undefined {
-  if (!raw) return undefined;
-  const s = raw.trim();
-  if (!s) return undefined;
-  if (/^[\w-]{6,}$/.test(s) && !s.includes("/")) return s;
-  try {
-    const u = new URL(s.startsWith("http") ? s : `https://${s}`);
-    if (u.hostname.includes("youtu.be")) {
-      return u.pathname.replace(/^\//, "") || undefined;
-    }
-    return u.searchParams.get("v") || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 export type CepMarketAction = "install" | "buy" | "get_free";
 
 export type CepMarketPackageDto = {
@@ -243,34 +231,36 @@ export type CepMarketPackageDto = {
   primary_type: "AE" | "PR";
   image_url: string;
   custom_price?: number;
+  /** @deprecated CEP packs no longer expose video previews. */
   video_id?: string;
   owned: boolean;
   covered_by_subscription: boolean;
   action: CepMarketAction;
   install_url: string | null;
   buy_url: string | null;
+  details_url?: string | null;
+  min_extension_version?: string | null;
+  min_host_version?: string | null;
 };
 
-function packNameSlug(product: Product): string {
-  return product.name
+function packNameSlug(name: string, id: number): string {
+  return name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "") || `pack-${product.id}`;
+    .replace(/(^-|-$)/g, "") || `pack-${id}`;
 }
 
-function effectivePrice(product: Product): number {
-  if (
-    product.discount_price != null &&
-    Number.isFinite(product.discount_price) &&
-    product.discount_price >= 0
-  ) {
-    return Number(product.discount_price);
-  }
-  return Number(product.price) || 0;
+function cepPackInstallUrl(packId: number): string {
+  return `${motionflowSiteOrigin()}/api/cep/market/download?pack_id=${packId}`;
+}
+
+function projectImageUrl(project: PackagesProjectDto): string {
+  if (project.previewUrl) return project.previewUrl;
+  return `${motionflowSiteOrigin()}/assets/spunkram.svg`;
 }
 
 /**
- * Build market packages for a host. Entitlement flags are server-owned.
+ * Build market packages for a host from `packages_projects` (not marketplace_items).
  */
 export async function buildCepMarketPackages(opts: {
   userId: number;
@@ -282,32 +272,20 @@ export async function buildCepMarketPackages(opts: {
   Packages: CepMarketPackageDto[];
 }> {
   const { userId, cfg, host } = opts;
-  const [subscription, products, purchases] = await Promise.all([
+  const [subscription, projects] = await Promise.all([
     getActiveAuthorSubscription(userId, cfg.authorId),
-    getMarketItemsByAuthorId(cfg.authorId, 500),
-    getPurchasesForUser(userId),
+    listVisiblePackagesProjects(cfg.authorId, host),
   ]);
-
-  const ownedIds = new Set(
-    purchases
-      .filter((p) => p.product?.author_id === cfg.authorId)
-      .map((p) => p.itemId),
-  );
 
   const subscriptionActive = subscription.active;
   const packages: CepMarketPackageDto[] = [];
 
-  for (const product of products) {
-    const primary = productHostType(product);
-    if (primary !== host) continue;
-
-    const owned = ownedIds.has(product.id);
-    const price = effectivePrice(product);
+  for (const project of projects) {
+    const price = Number(project.price) || 0;
     const isFreePrice = price <= 0;
-    const covered = subscriptionActive;
 
     let action: CepMarketAction;
-    if (owned || subscriptionActive) {
+    if (subscriptionActive) {
       action = "install";
     } else if (isFreePrice) {
       action = "get_free";
@@ -317,29 +295,31 @@ export async function buildCepMarketPackages(opts: {
 
     const installUrl =
       action === "install" || action === "get_free"
-        ? motionflowItemDownloadUrl(product, product.id, product.name)
+        ? cepPackInstallUrl(project.id)
         : null;
 
     const buyUrl =
       action === "buy"
-        ? motionflowItemPageUrl(product, product.id, product.name)
+        ? project.details_url || cepSubscribeUrl(cfg)
         : null;
 
     packages.push({
-      id: String(product.id),
-      name: product.name,
-      pack_name: packNameSlug(product),
+      id: String(project.id),
+      name: project.name,
+      pack_name: packNameSlug(project.name, project.id),
       author: cfg.extensionName,
-      version: undefined,
-      primary_type: primary,
-      image_url: productThumbnailUrl(product) || `${motionflowSiteOrigin()}/assets/spunkram.svg`,
+      version: project.version || undefined,
+      primary_type: project.host,
+      image_url: projectImageUrl(project),
       custom_price: isFreePrice ? 0 : price,
-      video_id: extractYoutubeId(product.youtube_preview),
-      owned,
-      covered_by_subscription: covered || isFreePrice,
+      owned: false,
+      covered_by_subscription: subscriptionActive || isFreePrice,
       action,
       install_url: installUrl,
       buy_url: buyUrl,
+      details_url: project.details_url,
+      min_extension_version: project.min_extension_version,
+      min_host_version: project.min_host_version,
     });
   }
 
@@ -356,17 +336,32 @@ export async function userCanDownloadCepPack(opts: {
   cfg: CepClientConfig;
 }): Promise<{ ok: true } | { ok: false; error: "NOT_OWNED" | "SUBSCRIPTION_REQUIRED" | "NOT_FOUND" }> {
   const { userId, packId, cfg } = opts;
-  const products = await getMarketItemsByAuthorId(cfg.authorId, 500);
-  const product = products.find((p) => p.id === packId);
-  if (!product) return { ok: false, error: "NOT_FOUND" };
-
-  const owned = await userOwnsItem(userId, packId);
-  if (owned) return { ok: true };
+  const project = await getPackagesProjectById(packId);
+  if (!project || project.author_id !== cfg.authorId || !project.visible) {
+    return { ok: false, error: "NOT_FOUND" };
+  }
 
   const sub = await getActiveAuthorSubscription(userId, cfg.authorId);
   if (sub.active) return { ok: true };
 
-  if (effectivePrice(product) <= 0) return { ok: true };
+  if ((Number(project.price) || 0) <= 0) return { ok: true };
 
   return { ok: false, error: "NOT_OWNED" };
+}
+
+/** Resolve author + project for download redirect (after entitlement gate). */
+export async function resolveCepPackDownload(opts: {
+  packId: number;
+  cfg: CepClientConfig;
+}): Promise<{
+  project: PackagesProjectDto;
+  author: NonNullable<Awaited<ReturnType<typeof getPackagesAuthorById>>>;
+} | null> {
+  const project = await getPackagesProjectById(opts.packId);
+  if (!project || project.author_id !== opts.cfg.authorId || !project.visible) {
+    return null;
+  }
+  const author = await getPackagesAuthorById(project.author_id);
+  if (!author) return null;
+  return { project, author };
 }

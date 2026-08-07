@@ -14,10 +14,10 @@ export type R2ListedObject = {
 
 export async function listR2ObjectsUnderPrefix(
   prefix: string,
-  opts?: { maxKeys?: number },
+  opts?: { maxKeys?: number; bucket?: string | null },
 ): Promise<R2ListedObject[]> {
   const client = getR2Client();
-  const bucket = getR2Bucket();
+  const bucket = opts?.bucket?.trim() || getR2Bucket();
   const maxKeys = opts?.maxKeys ?? 500;
   const out: R2ListedObject[] = [];
   let token: string | undefined;
@@ -65,7 +65,9 @@ export async function listR2ObjectsForAuthor(
 
   const merged: R2ListedObject[] = [];
   for (const prefix of prefixes) {
-    const chunk = await listR2ObjectsUnderPrefix(prefix);
+    const chunk = await listR2ObjectsUnderPrefix(prefix, {
+      bucket: author.r2Bucket,
+    });
     for (const item of chunk) {
       if (!merged.some((m) => m.key === item.key)) merged.push(item);
     }

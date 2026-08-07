@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   }
 
   const authorSlug = req.nextUrl.searchParams.get("author");
-  const author = authorSlug ? getPackagesAuthorBySlug(authorSlug) : null;
+  const author = authorSlug ? await getPackagesAuthorBySlug(authorSlug) : null;
   if (authorSlug && !author) {
     return NextResponse.json({ error: "MISSING_AUTHOR" }, { status: 400, headers: CORS });
   }

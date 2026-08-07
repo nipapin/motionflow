@@ -3,8 +3,10 @@ import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getPackagesAuthorById, isPackagesAdmin } from "@/lib/packages-admin";
-import { getPackagesProject } from "@/lib/packages-projects";
-import { buildMarketplaceSecureObjectKey } from "@/lib/marketplace-r2-presign";
+import {
+  buildPackagesSecureObjectKey,
+  getPackagesProject,
+} from "@/lib/packages-projects";
 import {
   getR2Bucket,
   getR2Client,
@@ -14,7 +16,7 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Kind = "preview" | "video" | "zip";
+type Kind = "preview" | "zip" | "demo";
 
 function privateBucket(): string | null {
   return process.env.R2_BUCKET?.trim() || null;
@@ -32,7 +34,7 @@ export async function POST(
   const params = await ctx.params;
   const authorId = Number(params.authorId);
   const itemId = Number(params.itemId);
-  const author = getPackagesAuthorById(authorId);
+  const author = await getPackagesAuthorById(authorId);
   if (!author || !Number.isFinite(itemId) || itemId <= 0) {
     return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
   }
@@ -48,7 +50,7 @@ export async function POST(
   }
 
   const kind = (body.kind || "").trim() as Kind;
-  if (kind !== "preview" && kind !== "video" && kind !== "zip") {
+  if (kind !== "preview" && kind !== "zip") {
     return NextResponse.json({ error: "BAD_KIND" }, { status: 400 });
   }
 
@@ -57,12 +59,11 @@ export async function POST(
   const client = getR2Client();
 
   if (kind === "zip") {
-    const bucket = privateBucket();
+    const bucket = author.r2Bucket?.trim() || privateBucket();
     if (!bucket) {
       return NextResponse.json({ error: "PRIVATE_BUCKET_MISSING" }, { status: 503 });
     }
-    const stem = filename.replace(/\.zip$/i, "") || `pack-${itemId}`;
-    const key = buildMarketplaceSecureObjectKey(itemId, stem);
+    const key = buildPackagesSecureObjectKey(authorId, itemId, filename);
     const command = new PutObjectCommand({
       Bucket: bucket,
       Key: key,
@@ -74,21 +75,17 @@ export async function POST(
       kind,
       key,
       putUrl,
-      /** Stored in files.main as stem for secure layout. */
-      bindValue: stem,
+      bindValue: key,
       expiresIn: 600,
     });
   }
 
-  const publicBucket = getR2Bucket();
-  const ext =
-    filename.includes(".")
-      ? filename.slice(filename.lastIndexOf(".") + 1)
-      : kind === "video"
-        ? "mp4"
-        : "png";
-  const prefix = author.r2Prefixes[0] || "public/downloads/";
-  const key = `${prefix}packages/${itemId}/${kind}-${Date.now()}.${ext}`;
+  const publicBucket = author.r2Bucket?.trim() || getR2Bucket();
+  const ext = filename.includes(".")
+    ? filename.slice(filename.lastIndexOf(".") + 1)
+    : "png";
+  const prefix = author.r2Prefix || "public/downloads/";
+  const key = `${prefix}packages/${itemId}/preview-${Date.now()}.${ext}`;
   const command = new PutObjectCommand({
     Bucket: publicBucket,
     Key: key,

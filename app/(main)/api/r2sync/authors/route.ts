@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { assertR2SyncAdmin, PACKAGES_AUTHORS } from "@/lib/packages-admin";
+import { assertR2SyncAdmin, listPackagesAuthors } from "@/lib/packages-admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,5 +19,6 @@ export async function GET(req: NextRequest) {
   if (!gate.ok) {
     return NextResponse.json({ error: gate.error }, { status: gate.status, headers: CORS });
   }
-  return NextResponse.json({ authors: PACKAGES_AUTHORS }, { headers: CORS });
+  const authors = await listPackagesAuthors();
+  return NextResponse.json({ authors }, { headers: CORS });
 }

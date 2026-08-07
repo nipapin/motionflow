@@ -22,7 +22,7 @@ export async function POST(
   const params = await ctx.params;
   const authorId = Number(params.authorId);
   const itemId = Number(params.itemId);
-  const author = getPackagesAuthorById(authorId);
+  const author = await getPackagesAuthorById(authorId);
   if (!author || !Number.isFinite(itemId) || itemId <= 0) {
     return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
   }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
-import { isPackagesAdmin, PACKAGES_AUTHORS } from "@/lib/packages-admin";
+import { isPackagesAdmin, listPackagesAuthors } from "@/lib/packages-admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,5 +10,6 @@ export async function GET() {
   if (!user || !isPackagesAdmin(user.email)) {
     return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
   }
-  return NextResponse.json({ authors: PACKAGES_AUTHORS });
+  const authors = await listPackagesAuthors();
+  return NextResponse.json({ authors });
 }
