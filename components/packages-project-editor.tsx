@@ -213,7 +213,7 @@ export function PackagesProjectEditor({
   }
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 w-full">
       <div>
         <Link
           href={`/profile/packages/${authorId}`}

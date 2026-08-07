@@ -180,7 +180,7 @@ export function PackagesAuthorsAdmin() {
   };
 
   return (
-    <div className="space-y-5 max-w-4xl">
+    <div className="space-y-5 w-full">
       <div>
         <Link
           href="/profile/packages"
