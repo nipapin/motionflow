@@ -16,6 +16,8 @@ type AuthorDto = {
 
 export function PackagesAuthorsAdmin() {
   const [authors, setAuthors] = useState<AuthorDto[]>([]);
+  const [buckets, setBuckets] = useState<string[]>([]);
+  const [bucketsError, setBucketsError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [label, setLabel] = useState("");
   const [r2Bucket, setR2Bucket] = useState("");
@@ -27,12 +29,24 @@ export function PackagesAuthorsAdmin() {
 
   const load = useCallback(async () => {
     setError(null);
+    setBucketsError(null);
     try {
-      const res = await fetch("/api/packages/authors");
-      if (!res.ok) throw new Error(await res.text());
-      const data = (await res.json()) as { authors: AuthorDto[] };
-      setAuthors(data.authors || []);
-      setSelectedId((prev) => prev ?? data.authors?.[0]?.id ?? null);
+      const [authorsRes, bucketsRes] = await Promise.all([
+        fetch("/api/packages/authors"),
+        fetch("/api/packages/buckets"),
+      ]);
+      if (!authorsRes.ok) throw new Error(await authorsRes.text());
+      const authorsData = (await authorsRes.json()) as { authors: AuthorDto[] };
+      setAuthors(authorsData.authors || []);
+      setSelectedId((prev) => prev ?? authorsData.authors?.[0]?.id ?? null);
+
+      if (bucketsRes.ok) {
+        const bucketsData = (await bucketsRes.json()) as { buckets: string[] };
+        setBuckets(bucketsData.buckets || []);
+      } else {
+        setBuckets([]);
+        setBucketsError("Could not load R2 buckets");
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Load failed");
     }
@@ -48,6 +62,13 @@ export function PackagesAuthorsAdmin() {
     setR2Bucket(selected.r2_bucket || "");
     setMsg(null);
   }, [selected]);
+
+  const bucketOptions = (() => {
+    const set = new Set(buckets);
+    // Keep currently saved bucket visible even if ListBuckets briefly omits it.
+    if (r2Bucket) set.add(r2Bucket);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  })();
 
   const saveAuthor = async () => {
     if (!selectedId) return;
@@ -94,7 +115,7 @@ export function PackagesAuthorsAdmin() {
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">Authors</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Set each author’s R2 bucket name here. Pack editors browse that bucket to attach zips.
+          Pick an R2 bucket from your account for each author. Pack editors browse that bucket.
         </p>
       </div>
 
@@ -144,20 +165,28 @@ export function PackagesAuthorsAdmin() {
               />
             </label>
             <label className="block text-xs text-muted-foreground">
-              R2 bucket name
-              <input
+              R2 bucket
+              <select
                 className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono"
                 value={r2Bucket}
                 onChange={(e) => setR2Bucket(e.target.value)}
-                placeholder="spunkram-library"
-                autoComplete="off"
-                spellCheck={false}
-              />
+                disabled={busy || (bucketOptions.length === 0 && !r2Bucket)}
+              >
+                <option value="">— Not set —</option>
+                {bucketOptions.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
             </label>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Exact Cloudflare R2 bucket name for this author. Leave empty to clear. Credentials
-              stay in server R2 env; only the bucket name is stored per author.
-            </p>
+            {bucketsError ? (
+              <p className="text-xs text-destructive">{bucketsError}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Buckets are loaded live from R2 (ListBuckets) using the server API token.
+              </p>
+            )}
             <Button type="button" size="sm" disabled={busy} onClick={() => void saveAuthor()}>
               {busy ? (
                 <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />

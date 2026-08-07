@@ -6,7 +6,7 @@ import {
   updatePackagesAuthorRow,
   type PackagesAuthorPatch,
 } from "@/lib/packages-authors-db";
-import { normalizePackagesBucketName } from "@/lib/packages-r2-buckets";
+import { normalizePackagesBucketName, listR2AccountBuckets } from "@/lib/packages-r2-buckets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -77,6 +77,26 @@ export async function PATCH(
         { error: "INVALID_BUCKET", message: normalized.error },
         { status: 400 },
       );
+    }
+    if (normalized.value) {
+      try {
+        const buckets = await listR2AccountBuckets();
+        if (!buckets.includes(normalized.value)) {
+          return NextResponse.json(
+            {
+              error: "BUCKET_NOT_FOUND",
+              message: `Bucket “${normalized.value}” is not available on this R2 account`,
+            },
+            { status: 400 },
+          );
+        }
+      } catch (err) {
+        console.error("[packages/authors PATCH] list buckets", err);
+        return NextResponse.json(
+          { error: "LIST_FAILED", message: "Could not verify R2 buckets" },
+          { status: 502 },
+        );
+      }
     }
     patch.r2_bucket = normalized.value;
   }
