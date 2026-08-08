@@ -267,11 +267,26 @@ export function attachCepWebSocket(server) {
     }
   }, HEARTBEAT_MS);
 
-  // Redis fan-in
+  // Redis fan-in — pack rooms + global extension releases
   void (async () => {
     try {
       await sub.connect();
       await sub.psubscribe("cep:events:*");
+      await sub.subscribe("cep:extension");
+
+      const broadcastAll = (frame) => {
+        for (const ws of wss.clients) {
+          if (ws.readyState !== 1) continue;
+          // Only authed sockets that finished hello (in a room) — or any with meta
+          if (!meta.get(ws)) continue;
+          try {
+            ws.send(frame);
+          } catch {
+            /* ignore */
+          }
+        }
+      };
+
       sub.on("pmessage", (_pattern, channel, message) => {
         try {
           const event = JSON.parse(message);
@@ -293,7 +308,19 @@ export function attachCepWebSocket(server) {
           console.warn("[cep-ws] bad redis message", err?.message || err);
         }
       });
-      console.log("[cep-ws] subscribed to cep:events:*");
+
+      sub.on("message", (channel, message) => {
+        if (channel !== "cep:extension") return;
+        try {
+          const event = JSON.parse(message);
+          if (event?.type !== "extension.update" || !event?.version) return;
+          broadcastAll(JSON.stringify(event));
+        } catch (err) {
+          console.warn("[cep-ws] bad extension message", err?.message || err);
+        }
+      });
+
+      console.log("[cep-ws] subscribed to cep:events:* and cep:extension");
     } catch (err) {
       console.error("[cep-ws] redis subscribe failed", err?.message || err);
     }

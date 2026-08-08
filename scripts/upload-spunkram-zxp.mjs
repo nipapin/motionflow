@@ -17,6 +17,7 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import Redis from "ioredis";
 
 function parseArgs(argv) {
   const opts = {
@@ -159,6 +160,40 @@ async function main() {
     }),
   );
   console.log(`  ✓ ${publicUrl(pointerKey)}`);
+
+  // Wake connected CEP panels (custom server.mjs Redis → WSS).
+  try {
+    const password = process.env.REDIS_PASSWORD;
+    const redis = new Redis({
+      host: process.env.REDIS_HOST || "127.0.0.1",
+      port: Number(process.env.REDIS_PORT) || 6379,
+      password: !password || password === "null" ? undefined : password,
+      db: Number(process.env.REDIS_DB) || 0,
+      maxRetriesPerRequest: 1,
+      lazyConnect: true,
+    });
+    await redis.connect();
+    const n = await redis.publish(
+      "cep:extension",
+      JSON.stringify({
+        type: "extension.update",
+        version: manifest.version,
+        zxp_url: manifest.zxpUrl,
+        changelog: manifest.changelog || "",
+        channel: manifest.channel,
+        published_at: manifest.publishedAt,
+        ts: Date.now(),
+      }),
+    );
+    await redis.quit().catch(() => redis.disconnect());
+    console.log(`  ✓ WSS notify cep:extension (subscribers≈${n})`);
+  } catch (err) {
+    console.warn(
+      "[upload-zxp] WSS notify skipped:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
   console.log("[upload-zxp] done");
 }
 
