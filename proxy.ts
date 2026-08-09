@@ -31,6 +31,9 @@ export function proxy(request: NextRequest) {
     }
   }
 
+  // Main site bare /item/{id} is handled by app/(main)/item/[id] (Next).
+  // Laravel may gateway-proxy that path to this Next process; slug URLs stay on Laravel.
+
   if (!pathname.startsWith("/profile")) {
     return NextResponse.next();
   }

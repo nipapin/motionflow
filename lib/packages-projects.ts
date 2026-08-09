@@ -16,8 +16,7 @@ import {
   publishCepPackEvent,
   type CepPackEventType,
 } from "@/lib/cep-events";
-import { getMarketItemsByIds } from "@/lib/market-items";
-import { motionflowItemPageUrl } from "@/lib/motionflow-urls";
+import { motionflowNextItemUrl } from "@/lib/motionflow-urls";
 import { parseMarketplaceItemIdInput } from "@/lib/packages-marketplace-id";
 
 export type PackagesProjectHost = "PR" | "AE";
@@ -348,10 +347,8 @@ export type PackagesProjectPatch = {
 async function resolveDetailsUrlForMarketplaceItem(
   marketplaceItemId: number,
 ): Promise<string | null> {
-  const products = await getMarketItemsByIds([marketplaceItemId]);
-  const product = products[0];
-  if (!product) return null;
-  return motionflowItemPageUrl(product, marketplaceItemId, product.name);
+  if (!Number.isFinite(marketplaceItemId) || marketplaceItemId <= 0) return null;
+  return motionflowNextItemUrl(marketplaceItemId);
 }
 
 export async function updatePackagesProject(
@@ -417,7 +414,7 @@ export async function updatePackagesProject(
     marketplace_item_id = parseMarketplaceItemIdInput(details_url);
   }
 
-  // Prefer canonical Laravel item URL (`/item/{slug}/{id}`) when linking a market item.
+  // Prefer Next bare /item/{id} on motionflow.pro when linking a market item.
   if (marketplace_item_id != null && !details_url) {
     details_url = await resolveDetailsUrlForMarketplaceItem(marketplace_item_id);
   } else if (
@@ -432,10 +429,14 @@ export async function updatePackagesProject(
         return details_url;
       }
     })();
-    // Fix broken id-only paths like /item/1138 (Laravel treats as category).
-    if (/^\/item\/\d+\/?$/.test(pathOnly) || /^\/spunkram\/items?\/\d+\/?$/.test(pathOnly)) {
+    // Normalize typo / Laravel slug URLs to Next bare /item/{id}.
+    if (
+      /^\/spunkram\/items?\/\d+\/?$/.test(pathOnly) ||
+      /^\/item\/[^/]+\/\d+\/?$/.test(pathOnly)
+    ) {
       details_url =
-        (await resolveDetailsUrlForMarketplaceItem(marketplace_item_id)) || details_url;
+        (await resolveDetailsUrlForMarketplaceItem(marketplace_item_id)) ||
+        details_url;
     }
   }
 

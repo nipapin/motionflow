@@ -17,8 +17,7 @@ import {
   type PackagesProjectDto,
 } from "@/lib/packages-projects";
 import { parseMarketplaceItemIdInput } from "@/lib/packages-marketplace-id";
-import { getMarketItemsByIds } from "@/lib/market-items";
-import { motionflowItemPageUrl } from "@/lib/motionflow-urls";
+import { motionflowNextItemUrl } from "@/lib/motionflow-urls";
 import {
   resolveSpunkramSubscriptionTierId,
   type SpunkramSubscriptionTierId,
@@ -262,13 +261,15 @@ function projectImageUrl(project: PackagesProjectDto): string {
   return `${motionflowSiteOrigin()}/assets/spunkram.svg`;
 }
 
-/** True for bare `/item/1138` (Laravel category 404) or plural Spunkram typos. */
-function isBrokenItemPath(url: string | null | undefined): boolean {
+/** Prefer Next `/item/{id}`; rewrite legacy slug / plural Spunkram typos. */
+function needsNextItemUrlNormalize(url: string | null | undefined): boolean {
   if (!url?.trim()) return true;
   try {
     const path = new URL(url, motionflowSiteOrigin()).pathname;
+    if (/^\/item\/\d+\/?$/.test(path)) return false;
     return (
-      /^\/item\/\d+\/?$/.test(path) || /^\/spunkram\/items?\/\d+\/?$/.test(path)
+      /^\/spunkram\/items?\/\d+\/?$/.test(path) ||
+      /^\/item\/[^/]+\/\d+\/?$/.test(path)
     );
   } catch {
     return true;
@@ -279,21 +280,13 @@ async function resolveProjectDetailsUrl(
   project: PackagesProjectDto,
 ): Promise<string | null> {
   const linkedId = project.marketplace_item_id;
-  if (linkedId != null && isBrokenItemPath(project.details_url)) {
-    const products = await getMarketItemsByIds([linkedId]);
-    const product = products[0];
-    if (product) {
-      return motionflowItemPageUrl(product, linkedId, product.name);
-    }
-    // Spunkram Next storefront works with id-only paths.
-    return `${motionflowSiteOrigin()}/spunkram/item/${linkedId}`;
+  if (linkedId != null && needsNextItemUrlNormalize(project.details_url)) {
+    return motionflowNextItemUrl(linkedId);
   }
   if (project.details_url) return project.details_url;
   if (linkedId != null) {
     const parsed = parseMarketplaceItemIdInput(String(linkedId));
-    if (parsed != null) {
-      return `${motionflowSiteOrigin()}/spunkram/item/${parsed}`;
-    }
+    if (parsed != null) return motionflowNextItemUrl(parsed);
   }
   return null;
 }

@@ -493,12 +493,14 @@ export function PackagesProjectEditor({
                 const parsed = parseMarketplaceItemIdInput(detailsUrl);
                 if (parsed != null) setMarketplaceItemId(String(parsed));
               }}
-              placeholder="https://motionflow.pro/item/{slug}/{id}"
+              placeholder="https://motionflow.pro/item/{id}"
             />
             <p className="text-[12px] text-muted-foreground">
-              Use <code className="text-[11px]">/item/{"{slug}"}/{"{id}"}</code>
-              — not <code className="text-[11px]">/item/{"{id}"}</code> (that
-              returns Category not found).
+              Next.js on the main site:{" "}
+              <code className="text-[11px]">/item/{"{id}"}</code>. Laravel catalog
+              stays on author subdomains (
+              <code className="text-[11px]">spunkram.motionflow.pro/item/…</code>
+              ).
             </p>
           </div>
 

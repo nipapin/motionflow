@@ -43,6 +43,14 @@ export function motionflowItemPageUrl(product: Product | null, itemId: number, t
 }
 
 /**
+ * Next.js bare item URL on the main site: `https://motionflow.pro/item/{id}`.
+ * Prefer this for CEP Package page / buy links (Laravel owns only `/item/{slug}/{id}` → author subdomain).
+ */
+export function motionflowNextItemUrl(itemId: number): string {
+  return `${motionflowSiteOrigin()}/item/${itemId}`;
+}
+
+/**
  * License / invoice page, e.g.
  * `https://motionflow.pro/item/{package-name}/{item-id}/license?id={sold_items.id}`
  *
