@@ -24,7 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { getPackagesAuthorPublicById } from "@/lib/packages-admin-client";
 import { parseMarketplaceItemIdInput } from "@/lib/packages-marketplace-id";
 import { cn } from "@/lib/utils";
@@ -640,30 +640,29 @@ export function PackagesProjectEditor({
           <div className="rounded-2xl border border-border/60 bg-card px-4 py-1">
             <label className="flex cursor-pointer items-center justify-between gap-3 py-3">
               <span className="text-[13px] font-medium text-foreground">Enabled</span>
-              <Checkbox
+              <Switch
                 checked={visible}
-                onCheckedChange={(checked) => setVisible(checked === true)}
+                onCheckedChange={setVisible}
                 aria-label="Enabled"
               />
             </label>
             <div className="border-t border-border/50" />
             <label className="flex cursor-pointer items-center justify-between gap-3 py-3">
               <span className="text-[13px] font-medium text-foreground">Admin Only</span>
-              <Checkbox
+              <Switch
                 checked={adminOnly}
-                onCheckedChange={(checked) => setAdminOnly(checked === true)}
+                onCheckedChange={setAdminOnly}
                 aria-label="Admin Only"
               />
             </label>
             <div className="border-t border-border/50" />
             <label className="flex cursor-pointer items-center justify-between gap-3 py-3">
               <span className="text-[13px] font-medium text-foreground">Free</span>
-              <Checkbox
+              <Switch
                 checked={freePack}
                 onCheckedChange={(checked) => {
-                  const on = checked === true;
-                  setFreePack(on);
-                  if (!on) {
+                  setFreePack(checked);
+                  if (!checked) {
                     setPrice(
                       String(lastPaidPrice > 0 ? lastPaidPrice : DEFAULT_PAID_PRICE),
                     );
