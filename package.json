@@ -4,13 +4,15 @@
   "private": true,
   "scripts": {
     "build": "next build",
+    "build:staging": "NEXT_DIST_DIR=.next-build next build",
     "dev": "next dev",
     "dev:ws": "node --env-file=.env server.mjs",
     "lint": "eslint .",
     "start": "node server.mjs",
     "start:next": "next start",
+    "deploy:swap": "node scripts/swap-next-build.mjs",
     "deploy:pm2": "pm2 reload ecosystem.config.cjs --update-env || pm2 start ecosystem.config.cjs",
-    "deploy": "git pull && npm ci && npm run build && npm run deploy:pm2"
+    "deploy": "git pull && npm ci && npm run build:staging && npm run deploy:swap && npm run deploy:pm2"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1034.0",

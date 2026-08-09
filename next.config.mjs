@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Live PM2 serves `.next`; deploy builds into `.next-build` then swaps (see scripts/swap-next-build.mjs).
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   images: {
     unoptimized: true,
   },
