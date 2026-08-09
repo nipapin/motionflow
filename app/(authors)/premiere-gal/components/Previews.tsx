@@ -151,6 +151,12 @@ export default function Previews() {
                 >
                   {items.slice(0, 12).map((preview, index, self) => {
                     if (isMobile && index >= self.length / 2) return null;
+                    const src =
+                      preview.startsWith("http://") ||
+                      preview.startsWith("https://") ||
+                      preview.startsWith("/")
+                        ? preview
+                        : `/${preview}`;
                     return (
                       <video
                         key={`${section.id}-${index}-${preview}`}
@@ -162,7 +168,7 @@ export default function Previews() {
                         className="package-preview slideup"
                         style={{ animationDelay: `${index * 0.03}s` }}
                       >
-                        <source src={`/${preview}`} type="video/webm" />
+                        <source src={src} type="video/webm" />
                       </video>
                     );
                   })}

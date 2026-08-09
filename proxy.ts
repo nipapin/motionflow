@@ -7,8 +7,7 @@ export function proxy(request: NextRequest) {
   const host = request.headers.get("host")?.toLowerCase() ?? "";
   const isSpunkramHost =
     host === "spunkramv2.motionflow.pro" || host.startsWith("spunkramv2.motionflow.pro:");
-  const isPremiereGalHost = false;
-    //host === "premieregal.motionflow.pro" || host.startsWith("premieregal.motionflow.pro:");
+  const isPremiereGalHost = host === "premieregal.motionflow.pro" || host.startsWith("premieregal.motionflow.pro:");
 
   // Demo: route a specific subdomain into a dedicated Next.js page.
   if (isSpunkramHost && (pathname === "/" || pathname.startsWith("/item/"))) {

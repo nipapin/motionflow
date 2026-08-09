@@ -1,15 +1,16 @@
 import "server-only";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { buildPremieregalShowcaseTree } from "@/lib/premieregal-showcase-catalog";
 
 /**
  * Native port of Laravel `App\Http\Controllers\ShowcaseController::getShowcase`,
  * including the helpers `getLeafNodes`, `collectLeavesByParentFolder`,
  * `pickLeavesRoundRobinDiverse` and `ensureUniqueMediaLeaves`.
  *
- * The package tree lives at `public/lib/tree.json`, mirroring the Laravel
- * project's path. We cache the parsed JSON in-memory between requests; the
- * file is ~1MB so re-parsing it on every call is wasteful.
+ * Prefer the live R2 catalog under
+ * `premieregal/gal-toolkit-max-pr/Gal Toolkit Max Preview Assets/`.
+ * Fall back to `public/lib/tree.json` if R2 is unavailable.
  */
 
 export interface TreeNode {
@@ -19,25 +20,44 @@ export interface TreeNode {
     [key: string]: unknown;
 }
 
-interface CachedTree {
+interface CachedFileTree {
     mtimeMs: number;
     tree: TreeNode[];
 }
 
-let cache: CachedTree | null = null;
+let fileCache: CachedFileTree | null = null;
 
 function treeJsonPath(): string {
     return path.join(process.cwd(), "public", "lib", "tree.json");
 }
 
-async function loadTree(): Promise<TreeNode[]> {
+async function loadTreeFromFile(): Promise<TreeNode[]> {
     const file = treeJsonPath();
     const stat = await fs.stat(file);
-    if (cache && cache.mtimeMs === stat.mtimeMs) return cache.tree;
+    if (fileCache && fileCache.mtimeMs === stat.mtimeMs) return fileCache.tree;
     const raw = await fs.readFile(file, "utf8");
     const parsed = JSON.parse(raw) as TreeNode[];
-    cache = { mtimeMs: stat.mtimeMs, tree: parsed };
+    fileCache = { mtimeMs: stat.mtimeMs, tree: parsed };
     return parsed;
+}
+
+const R2_JSON_PATH =
+    "r2:premieregal/gal-toolkit-max-pr/Gal Toolkit Max Preview Assets/";
+
+/** Full showcase tree from R2 (preferred) or local `tree.json` fallback. */
+export async function loadShowcaseTree(): Promise<{
+    tree: TreeNode[];
+    jsonPath: string;
+}> {
+    try {
+        const tree = await buildPremieregalShowcaseTree();
+        if (tree.length > 0) {
+            return { tree: tree as TreeNode[], jsonPath: R2_JSON_PATH };
+        }
+    } catch (err) {
+        console.error("[showcase-tree] R2 catalog failed, using tree.json", err);
+    }
+    return { tree: await loadTreeFromFile(), jsonPath: treeJsonPath() };
 }
 
 /** Port of `getLeafNodes` (PHP) — depth-first traversal collecting leaves. */
@@ -184,7 +204,7 @@ const SHOWCASE_LIMIT = 12;
  * not present in the tree.
  */
 export async function getShowcaseForSection(section: string): Promise<ShowcaseResult | null> {
-    const tree = await loadTree();
+    const { tree, jsonPath } = await loadShowcaseTree();
     const sectionTree = tree.find((item) => item.name === section);
     if (!sectionTree) return null;
 
@@ -212,5 +232,5 @@ export async function getShowcaseForSection(section: string): Promise<ShowcaseRe
         .map((leaf) => (typeof leaf.media === "string" ? leaf.media : ""))
         .filter((m): m is string => m.length > 0);
 
-    return { items, jsonPath: treeJsonPath() };
+    return { items, jsonPath };
 }
