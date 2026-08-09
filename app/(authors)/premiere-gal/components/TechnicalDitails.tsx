@@ -2,19 +2,16 @@
 
 import { Box, Divider, Stack, Typography } from "@mui/material";
 import { Folder, Loop } from "@mui/icons-material";
-import { useMobile } from "../hooks/use-mobile";
 import { usePackageVersion } from "../hooks/use-package-version";
 import { AfterEffectsIcon, PremiereProIcon } from "../icons";
 import PaperCard from "./PaperCard";
 
 /** Port of `resources/js/premieregal/components/TechnicalDitails.jsx`. */
 export default function TechnicalDitails() {
-  const isMobile = useMobile();
-  const width = isMobile ? "100%" : "25rem";
   const version = usePackageVersion();
   return (
-    <PaperCard sx={{ width, flexDirection: "column", gap: 1, alignItems: "flex-start" }}>
-      <Typography fontWeight={700} fontSize={{ xs: 16, md: 20 }} color="var(--text-color)" pb={1}>
+    <PaperCard sx={{ width: "100%", flexDirection: "column", gap: 1, alignItems: "flex-start" }}>
+      <Typography fontWeight={700} fontSize={{ xs: 16, md: "clamp(15px, 1.4vw, 20px)" }} color="var(--text-color)" pb={1}>
         Technical Details
       </Typography>
       <Stack direction="column" gap={1} width="100%">

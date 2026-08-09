@@ -153,7 +153,7 @@ export default function Previews() {
                     if (isMobile && index >= self.length / 2) return null;
                     return (
                       <video
-                        key={`${section.id}-${preview}`}
+                        key={`${section.id}-${index}-${preview}`}
                         autoPlay
                         playsInline
                         muted

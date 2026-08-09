@@ -9,9 +9,11 @@ export default function HeroGrid() {
   const { mode } = useColorScheme();
   return (
     <Box
+      id="features"
       sx={{
         display: "grid",
         overflow: "hidden",
+        scrollMarginTop: "6rem",
         gridTemplateColumns: { xl: "repeat(8, 1fr)", xs: "repeat(4, 1fr)" },
         gridTemplateRows: { xl: "repeat(3, 1fr)", xs: "repeat(6, 1fr)" },
         gap: 1,

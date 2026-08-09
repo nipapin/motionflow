@@ -17,7 +17,9 @@ import { useState } from "react";
 import { useMobile } from "../hooks/use-mobile";
 
 const links = [
+  { label: "Features", href: "#features" },
   { label: "How to Use", href: "#use" },
+  { label: "Pricing", href: "#pricing" },
   { label: "FAQ", href: "#faq" },
   { label: "Contact Us", href: "#contact" },
 ];
@@ -51,13 +53,15 @@ export default function Links() {
         onClick={handleClose}
         sx={{
           color: mode === "dark" ? "white" : "black",
+          whiteSpace: "nowrap",
+          flexShrink: 0,
           "&:hover": {
             textDecoration: "none",
             color: mode === "dark" ? "primary.main" : "secondary.main",
           },
         }}
       >
-        <Typography fontWeight={400} fontSize={14}>
+        <Typography fontWeight={400} fontSize="clamp(11px, 1.05vw, 14px)" whiteSpace="nowrap" lineHeight={1.2}>
           {link.label}
         </Typography>
       </Link>
@@ -67,7 +71,13 @@ export default function Links() {
 
   return (
     <ClickAwayListener onClickAway={handleClose}>
-      <Stack direction="row" alignItems="center" gap={2} ml="auto">
+      <Stack
+        direction="row"
+        alignItems="center"
+        gap={{ xs: 1, md: 1, lg: 1.5, xl: 2 }}
+        ml="auto"
+        sx={{ flexShrink: 0, whiteSpace: "nowrap", minWidth: 0 }}
+      >
         {isMobile ? (
           <>
             <IconButton size="small" onClick={handleToggleMode}>
@@ -95,7 +105,7 @@ export default function Links() {
         ) : (
           <>
             {renderLinks()}
-            <IconButton size="small" onClick={handleToggleMode}>
+            <IconButton size="small" onClick={handleToggleMode} sx={{ flexShrink: 0 }}>
               {mode === "light" ? <DarkMode fontSize="small" /> : <LightMode fontSize="small" />}
             </IconButton>
           </>

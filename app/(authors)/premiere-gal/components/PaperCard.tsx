@@ -5,11 +5,13 @@ import type { ReactNode, MouseEventHandler } from "react";
 
 /** Port of `resources/js/premieregal/components/PaperCard.jsx`. */
 export default function PaperCard({
+  id,
   sx,
   children,
   className,
   onClick,
 }: {
+  id?: string;
   sx?: SxProps<Theme>;
   children?: ReactNode;
   className?: string;
@@ -19,6 +21,7 @@ export default function PaperCard({
   if (!mode) return null;
   return (
     <Paper
+      id={id}
       elevation={0}
       onClick={onClick}
       variant={mode === "dark" ? "outlined" : "elevation"}

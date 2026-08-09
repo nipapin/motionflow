@@ -11,7 +11,17 @@ import TechnicalDitails from "./TechnicalDitails";
 export default function Sidebar() {
   const isMobile = useMobile();
   return (
-    <Stack direction="column" gap={2} sx={{ position: "sticky", top: "0.5rem", display: isMobile ? "none" : "flex" }}>
+    <Stack
+      direction="column"
+      gap={2}
+      sx={{
+        position: "sticky",
+        top: "0.5rem",
+        display: isMobile ? "none" : "flex",
+        width: "100%",
+        minWidth: 0,
+      }}
+    >
       <Downloads />
       <Discount />
       <PricingPlans />

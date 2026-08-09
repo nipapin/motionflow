@@ -18,13 +18,20 @@ export default function GalToolkitAppBar() {
   };
 
   return (
-    <Stack direction="row" gap={2} alignItems="flex-start" width="100%" sx={{ position: "sticky", top: "2rem", zIndex: 99 }}>
+    <Stack
+      direction="row"
+      gap={{ xs: 1, md: 1.5, lg: 2 }}
+      alignItems="stretch"
+      width="100%"
+      sx={{ position: "sticky", top: "2rem", zIndex: 99, minWidth: 0 }}
+    >
       <PaperCard
         onClick={handleScrollToTop}
         sx={{
           p: 1,
-          width: { xl: "54px", xs: "46px" },
-          height: { xl: "54px", xs: "46px" },
+          width: { xs: "42px", md: "46px", xl: "54px" },
+          height: { xs: "42px", md: "46px", xl: "54px" },
+          flexShrink: 0,
           backdropFilter: "blur(10px)",
           backgroundColor,
           cursor: "pointer",
@@ -44,27 +51,46 @@ export default function GalToolkitAppBar() {
       </PaperCard>
       <PaperCard
         sx={{
-          width: "fit-content",
+          width: "100%",
+          minWidth: 0,
           flexGrow: 1,
           justifyContent: "flex-start",
-          p: 2,
-          height: { xl: "54px", xs: "46px" },
+          alignItems: "center",
+          flexWrap: "nowrap",
+          gap: { xs: 1, md: 1, lg: 1.5, xl: 2 },
+          px: { xs: 1.25, md: 1.5, lg: 2 },
+          py: 1,
+          minHeight: { xs: "42px", md: "46px", xl: "54px" },
+          height: "auto",
           backdropFilter: "blur(10px)",
           backgroundColor,
         }}
       >
         <Typography
           fontWeight={600}
-          fontSize="clamp(14px, 2vw, 20px)"
+          fontSize="clamp(12px, 1.35vw, 20px)"
           color="var(--text-color)"
-          sx={{ display: "flex", alignItems: "center", gap: 1 }}
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: { xs: 0.5, md: 0.75, lg: 1 },
+            whiteSpace: "nowrap",
+            flexShrink: 1,
+            minWidth: 0,
+          }}
         >
           Gal Toolkit MAX{" "}
           <Typography
             component="span"
-            fontSize={10}
+            fontSize="clamp(8px, 0.85vw, 10px)"
             fontWeight={600}
-            sx={{ background: "var(--linear-gradient)", color: "white", padding: "4px 8px", borderRadius: "99px" }}
+            sx={{
+              background: "var(--linear-gradient)",
+              color: "white",
+              padding: { xs: "2px 6px", md: "3px 7px", lg: "4px 8px" },
+              borderRadius: "99px",
+              flexShrink: 0,
+            }}
           >
             {version}
           </Typography>

@@ -5,9 +5,9 @@ import { Box, Button, Stack, Typography, useColorScheme } from "@mui/material";
 import { useState } from "react";
 import { options, pricingPlans, type PricingPlanEntry } from "../entities/pricing";
 import { useDiscount } from "../hooks/use-discount";
-import { useMobile } from "../hooks/use-mobile";
 import { usePageSets } from "../page-sets-context";
 import { useBuyGalToolkit } from "../use-buy-gal-toolkit";
+import FreeDownloadDialog from "./FreeDownloadDialog";
 import PaperCard from "./PaperCard";
 import PricingPlanChip from "./PricingPlanChip";
 
@@ -19,50 +19,91 @@ export function PricingPlans() {
   const pageSets = usePageSets();
   const discountPercent = typeof pageSets.discount_percent === "number" ? pageSets.discount_percent : 50;
   const { mode } = useColorScheme();
-  const [activePlan, setActivePlan] = useState(pricingPlans[1]);
-  const isMobile = useMobile();
-  const width = isMobile ? "100%" : "25rem";
+  const [activePlan, setActivePlan] = useState(
+    () => pricingPlans.find((p) => p.priceKey === "yearly") ?? pricingPlans[1],
+  );
+  const [freeDownloadOpen, setFreeDownloadOpen] = useState(false);
   const buyGalToolkit = useBuyGalToolkit();
 
+  const isFree = activePlan.priceKey === "free";
   const hasDiscount = isDiscount && (activePlan.priceKey === "yearly" || activePlan.priceKey === "lifetime");
   const discountedPrice = hasDiscount ? +(activePlan.price * (1 - discountPercent / 100)).toFixed(2) : null;
+  const featureList = activePlan.features ?? options;
+  const maxFeatureCount = Math.max(
+    options.length,
+    ...pricingPlans.map((plan) => (plan.features ?? options).length),
+  );
+
+  const handleCta = () => {
+    if (activePlan.priceKey === "free") {
+      setFreeDownloadOpen(true);
+      return;
+    }
+    buyGalToolkit(activePlan.priceKey);
+  };
 
   return (
-    <PaperCard sx={{ width, flexDirection: "column", gap: 1 }}>
-      <Stack gap={1} direction="column" width="100%" alignItems="center">
+    <>
+    <PaperCard id="pricing" sx={{ width: "100%", flexDirection: "column", gap: 1, alignItems: "stretch" }}>
+      <Stack gap={1} direction="column" width="100%" alignItems="center" sx={{ flex: 1 }}>
         <PaperCard
           sx={{
             width: "100%",
-            gap: 1,
+            gap: 0.5,
             background: mode === "light" ? "#E5E6F3" : "var(--dark-background-color)",
             p: "4px",
             borderRadius: "8px",
           }}
         >
           {pricingPlans.map((plan) => (
-            <PricingPlan key={plan.id} hasDiscount={isDiscount} plan={plan} active={activePlan.id === plan.id} onClick={() => setActivePlan(plan)} />
+            <PricingPlan
+              key={plan.id}
+              hasDiscount={isDiscount}
+              plan={plan}
+              active={activePlan.id === plan.id}
+              onClick={() => setActivePlan(plan)}
+            />
           ))}
         </PaperCard>
-        <Stack direction="row" alignItems="baseline" gap={1} sx={{ mt: "1rem" }}>
+        <Stack direction="row" alignItems="baseline" gap={1} sx={{ mt: "1rem", minHeight: 56 }}>
           {hasDiscount && (
-            <Typography fontWeight={700} fontSize={25} color="var(--link-color)" sx={{ textDecoration: "line-through", opacity: 0.5, fontWeight: 400 }}>
+            <Typography
+              fontWeight={700}
+              fontSize={25}
+              color="var(--link-color)"
+              sx={{ textDecoration: "line-through", opacity: 0.5, fontWeight: 400 }}
+            >
               ${activePlan.price}
             </Typography>
           )}
-          <Typography fontWeight={700} fontSize={48} color="var(--text-color)" sx={{ display: "flex", alignItems: "baseline" }}>
-            ${hasDiscount ? discountedPrice : activePlan.price}{" "}
-            <Typography component="span" fontWeight={400} fontSize={20} color="var(--link-color)" sx={{ display: "block" }}>
-              {activePlan.per}
-            </Typography>
+          <Typography fontWeight={700} fontSize={48} color="var(--text-color)" sx={{ display: "flex", alignItems: "baseline", lineHeight: 1 }}>
+            {isFree ? (
+              "Free"
+            ) : (
+              <>
+                ${hasDiscount ? discountedPrice : activePlan.price}{" "}
+                {activePlan.per && (
+                  <Typography component="span" fontWeight={400} fontSize={20} color="var(--link-color)" sx={{ display: "block" }}>
+                    {activePlan.per}
+                  </Typography>
+                )}
+              </>
+            )}
           </Typography>
         </Stack>
-        <Typography fontWeight={400} fontSize={12} color="var(--text-color)">
-          {activePlan.id === 2 && isDiscount
+        <Typography fontWeight={400} fontSize={12} color="var(--text-color)" sx={{ minHeight: 18 }}>
+          {activePlan.priceKey === "yearly" && isDiscount
             ? `Billed yearly ($${(YEARLY_BILLED_TOTAL * (1 - discountPercent / 100)).toFixed(2)})`
             : activePlan.tagline}
         </Typography>
-        <Stack direction="column" gap={1} width="100%" mt={2}>
-          {options.map((option) => (
+        <Stack
+          direction="column"
+          gap={1}
+          width="100%"
+          mt={2}
+          sx={{ minHeight: maxFeatureCount * 28, justifyContent: "flex-start" }}
+        >
+          {featureList.map((option) => (
             <Stack key={option} direction="row" gap={1} alignItems="center">
               <Check fontSize="small" sx={{ background: "var(--linear-gradient)", color: "white", borderRadius: "50%", p: "2px" }} />
               <Typography fontWeight={400} fontSize={12} color="var(--text-color)">
@@ -74,15 +115,17 @@ export function PricingPlans() {
         <Button
           fullWidth
           variant="contained"
-          sx={{ background: "var(--linear-gradient)", py: "8px", borderRadius: "8px", fontWeight: 400, mt: 2 }}
-          onClick={() => buyGalToolkit(activePlan.priceKey)}
+          sx={{ background: "var(--linear-gradient)", py: "8px", borderRadius: "8px", fontWeight: 400, mt: "auto" }}
+          onClick={handleCta}
         >
           <Typography fontWeight={400} fontSize={12} color="white">
-            Get Started Now
+            {isFree ? "Download Free" : "Get Started Now"}
           </Typography>
         </Button>
       </Stack>
     </PaperCard>
+    <FreeDownloadDialog open={freeDownloadOpen} onClose={() => setFreeDownloadOpen(false)} />
+    </>
   );
 }
 
@@ -104,10 +147,18 @@ const PricingPlan = ({
         disableElevation
         variant={active ? "contained" : "text"}
         fullWidth
-        sx={{ background: active ? "var(--linear-gradient)" : "transparent", py: "8px", borderRadius: "8px", fontWeight: 400 }}
+        sx={{
+          background: active ? "var(--linear-gradient)" : "transparent",
+          py: "8px",
+          px: 0.5,
+          borderRadius: "8px",
+          fontWeight: 400,
+          minWidth: 0,
+          color: active ? "white" : "var(--text-color)",
+        }}
         onClick={onClick}
       >
-        <Typography fontWeight={active ? 700 : 400} fontSize={12} color={active ? "white" : undefined}>
+        <Typography fontWeight={active ? 700 : 400} fontSize={11} color="inherit" whiteSpace="nowrap">
           {plan.name}
         </Typography>
       </Button>

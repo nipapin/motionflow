@@ -1,16 +1,13 @@
 "use client";
 
-import { Container, Stack } from "@mui/material";
+import { Box, Container } from "@mui/material";
 import { useEffect } from "react";
 import { PremiereGalMainHeader } from "@/components/premiere-gal-main-header";
 import Content from "./components/Content";
 import Sidebar from "./components/Sidebar";
-import { useMobile } from "./hooks/use-mobile";
 
 /** Port of `resources/js/premieregal/App.jsx`. */
 export default function PremiereGalApp() {
-  const isMobile = useMobile();
-
   useEffect(() => {
     const hash = window.location.hash;
     if (!hash) return;
@@ -26,10 +23,25 @@ export default function PremiereGalApp() {
     <>
       <PremiereGalMainHeader />
       <Container maxWidth="xl" sx={{ mx: "auto", py: "2rem" }}>
-        <Stack direction={isMobile ? "column" : "row"} gap={2} alignItems="flex-start">
-          <Content />
+        <Box
+          sx={{
+            display: "grid",
+            width: "100%",
+            alignItems: "start",
+            gap: { xs: 2, md: 2, lg: 2.5 },
+            gridTemplateColumns: {
+              xs: "1fr",
+              md: "minmax(0, 1fr) minmax(220px, 34%)",
+              lg: "minmax(0, 1fr) minmax(260px, 32%)",
+              xl: "minmax(0, 1fr) minmax(280px, 28rem)",
+            },
+          }}
+        >
+          <Box sx={{ minWidth: 0, width: "100%" }}>
+            <Content />
+          </Box>
           <Sidebar />
-        </Stack>
+        </Box>
       </Container>
     </>
   );
