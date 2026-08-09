@@ -16,13 +16,19 @@ export function proxy(request: NextRequest) {
     return NextResponse.rewrite(url);
   }
 
-  if (
-    isPremiereGalHost &&
-    (pathname === "/" || pathname === "/showcase" || pathname.startsWith("/download/"))
-  ) {
-    const url = request.nextUrl.clone();
-    url.pathname = pathname === "/" ? "/premiere-gal" : `/premiere-gal${pathname}`;
-    return NextResponse.rewrite(url);
+  if (isPremiereGalHost) {
+    // Legacy Laravel item URLs on this host redirected to the storefront home.
+    if (pathname.startsWith("/item/")) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/";
+      return NextResponse.redirect(url, 301);
+    }
+
+    if (pathname === "/" || pathname === "/showcase" || pathname.startsWith("/download/")) {
+      const url = request.nextUrl.clone();
+      url.pathname = pathname === "/" ? "/premiere-gal" : `/premiere-gal${pathname}`;
+      return NextResponse.rewrite(url);
+    }
   }
 
   if (!pathname.startsWith("/profile")) {
