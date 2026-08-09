@@ -16,6 +16,9 @@ import {
   listVisiblePackagesProjects,
   type PackagesProjectDto,
 } from "@/lib/packages-projects";
+import { parseMarketplaceItemIdInput } from "@/lib/packages-marketplace-id";
+import { getMarketItemsByIds } from "@/lib/market-items";
+import { motionflowItemPageUrl } from "@/lib/motionflow-urls";
 import {
   resolveSpunkramSubscriptionTierId,
   type SpunkramSubscriptionTierId,
@@ -259,6 +262,42 @@ function projectImageUrl(project: PackagesProjectDto): string {
   return `${motionflowSiteOrigin()}/assets/spunkram.svg`;
 }
 
+/** True for bare `/item/1138` (Laravel category 404) or plural Spunkram typos. */
+function isBrokenItemPath(url: string | null | undefined): boolean {
+  if (!url?.trim()) return true;
+  try {
+    const path = new URL(url, motionflowSiteOrigin()).pathname;
+    return (
+      /^\/item\/\d+\/?$/.test(path) || /^\/spunkram\/items?\/\d+\/?$/.test(path)
+    );
+  } catch {
+    return true;
+  }
+}
+
+async function resolveProjectDetailsUrl(
+  project: PackagesProjectDto,
+): Promise<string | null> {
+  const linkedId = project.marketplace_item_id;
+  if (linkedId != null && isBrokenItemPath(project.details_url)) {
+    const products = await getMarketItemsByIds([linkedId]);
+    const product = products[0];
+    if (product) {
+      return motionflowItemPageUrl(product, linkedId, product.name);
+    }
+    // Spunkram Next storefront works with id-only paths.
+    return `${motionflowSiteOrigin()}/spunkram/item/${linkedId}`;
+  }
+  if (project.details_url) return project.details_url;
+  if (linkedId != null) {
+    const parsed = parseMarketplaceItemIdInput(String(linkedId));
+    if (parsed != null) {
+      return `${motionflowSiteOrigin()}/spunkram/item/${parsed}`;
+    }
+  }
+  return null;
+}
+
 /**
  * Build market packages for a host from `packages_projects` (not marketplace_items).
  */
@@ -286,9 +325,14 @@ export async function buildCepMarketPackages(opts: {
     return ids;
   });
   const ownedIds = await getOwnedItemIdSet(userId, ownershipLookupIds);
+  const detailsUrls = await Promise.all(
+    projects.map((project) => resolveProjectDetailsUrl(project)),
+  );
   const packages: CepMarketPackageDto[] = [];
 
-  for (const project of projects) {
+  for (let i = 0; i < projects.length; i++) {
+    const project = projects[i]!;
+    const detailsUrl = detailsUrls[i] ?? null;
     const price = Number(project.price) || 0;
     const isFreePrice = price <= 0;
     const owned =
@@ -311,9 +355,7 @@ export async function buildCepMarketPackages(opts: {
         : null;
 
     const buyUrl =
-      action === "buy"
-        ? project.details_url || cepSubscribeUrl(cfg)
-        : null;
+      action === "buy" ? detailsUrl || cepSubscribeUrl(cfg) : null;
 
     packages.push({
       id: String(project.id),
@@ -329,7 +371,7 @@ export async function buildCepMarketPackages(opts: {
       action,
       install_url: installUrl,
       buy_url: buyUrl,
-      details_url: project.details_url,
+      details_url: detailsUrl,
       min_extension_version: project.min_extension_version,
       min_host_version: project.min_host_version,
     });
