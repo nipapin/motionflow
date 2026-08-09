@@ -24,7 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { getPackagesAuthorPublicById } from "@/lib/packages-admin-client";
 import { parseMarketplaceItemIdInput } from "@/lib/packages-marketplace-id";
 import { cn } from "@/lib/utils";
@@ -326,8 +326,8 @@ export function PackagesProjectEditor({
         <span className="truncate text-foreground/80">{name || "Untitled"}</span>
       </nav>
 
-      <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 flex-1 space-y-1">
+      <header className="mb-8">
+        <div className="min-w-0 space-y-1">
           <Label htmlFor="pack-name" className="sr-only">
             Pack name
           </Label>
@@ -345,61 +345,6 @@ export function PackagesProjectEditor({
           <p className="text-[13px] text-muted-foreground">
             #{project.id} · {author.label}
           </p>
-        </div>
-        <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
-          <label className="inline-flex h-9 cursor-pointer items-center gap-2.5">
-            <Switch
-              checked={visible}
-              onCheckedChange={setVisible}
-              aria-label="Show in CEP"
-            />
-            <span
-              className={cn(
-                "text-[13px] font-medium",
-                visible ? "text-foreground" : "text-muted-foreground",
-              )}
-            >
-              {visible ? "Visible in CEP" : "Hidden from CEP"}
-            </span>
-          </label>
-          <label className="inline-flex h-9 cursor-pointer items-center gap-2.5">
-            <Switch
-              checked={adminOnly}
-              onCheckedChange={setAdminOnly}
-              aria-label="Admin only"
-            />
-            <span
-              className={cn(
-                "text-[13px] font-medium",
-                adminOnly ? "text-foreground" : "text-muted-foreground",
-              )}
-            >
-              {adminOnly ? "Admin only" : "All CEP users"}
-            </span>
-          </label>
-          <label className="inline-flex h-9 cursor-pointer items-center gap-2.5">
-            <Switch
-              checked={freePack}
-              onCheckedChange={(checked) => {
-                setFreePack(checked);
-                if (!checked) {
-                  setPrice(String(lastPaidPrice > 0 ? lastPaidPrice : DEFAULT_PAID_PRICE));
-                } else {
-                  const n = Number.parseFloat(price);
-                  if (Number.isFinite(n) && n > 0) setLastPaidPrice(n);
-                }
-              }}
-              aria-label="Free pack"
-            />
-            <span
-              className={cn(
-                "text-[13px] font-medium",
-                freePack ? "text-foreground" : "text-muted-foreground",
-              )}
-            >
-              Free pack
-            </span>
-          </label>
         </div>
       </header>
 
@@ -691,6 +636,46 @@ export function PackagesProjectEditor({
               <span>Upload preview</span>
             </Button>
           </label>
+
+          <div className="rounded-2xl border border-border/60 bg-card px-4 py-1">
+            <label className="flex cursor-pointer items-center justify-between gap-3 py-3">
+              <span className="text-[13px] font-medium text-foreground">Enabled</span>
+              <Checkbox
+                checked={visible}
+                onCheckedChange={(checked) => setVisible(checked === true)}
+                aria-label="Enabled"
+              />
+            </label>
+            <div className="border-t border-border/50" />
+            <label className="flex cursor-pointer items-center justify-between gap-3 py-3">
+              <span className="text-[13px] font-medium text-foreground">Admin Only</span>
+              <Checkbox
+                checked={adminOnly}
+                onCheckedChange={(checked) => setAdminOnly(checked === true)}
+                aria-label="Admin Only"
+              />
+            </label>
+            <div className="border-t border-border/50" />
+            <label className="flex cursor-pointer items-center justify-between gap-3 py-3">
+              <span className="text-[13px] font-medium text-foreground">Free</span>
+              <Checkbox
+                checked={freePack}
+                onCheckedChange={(checked) => {
+                  const on = checked === true;
+                  setFreePack(on);
+                  if (!on) {
+                    setPrice(
+                      String(lastPaidPrice > 0 ? lastPaidPrice : DEFAULT_PAID_PRICE),
+                    );
+                  } else {
+                    const n = Number.parseFloat(price);
+                    if (Number.isFinite(n) && n > 0) setLastPaidPrice(n);
+                  }
+                }}
+                aria-label="Free"
+              />
+            </label>
+          </div>
         </div>
       </div>
 
