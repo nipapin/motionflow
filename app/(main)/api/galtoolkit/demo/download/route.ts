@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getGalToolkitDemoManifest,
+  getGalToolkitDemoProject,
   normalizeDemoHost,
+  resolveGalToolkitDemoProjectDownloadUrl,
 } from "@/lib/galtoolkit-demo";
 
 export const runtime = "nodejs";
@@ -13,9 +15,19 @@ const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
+function isSelfDownloadGate(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.pathname.replace(/\/+$/, "") === "/api/galtoolkit/demo/download";
+  } catch {
+    return /\/api\/galtoolkit\/demo\/download(?:\?|$)/i.test(url);
+  }
+}
+
 /**
  * GET /api/galtoolkit/demo/download?host=PR|AE
- * Redirects to the current public demo zip (CDN / env URL).
+ * Redirects to the archive bound to the free Premiere Gal project for that host
+ * (packages_projects.download_key → CDN or short-lived R2 presign).
  */
 export async function GET(req: NextRequest) {
   const host = normalizeDemoHost(req.nextUrl.searchParams.get("host"));
@@ -27,8 +39,34 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const manifest = await getGalToolkitDemoManifest(host);
-    if (!manifest?.downloadUrl) {
+    const project = await getGalToolkitDemoProject(host);
+    let downloadUrl: string | null = null;
+    let version: string | null = null;
+    let expiresIn: number | null = null;
+    let projectId: number | undefined;
+
+    if (project) {
+      downloadUrl = await resolveGalToolkitDemoProjectDownloadUrl(project);
+      version =
+        (project.version && String(project.version).replace(/^v/i, "").trim()) ||
+        project.updated_at.slice(0, 10);
+      projectId = project.id;
+      const key = project.downloadKey || "";
+      if (downloadUrl && !key.startsWith("public/")) {
+        expiresIn = 10 * 60;
+      }
+    }
+
+    if (!downloadUrl) {
+      const manifest = await getGalToolkitDemoManifest(host);
+      if (manifest?.downloadUrl && !isSelfDownloadGate(manifest.downloadUrl)) {
+        downloadUrl = manifest.downloadUrl;
+        version = manifest.version;
+        projectId = manifest.projectId;
+      }
+    }
+
+    if (!downloadUrl) {
       return NextResponse.json(
         { error: "NOT_FOUND", message: "Demo pack not published yet" },
         { status: 404, headers: CORS_HEADERS },
@@ -39,17 +77,19 @@ export async function GET(req: NextRequest) {
     if (wantsJson) {
       return NextResponse.json(
         {
-          version: manifest.version,
-          host: manifest.host,
-          url: manifest.downloadUrl,
-          expires_in: null,
+          version,
+          host,
+          url: downloadUrl,
+          expires_in: expiresIn,
+          ...(projectId != null ? { projectId } : {}),
         },
-        { headers: { ...CORS_HEADERS, "Cache-Control": "public, max-age=30" } },
+        { headers: { ...CORS_HEADERS, "Cache-Control": "no-store" } },
       );
     }
 
-    const res = NextResponse.redirect(manifest.downloadUrl, 302);
+    const res = NextResponse.redirect(downloadUrl, 302);
     Object.entries(CORS_HEADERS).forEach(([k, v]) => res.headers.set(k, v));
+    res.headers.set("Cache-Control", "no-store");
     return res;
   } catch (err) {
     console.error("[galtoolkit/demo/download]", err);

@@ -1,13 +1,15 @@
 # Gal Toolkit — Demo pack versioning
 
-Replaces AtomX `try_free` / daily re-download with first-party manifests on **motionflow.pro** + public R2.
+CEP fetches free demo packs from **motionflow.pro**. Source of truth is the **admin Packages project** for Premiere Gal (`author_id = 4141`): a visible free pack (`price = 0`) with `download_key` bound for host `PR` or `AE`.
+
+Legacy env / R2 `latest.json` remain as fallbacks.
 
 ## API
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/galtoolkit/demo?host=PR\|AE` | Latest demo manifest |
-| `GET` | `/api/galtoolkit/demo/download?host=PR\|AE` | `302` to zip (or `?format=json` → `{ url, version }`) |
+| `GET` | `/api/galtoolkit/demo?host=PR\|AE` | Latest demo manifest (`version` + `downloadUrl`) |
+| `GET` | `/api/galtoolkit/demo/download?host=PR\|AE` | `302` to project zip (CDN or R2 presign). `?format=json` → `{ url, version, projectId }` |
 
 ### Manifest shape
 
@@ -15,38 +17,36 @@ Replaces AtomX `try_free` / daily re-download with first-party manifests on **mo
 {
   "version": "2026.08.06",
   "host": "PR",
-  "downloadUrl": "https://cdn.motionflow.pro/public/downloads/galtoolkit/demo/PR/2026.08.06/pack.zip",
-  "updatedAt": "2026-08-06T12:00:00.000Z"
+  "downloadUrl": "https://motionflow.pro/api/galtoolkit/demo/download?host=PR",
+  "updatedAt": "2026-08-06T12:00:00.000Z",
+  "name": "Gal Toolkit Demo (PR)",
+  "projectId": 12
 }
 ```
 
+- Public `download_key` (`public/…`) → `downloadUrl` may be the CDN zip directly.
+- Private / secure keys → `downloadUrl` is the download gate above (fresh presign on each request).
+
 CEP compares `version` to local `preferences.demoVersions[PR|AE]` and downloads only on mismatch (and only for users **without** active subscription).
 
-## R2 layout (public bucket)
+## Admin setup
+
+1. Create a project for Premiere Gal, host `PR` / `AE`
+2. Set **price = 0** (free pack) and **visible**
+3. Bind / upload the zip (`download_key`)
+4. Set `version` (CEP uses this for update checks)
+
+## Resolve order
+
+1. `packages_projects` — visible, `price <= 0`, matching host, with `download_key`
+2. Env override (`GALTOOLKIT_DEMO_{PR|AE}_VERSION` + `_URL`)
+3. R2 `public/downloads/galtoolkit/demo/{host}/latest.json`
+
+## Legacy R2 layout (fallback only)
 
 ```
 public/downloads/galtoolkit/demo/{PR|AE}/latest.json
 public/downloads/galtoolkit/demo/{PR|AE}/{version}/pack.zip
-```
-
-## Fast ship without waiting for R2 upload
-
-Set on Vercel / `.env`:
-
-```
-GALTOOLKIT_DEMO_PR_VERSION=2026.08.06
-GALTOOLKIT_DEMO_PR_URL=https://cdn.motionflow.pro/.../pack.zip
-GALTOOLKIT_DEMO_AE_VERSION=2026.08.06
-GALTOOLKIT_DEMO_AE_URL=https://cdn.motionflow.pro/.../pack.zip
-```
-
-Env overrides R2 `latest.json`.
-
-## Publish script
-
-```bash
-node scripts/publish-galtoolkit-demo.mjs --host PR --version 2026.08.06 --file ./demo-pr.zip
-node scripts/publish-galtoolkit-demo.mjs --host AE --version 2026.08.06 --file ./demo-ae.zip
 ```
 
 ## CEP fallback

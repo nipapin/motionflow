@@ -1,6 +1,14 @@
 import "server-only";
 
 import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand } from "@aws-sdk/client-s3";
+import { getPackagesAuthorById } from "@/lib/packages-admin";
+import { getPackagesProjectDownloadUrl } from "@/lib/packages-download";
+import {
+  listVisiblePackagesProjects,
+  type PackagesProjectDto,
+} from "@/lib/packages-projects";
+import { PREMIERE_GAL_AUTHOR_ID } from "@/lib/premiere-gal-paddle-config";
+import { motionflowMainSiteUrl } from "@/lib/motionflow-urls";
 import { getR2Bucket, getR2Client, r2PublicUrlForKey } from "@/lib/r2-storage";
 
 export type GalToolkitDemoHost = "PR" | "AE";
@@ -12,6 +20,8 @@ export type GalToolkitDemoManifest = {
   updatedAt: string;
   name?: string;
   description?: string;
+  /** packages_projects.id when resolved from admin projects */
+  projectId?: number;
 };
 
 export type GalToolkitDemoVersionEntry = {
@@ -103,10 +113,71 @@ async function readManifestFromR2(host: GalToolkitDemoHost): Promise<GalToolkitD
   }
 }
 
-/** Prefer env override (fast ship), else public R2 latest.json. */
+/**
+ * Free visible project for Premiere Gal (admin packages) matching host.
+ * Prefer newest with a bound archive (`download_key`).
+ */
+export async function getGalToolkitDemoProject(
+  host: GalToolkitDemoHost,
+): Promise<PackagesProjectDto | null> {
+  try {
+    const projects = await listVisiblePackagesProjects(PREMIERE_GAL_AUTHOR_ID, host);
+    const withArchive = projects.filter(
+      (p) => Number(p.price) <= 0 && Boolean(p.downloadKey),
+    );
+    return withArchive[0] ?? null;
+  } catch (err) {
+    console.error("[galtoolkit-demo] packages_projects lookup failed", host, err);
+    return null;
+  }
+}
+
+/** Resolve the live zip URL for a demo project (CDN or short-lived presign). */
+export async function resolveGalToolkitDemoProjectDownloadUrl(
+  project: PackagesProjectDto,
+): Promise<string | null> {
+  const author = await getPackagesAuthorById(project.author_id);
+  return getPackagesProjectDownloadUrl(project, author);
+}
+
+function manifestFromProject(
+  host: GalToolkitDemoHost,
+  project: PackagesProjectDto,
+  downloadUrl: string,
+): GalToolkitDemoManifest {
+  const version =
+    (project.version && String(project.version).replace(/^v/i, "").trim()) ||
+    project.updated_at.slice(0, 10);
+  return {
+    version,
+    host,
+    downloadUrl,
+    updatedAt: project.updated_at,
+    name: project.name,
+    projectId: project.id,
+  };
+}
+
+/**
+ * Prefer admin packages_projects (free pack archive), then env, then R2 latest.json.
+ * For private project keys, `downloadUrl` points at `/api/galtoolkit/demo/download`
+ * so CEP always gets a fresh redirect/presign.
+ */
 export async function getGalToolkitDemoManifest(
   host: GalToolkitDemoHost,
 ): Promise<GalToolkitDemoManifest | null> {
+  const project = await getGalToolkitDemoProject(host);
+  if (project) {
+    const key = project.downloadKey || "";
+    if (key.startsWith("public/") && project.downloadUrl) {
+      return manifestFromProject(host, project, project.downloadUrl);
+    }
+    const gateUrl = motionflowMainSiteUrl(
+      `/api/galtoolkit/demo/download?host=${encodeURIComponent(host)}`,
+    );
+    return manifestFromProject(host, project, gateUrl);
+  }
+
   const fromEnv = readEnvDemoManifest(host);
   if (fromEnv) return fromEnv;
   try {

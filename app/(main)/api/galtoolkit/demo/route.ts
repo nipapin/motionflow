@@ -16,6 +16,7 @@ const CORS_HEADERS: Record<string, string> = {
 /**
  * GET /api/galtoolkit/demo?host=PR|AE
  * Public demo pack version manifest for Gal Toolkit CEP.
+ * Prefer free Premiere Gal packages_projects archive for the host.
  */
 export async function GET(req: NextRequest) {
   const host = normalizeDemoHost(req.nextUrl.searchParams.get("host"));
