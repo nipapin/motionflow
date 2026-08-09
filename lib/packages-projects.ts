@@ -16,6 +16,9 @@ import {
   publishCepPackEvent,
   type CepPackEventType,
 } from "@/lib/cep-events";
+import { getMarketItemsByIds } from "@/lib/market-items";
+import { motionflowItemPageUrl } from "@/lib/motionflow-urls";
+import { parseMarketplaceItemIdInput } from "@/lib/packages-marketplace-id";
 
 export type PackagesProjectHost = "PR" | "AE";
 
@@ -28,6 +31,8 @@ export type PackagesProjectDto = {
   min_extension_version: string | null;
   min_host_version: string | null;
   details_url: string | null;
+  /** Links CEP pack ownership to `sold_items.item_id` / `marketplace_items.id`. */
+  marketplace_item_id: number | null;
   previewUrl: string | null;
   previewKey: string | null;
   downloadKey: string | null;
@@ -100,6 +105,10 @@ function rowToDto(row: RowDataPacket): PackagesProjectDto | null {
       row.details_url == null || String(row.details_url).trim() === ""
         ? null
         : String(row.details_url).trim(),
+    marketplace_item_id: (() => {
+      const n = Number(row.marketplace_item_id);
+      return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+    })(),
     previewUrl: resolveMediaUrl(previewKey),
     previewKey,
     downloadKey,
@@ -298,9 +307,9 @@ export async function clonePackagesProject(
   const [result] = await pool.query<ResultSetHeader>(
     `INSERT INTO \`${table}\`
       (author_id, name, version, host,
-       min_extension_version, min_host_version, details_url,
+       min_extension_version, min_host_version, details_url, marketplace_item_id,
        preview_key, download_key, price, visible, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 0, NOW(), NOW())`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 0, NOW(), NOW())`,
     [
       authorId,
       source.name.slice(0, 255),
@@ -309,6 +318,7 @@ export async function clonePackagesProject(
       source.min_extension_version,
       source.min_host_version,
       source.details_url,
+      source.marketplace_item_id,
       source.previewKey,
       source.price,
     ],
@@ -327,11 +337,22 @@ export type PackagesProjectPatch = {
   min_extension_version?: string | null;
   min_host_version?: string | null;
   details_url?: string | null;
+  /** Numeric id, Package Page URL, or null to clear. */
+  marketplace_item_id?: number | string | null;
   previewKeyOrUrl?: string | null;
   downloadKey?: string | null;
   price?: number;
   visible?: boolean;
 };
+
+async function resolveDetailsUrlForMarketplaceItem(
+  marketplaceItemId: number,
+): Promise<string | null> {
+  const products = await getMarketItemsByIds([marketplaceItemId]);
+  const product = products[0];
+  if (!product) return null;
+  return motionflowItemPageUrl(product, marketplaceItemId, product.name);
+}
 
 export async function updatePackagesProject(
   authorId: number,
@@ -368,12 +389,55 @@ export async function updatePackagesProject(
         ? patch.min_host_version.trim().slice(0, 64)
         : null
       : existing.min_host_version;
-  const details_url =
+  let details_url =
     patch.details_url !== undefined
       ? patch.details_url?.trim()
         ? patch.details_url.trim().slice(0, 1024)
         : null
       : existing.details_url;
+
+  let marketplace_item_id = existing.marketplace_item_id;
+  if (patch.marketplace_item_id !== undefined) {
+    if (patch.marketplace_item_id == null || patch.marketplace_item_id === "") {
+      marketplace_item_id = null;
+    } else if (typeof patch.marketplace_item_id === "number") {
+      marketplace_item_id =
+        Number.isFinite(patch.marketplace_item_id) && patch.marketplace_item_id > 0
+          ? Math.floor(patch.marketplace_item_id)
+          : null;
+    } else {
+      marketplace_item_id = parseMarketplaceItemIdInput(patch.marketplace_item_id);
+    }
+  } else if (
+    marketplace_item_id == null &&
+    patch.details_url !== undefined &&
+    details_url
+  ) {
+    // Convenience: Package Page URL ending in /{id} fills marketplace_item_id.
+    marketplace_item_id = parseMarketplaceItemIdInput(details_url);
+  }
+
+  // Prefer canonical Laravel item URL (`/item/{slug}/{id}`) when linking a market item.
+  if (marketplace_item_id != null && !details_url) {
+    details_url = await resolveDetailsUrlForMarketplaceItem(marketplace_item_id);
+  } else if (
+    marketplace_item_id != null &&
+    details_url &&
+    parseMarketplaceItemIdInput(details_url) === marketplace_item_id
+  ) {
+    const pathOnly = (() => {
+      try {
+        return new URL(details_url).pathname;
+      } catch {
+        return details_url;
+      }
+    })();
+    // Fix broken id-only paths like /item/1138 (Laravel treats as category).
+    if (/^\/item\/\d+\/?$/.test(pathOnly) || /^\/spunkram\/items?\/\d+\/?$/.test(pathOnly)) {
+      details_url =
+        (await resolveDetailsUrlForMarketplaceItem(marketplace_item_id)) || details_url;
+    }
+  }
 
   let preview_key = existing.previewKey;
   if (patch.previewKeyOrUrl !== undefined) {
@@ -406,6 +470,7 @@ export async function updatePackagesProject(
     `UPDATE \`${table}\`
      SET name = ?, version = ?, host = ?,
          min_extension_version = ?, min_host_version = ?, details_url = ?,
+         marketplace_item_id = ?,
          preview_key = ?, download_key = ?, price = ?, visible = ?,
          updated_at = NOW()
      WHERE id = ? AND author_id = ? AND deleted_at IS NULL`,
@@ -416,6 +481,7 @@ export async function updatePackagesProject(
       min_extension_version,
       min_host_version,
       details_url,
+      marketplace_item_id,
       preview_key,
       download_key,
       price,

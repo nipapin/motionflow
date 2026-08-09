@@ -278,16 +278,23 @@ export async function buildCepMarketPackages(opts: {
   ]);
 
   const subscriptionActive = subscription.active;
-  const ownedIds = await getOwnedItemIdSet(
-    userId,
-    projects.map((p) => p.id),
-  );
+  const ownershipLookupIds = projects.flatMap((p) => {
+    const ids: number[] = [];
+    if (p.marketplace_item_id != null) ids.push(p.marketplace_item_id);
+    // Legacy: some early packs may have used project id as sold_items.item_id.
+    ids.push(p.id);
+    return ids;
+  });
+  const ownedIds = await getOwnedItemIdSet(userId, ownershipLookupIds);
   const packages: CepMarketPackageDto[] = [];
 
   for (const project of projects) {
     const price = Number(project.price) || 0;
     const isFreePrice = price <= 0;
-    const owned = ownedIds.has(project.id);
+    const owned =
+      (project.marketplace_item_id != null &&
+        ownedIds.has(project.marketplace_item_id)) ||
+      ownedIds.has(project.id);
 
     let action: CepMarketAction;
     if (owned || subscriptionActive) {
@@ -351,6 +358,14 @@ export async function userCanDownloadCepPack(opts: {
 
   if ((Number(project.price) || 0) <= 0) return { ok: true };
 
+  if (
+    project.marketplace_item_id != null &&
+    (await userOwnsItem(userId, project.marketplace_item_id))
+  ) {
+    return { ok: true };
+  }
+
+  // Legacy fallback: early packs may have used project id as sold_items.item_id.
   if (await userOwnsItem(userId, packId)) return { ok: true };
 
   return { ok: false, error: "NOT_OWNED" };

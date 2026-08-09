@@ -32,7 +32,7 @@ function toProject(product: Product): Project | null {
     app,
     price: Number.isFinite(priceValue) ? priceValue : 0,
     coverImage: productThumbnailUrl(product) || "/project-cover.png",
-    href: `/item/${product.id}`,
+    href: `/spunkram/item/${product.id}`,
   };
 }
 

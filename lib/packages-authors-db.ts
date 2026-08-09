@@ -85,6 +85,7 @@ export async function ensurePackagesProjectsTable(): Promise<void> {
        min_extension_version VARCHAR(64) NULL,
        min_host_version VARCHAR(64) NULL,
        details_url VARCHAR(1024) NULL,
+       marketplace_item_id BIGINT UNSIGNED NULL,
        preview_key VARCHAR(512) NULL,
        download_key VARCHAR(512) NULL,
        price DECIMAL(12,2) NOT NULL DEFAULT 0,
@@ -94,9 +95,26 @@ export async function ensurePackagesProjectsTable(): Promise<void> {
        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
        PRIMARY KEY (id),
        KEY idx_packages_projects_author (author_id, deleted_at),
-       KEY idx_packages_projects_visible (author_id, visible, host, deleted_at)
+       KEY idx_packages_projects_visible (author_id, visible, host, deleted_at),
+       KEY idx_packages_projects_market_item (marketplace_item_id)
      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
   );
+  try {
+    await pool.query(
+      `ALTER TABLE \`${PROJECTS_TABLE}\`
+       ADD COLUMN marketplace_item_id BIGINT UNSIGNED NULL AFTER details_url`,
+    );
+  } catch {
+    /* column already exists */
+  }
+  try {
+    await pool.query(
+      `ALTER TABLE \`${PROJECTS_TABLE}\`
+       ADD KEY idx_packages_projects_market_item (marketplace_item_id)`,
+    );
+  } catch {
+    /* index already exists */
+  }
   projectsTableEnsured = true;
 }
 

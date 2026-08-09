@@ -26,6 +26,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { getPackagesAuthorPublicById } from "@/lib/packages-admin-client";
+import { parseMarketplaceItemIdInput } from "@/lib/packages-marketplace-id";
 import { cn } from "@/lib/utils";
 
 const DEFAULT_PAID_PRICE = 9.99;
@@ -39,6 +40,7 @@ type Project = {
   min_extension_version: string | null;
   min_host_version: string | null;
   details_url: string | null;
+  marketplace_item_id: number | null;
   previewUrl: string | null;
   downloadKey: string | null;
   downloadUrl: string | null;
@@ -79,6 +81,7 @@ export function PackagesProjectEditor({
   const [minExt, setMinExt] = useState("");
   const [minHost, setMinHost] = useState("");
   const [detailsUrl, setDetailsUrl] = useState("");
+  const [marketplaceItemId, setMarketplaceItemId] = useState("");
   const [visible, setVisible] = useState(false);
   const [freePack, setFreePack] = useState(true);
   const [price, setPrice] = useState(String(DEFAULT_PAID_PRICE));
@@ -110,6 +113,11 @@ export function PackagesProjectEditor({
       setMinExt(data.project.min_extension_version || "");
       setMinHost(data.project.min_host_version || "");
       setDetailsUrl(data.project.details_url || "");
+      setMarketplaceItemId(
+        data.project.marketplace_item_id != null
+          ? String(data.project.marketplace_item_id)
+          : "",
+      );
       setVisible(Boolean(data.project.visible));
       const loadedPrice = Number(data.project.price) || 0;
       const isFree = loadedPrice <= 0;
@@ -179,6 +187,7 @@ export function PackagesProjectEditor({
       const parsedPrice = freePack
         ? 0
         : Math.max(0, Number.parseFloat(price) || 0) || DEFAULT_PAID_PRICE;
+      const marketRaw = marketplaceItemId.trim();
       const res = await fetch(`/api/packages/${authorId}/projects/${itemId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -189,6 +198,8 @@ export function PackagesProjectEditor({
           min_extension_version: minExt || null,
           min_host_version: minHost || null,
           details_url: detailsUrl || null,
+          // Empty Marketplace Item → try Package page URL; still empty clears the link.
+          marketplace_item_id: marketRaw || parseMarketplaceItemIdInput(detailsUrl),
           visible,
           price: parsedPrice,
           downloadKey: downloadKey || null,
@@ -198,6 +209,12 @@ export function PackagesProjectEditor({
       const data = (await res.json()) as { project: Project };
       setProject(data.project);
       setName(data.project.name);
+      setDetailsUrl(data.project.details_url || "");
+      setMarketplaceItemId(
+        data.project.marketplace_item_id != null
+          ? String(data.project.marketplace_item_id)
+          : "",
+      );
       setVisible(Boolean(data.project.visible));
       const savedPrice = Number(data.project.price) || 0;
       setFreePack(savedPrice <= 0);
@@ -446,13 +463,43 @@ export function PackagesProjectEditor({
           </div>
 
           <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="marketplace-item">Marketplace Item</Label>
+            <Input
+              id="marketplace-item"
+              value={marketplaceItemId}
+              onChange={(e) => setMarketplaceItemId(e.target.value)}
+              onBlur={() => {
+                const parsed = parseMarketplaceItemIdInput(marketplaceItemId);
+                if (parsed != null) setMarketplaceItemId(String(parsed));
+              }}
+              placeholder="1138 or Package Page URL"
+              inputMode="numeric"
+            />
+            <p className="text-[12px] text-muted-foreground">
+              Links this CEP pack to a purchased{" "}
+              <code className="text-[11px]">marketplace_items</code> row. Paste an
+              id or a Package Page URL (last path segment is the id).
+            </p>
+          </div>
+
+          <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="details-url">Package page</Label>
             <Input
               id="details-url"
               value={detailsUrl}
               onChange={(e) => setDetailsUrl(e.target.value)}
-              placeholder="https://motionflow.pro/…"
+              onBlur={() => {
+                if (marketplaceItemId.trim()) return;
+                const parsed = parseMarketplaceItemIdInput(detailsUrl);
+                if (parsed != null) setMarketplaceItemId(String(parsed));
+              }}
+              placeholder="https://motionflow.pro/item/{slug}/{id}"
             />
+            <p className="text-[12px] text-muted-foreground">
+              Use <code className="text-[11px]">/item/{"{slug}"}/{"{id}"}</code>
+              — not <code className="text-[11px]">/item/{"{id}"}</code> (that
+              returns Category not found).
+            </p>
           </div>
 
           <div className="space-y-2 sm:col-span-2">
