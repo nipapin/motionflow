@@ -1,6 +1,7 @@
 import { ContentPaste, ReportGmailerrorred } from "@mui/icons-material";
 import { Link, Typography } from "@mui/material";
 import type { ReactNode } from "react";
+import { motionflowMainSiteUrl } from "@/lib/motionflow-urls";
 
 export interface FaqItemData {
   id: number;
@@ -33,7 +34,7 @@ export const faqs: FaqGroup[] = [
         content: () => (
           <Typography>
             Your token is located in the{" "}
-            <Link href="https://motionflow.pro/my_subscription">My subscription</Link> section.
+            <Link href={motionflowMainSiteUrl("/profile/subscriptions")}>My subscription</Link> section.
           </Typography>
         ),
       },
@@ -105,7 +106,7 @@ export const faqs: FaqGroup[] = [
         title: "My FX, Transitions, Overlays, and Color Grades are loading, but are not appearing in the timeline",
         content: () => (
           <Typography>
-            <b>macOS</b> - Check if Premiere Pro permissions are enabled in Mac preferences.
+            <b>macOS</b> - Check if Premiere permissions are enabled in Mac preferences.
             <br />
             <code>{`Mac Settings > Privacy & Security > Accessibility`}</code>
             <br />

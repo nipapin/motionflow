@@ -3,11 +3,13 @@
 import { Button, Stack, Typography } from "@mui/material";
 import { useAuth } from "@/components/auth-provider";
 import { MacIcon, WindowsIcon } from "../mac-windows-icons";
+import { usePremiereGalPaths } from "../use-premiere-gal-paths";
 import PaperCard from "./PaperCard";
 
 /** Port of `resources/js/premieregal/components/Downloads.jsx`. */
 export default function Downloads() {
   const { user, openSignIn } = useAuth();
+  const paths = usePremiereGalPaths();
 
   const handleDownload = (e: React.MouseEvent) => {
     if (user) return;
@@ -49,7 +51,7 @@ export default function Downloads() {
       </Stack>
 
       <Button
-        href="/download/windows"
+        href={paths.download("windows")}
         onClick={handleDownload}
         fullWidth
         variant="contained"
@@ -65,7 +67,7 @@ export default function Downloads() {
         </Typography>
       </Button>
       <Button
-        href="/download/mac"
+        href={paths.download("mac")}
         onClick={handleDownload}
         fullWidth
         variant="contained"

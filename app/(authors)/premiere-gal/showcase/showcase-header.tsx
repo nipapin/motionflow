@@ -2,10 +2,12 @@
 
 import { ArrowBackIosNew, DarkMode, LightMode } from "@mui/icons-material";
 import { Box, Button, IconButton, useColorScheme } from "@mui/material";
+import { usePremiereGalPaths } from "../use-premiere-gal-paths";
 
 /** Port of the header bar in `resources/js/premieregalassets/App.jsx`. */
 export default function ShowcaseHeader() {
   const { mode, setMode } = useColorScheme();
+  const paths = usePremiereGalPaths();
 
   const handleToggleMode = () => {
     setMode(mode === "light" ? "dark" : "light");
@@ -15,7 +17,7 @@ export default function ShowcaseHeader() {
     <Box display="flex" alignItems="center" justifyContent="space-between" width="100%">
       <Button
         startIcon={<ArrowBackIosNew />}
-        href="/"
+        href={paths.home}
         sx={{
           color: mode === "dark" ? "white" : "black",
           "&:hover": {

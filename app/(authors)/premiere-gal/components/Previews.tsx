@@ -4,6 +4,7 @@ import { Box, Button, MenuItem, Select, Skeleton, Stack, Typography, useColorSch
 import { useEffect, useRef, useState } from "react";
 import { OpenInNew } from "@mui/icons-material";
 import { useMobile } from "../hooks/use-mobile";
+import { usePremiereGalPaths } from "../use-premiere-gal-paths";
 
 const sections = [
   { id: 1, title: "Transitions" },
@@ -34,6 +35,7 @@ export default function Previews() {
   const theme = useTheme();
   const activeLayerRef = useRef<HTMLDivElement>(null);
   const isMobile = useMobile();
+  const paths = usePremiereGalPaths();
 
   const handleClick = (section: (typeof sections)[number]) => () => {
     setCurrent(section);
@@ -93,7 +95,7 @@ export default function Previews() {
             </Typography>
           </Button>
         ))}
-        <Button disableElevation variant="contained" sx={{ background: "var(--linear-gradient)", py: "12px", borderRadius: "8px", fontWeight: 400 }} href="/showcase" target="_blank">
+        <Button disableElevation variant="contained" sx={{ background: "var(--linear-gradient)", py: "12px", borderRadius: "8px", fontWeight: 400 }} href={paths.showcase} target="_blank">
           <Typography fontWeight={400} fontSize={12} color="white" display="flex" alignItems="center" gap={1}>
             View All <OpenInNew fontSize="small" />
           </Typography>
@@ -127,7 +129,7 @@ export default function Previews() {
             </MenuItem>
           ))}
         </Select>
-        <Button disableElevation variant="contained" sx={{ background: "var(--linear-gradient)", py: "12px", borderRadius: "8px", fontWeight: 400 }} href="/showcase" target="_blank">
+        <Button disableElevation variant="contained" sx={{ background: "var(--linear-gradient)", py: "12px", borderRadius: "8px", fontWeight: 400 }} href={paths.showcase} target="_blank">
           <Typography fontWeight={400} fontSize={12} color="white" whiteSpace="nowrap">
             View All Previews
           </Typography>

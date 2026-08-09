@@ -3,7 +3,12 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  allowedDevOrigins: ['motionflow.com', '*.motionflow.com', 'spunkramv2.motionflow.pro'],
+  allowedDevOrigins: [
+    'motionflow.com',
+    '*.motionflow.com',
+    'spunkramv2.motionflow.pro',
+    'premieregal.motionflow.pro',
+  ],
   async redirects() {
     return [
       {

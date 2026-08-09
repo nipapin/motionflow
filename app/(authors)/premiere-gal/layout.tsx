@@ -11,11 +11,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Gal Toolkit MAX for Premiere and After Effects",
   description:
-    "Gal Toolkit MAX adds transitions, color grades, sound FX, motion graphics templates and auto-resize tools to Premiere Pro and After Effects — one subscription toolkit for faster video editing.",
+    "Gal Toolkit MAX adds transitions, color grades, sound FX, motion graphics templates and auto-resize tools to Premiere and After Effects — one subscription toolkit for faster video editing.",
   openGraph: {
     title: "Gal Toolkit MAX for Premiere and After Effects",
     description:
-      "Gal Toolkit MAX adds transitions, color grades, sound FX, motion graphics templates and auto-resize tools to Premiere Pro and After Effects.",
+      "Gal Toolkit MAX adds transitions, color grades, sound FX, motion graphics templates and auto-resize tools to Premiere and After Effects.",
     type: "website",
     images: ["/premiere-gal/assets/hero.jpg"],
   },

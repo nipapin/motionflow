@@ -4,6 +4,7 @@ import { Close } from "@mui/icons-material";
 import { Button, Dialog, DialogContent, IconButton, Stack, Typography, useColorScheme } from "@mui/material";
 import { useAuth } from "@/components/auth-provider";
 import { MacIcon, WindowsIcon } from "../mac-windows-icons";
+import { usePremiereGalPaths } from "../use-premiere-gal-paths";
 
 type FreeDownloadDialogProps = {
   open: boolean;
@@ -13,6 +14,7 @@ type FreeDownloadDialogProps = {
 export default function FreeDownloadDialog({ open, onClose }: FreeDownloadDialogProps) {
   const { user, openSignIn } = useAuth();
   const { mode } = useColorScheme();
+  const paths = usePremiereGalPaths();
 
   const handleDownload = (e: React.MouseEvent) => {
     if (user) return;
@@ -31,7 +33,7 @@ export default function FreeDownloadDialog({ open, onClose }: FreeDownloadDialog
         paper: {
           sx: {
             borderRadius: "16px",
-            backgroundColor: mode === "dark" ? "var(--dark-background-color)" : "background.paper",
+            backgroundColor: mode === "dark" ? "background.default" : "background.paper",
             backgroundImage: "none",
             p: 0.5,
           },
@@ -66,13 +68,13 @@ export default function FreeDownloadDialog({ open, onClose }: FreeDownloadDialog
               textAlign="center"
               lineHeight={1.5}
             >
-              Just install the extension and open it in Premiere Pro or After Effects — the free pack will be
+              Just install the extension and open it in Premiere or After Effects — the free pack will be
               installed automatically.
             </Typography>
           </Stack>
 
           <Button
-            href="/download/windows"
+            href={paths.download("windows")}
             onClick={handleDownload}
             fullWidth
             variant="contained"
@@ -88,7 +90,7 @@ export default function FreeDownloadDialog({ open, onClose }: FreeDownloadDialog
             </Typography>
           </Button>
           <Button
-            href="/download/mac"
+            href={paths.download("mac")}
             onClick={handleDownload}
             fullWidth
             variant="contained"
