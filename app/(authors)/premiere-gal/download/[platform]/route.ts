@@ -3,8 +3,8 @@ import { getSessionUser } from "@/lib/auth/get-session-user";
 import { sendGhlEvent } from "@/lib/ghl-forwarder";
 
 const DOWNLOAD_FILES: Record<string, string> = {
-  windows: "https://cdn.motionflow.pro/public/downloads/galtoolkit-windows-installer.exe",
-  mac: "https://cdn.motionflow.pro/public/downloads/galtoolkit-mac-installer.dmg",
+  windows: "https://cdn.motionflow.pro/public/downloads/galtoolkit/galtoolkit-windows-installer.exe",
+  mac: "https://cdn.motionflow.pro/public/downloads/galtoolkit/galtoolkit-mac-installer.dmg",
 };
 
 /**
