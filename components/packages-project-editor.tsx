@@ -28,6 +28,8 @@ import { Switch } from "@/components/ui/switch";
 import { getPackagesAuthorPublicById } from "@/lib/packages-admin-client";
 import { cn } from "@/lib/utils";
 
+const DEFAULT_PAID_PRICE = 9.99;
+
 type Project = {
   id: number;
   author_id: number;
@@ -78,6 +80,9 @@ export function PackagesProjectEditor({
   const [minHost, setMinHost] = useState("");
   const [detailsUrl, setDetailsUrl] = useState("");
   const [visible, setVisible] = useState(false);
+  const [freePack, setFreePack] = useState(true);
+  const [price, setPrice] = useState(String(DEFAULT_PAID_PRICE));
+  const [lastPaidPrice, setLastPaidPrice] = useState(DEFAULT_PAID_PRICE);
   const [downloadKey, setDownloadKey] = useState("");
   const [previewBroken, setPreviewBroken] = useState(false);
   const [zips, setZips] = useState<ZipOption[]>([]);
@@ -106,6 +111,15 @@ export function PackagesProjectEditor({
       setMinHost(data.project.min_host_version || "");
       setDetailsUrl(data.project.details_url || "");
       setVisible(Boolean(data.project.visible));
+      const loadedPrice = Number(data.project.price) || 0;
+      const isFree = loadedPrice <= 0;
+      setFreePack(isFree);
+      if (loadedPrice > 0) {
+        setLastPaidPrice(loadedPrice);
+        setPrice(String(loadedPrice));
+      } else {
+        setPrice(String(DEFAULT_PAID_PRICE));
+      }
       setDownloadKey(data.project.downloadKey || "");
       setPreviewBroken(false);
 
@@ -162,6 +176,9 @@ export function PackagesProjectEditor({
     setBusy(true);
     setMsg(null);
     try {
+      const parsedPrice = freePack
+        ? 0
+        : Math.max(0, Number.parseFloat(price) || 0) || DEFAULT_PAID_PRICE;
       const res = await fetch(`/api/packages/${authorId}/projects/${itemId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -173,6 +190,7 @@ export function PackagesProjectEditor({
           min_host_version: minHost || null,
           details_url: detailsUrl || null,
           visible,
+          price: parsedPrice,
           downloadKey: downloadKey || null,
         }),
       });
@@ -181,6 +199,12 @@ export function PackagesProjectEditor({
       setProject(data.project);
       setName(data.project.name);
       setVisible(Boolean(data.project.visible));
+      const savedPrice = Number(data.project.price) || 0;
+      setFreePack(savedPrice <= 0);
+      if (savedPrice > 0) {
+        setLastPaidPrice(savedPrice);
+        setPrice(String(savedPrice));
+      }
       setDownloadKey(data.project.downloadKey || "");
       setFeedback("Saved", true);
     } catch (e) {
@@ -300,21 +324,46 @@ export function PackagesProjectEditor({
             #{project.id} · {author.label}
           </p>
         </div>
-        <label className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2.5">
-          <Switch
-            checked={visible}
-            onCheckedChange={setVisible}
-            aria-label="Show in CEP"
-          />
-          <span
-            className={cn(
-              "text-[13px] font-medium",
-              visible ? "text-foreground" : "text-muted-foreground",
-            )}
-          >
-            {visible ? "Visible in CEP" : "Hidden from CEP"}
-          </span>
-        </label>
+        <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
+          <label className="inline-flex h-9 cursor-pointer items-center gap-2.5">
+            <Switch
+              checked={visible}
+              onCheckedChange={setVisible}
+              aria-label="Show in CEP"
+            />
+            <span
+              className={cn(
+                "text-[13px] font-medium",
+                visible ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
+              {visible ? "Visible in CEP" : "Hidden from CEP"}
+            </span>
+          </label>
+          <label className="inline-flex h-9 cursor-pointer items-center gap-2.5">
+            <Switch
+              checked={freePack}
+              onCheckedChange={(checked) => {
+                setFreePack(checked);
+                if (!checked) {
+                  setPrice(String(lastPaidPrice > 0 ? lastPaidPrice : DEFAULT_PAID_PRICE));
+                } else {
+                  const n = Number.parseFloat(price);
+                  if (Number.isFinite(n) && n > 0) setLastPaidPrice(n);
+                }
+              }}
+              aria-label="Free pack"
+            />
+            <span
+              className={cn(
+                "text-[13px] font-medium",
+                freePack ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
+              Free pack
+            </span>
+          </label>
+        </div>
       </header>
 
       <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(220px,280px)] lg:gap-10">
@@ -375,6 +424,24 @@ export function PackagesProjectEditor({
               value={minHost}
               onChange={(e) => setMinHost(e.target.value)}
               placeholder="24.0"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="pack-price">Price (USD)</Label>
+            <Input
+              id="pack-price"
+              type="number"
+              min={0}
+              step="0.01"
+              disabled={freePack}
+              value={freePack ? "0" : price}
+              onChange={(e) => {
+                setPrice(e.target.value);
+                const n = Number.parseFloat(e.target.value);
+                if (Number.isFinite(n) && n > 0) setLastPaidPrice(n);
+              }}
+              placeholder={String(DEFAULT_PAID_PRICE)}
             />
           </div>
 

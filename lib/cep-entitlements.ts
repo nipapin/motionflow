@@ -7,7 +7,7 @@ import {
   motionflowSiteOrigin,
 } from "@/lib/motionflow-urls";
 import type { Product } from "@/lib/product-types";
-import { getPurchasesForUser } from "@/lib/purchases";
+import { getOwnedItemIdSet, getPurchasesForUser, userOwnsItem } from "@/lib/purchases";
 import {
   getPackagesAuthorById,
 } from "@/lib/packages-admin";
@@ -278,14 +278,19 @@ export async function buildCepMarketPackages(opts: {
   ]);
 
   const subscriptionActive = subscription.active;
+  const ownedIds = await getOwnedItemIdSet(
+    userId,
+    projects.map((p) => p.id),
+  );
   const packages: CepMarketPackageDto[] = [];
 
   for (const project of projects) {
     const price = Number(project.price) || 0;
     const isFreePrice = price <= 0;
+    const owned = ownedIds.has(project.id);
 
     let action: CepMarketAction;
-    if (subscriptionActive) {
+    if (owned || subscriptionActive) {
       action = "install";
     } else if (isFreePrice) {
       action = "get_free";
@@ -312,8 +317,8 @@ export async function buildCepMarketPackages(opts: {
       primary_type: project.host,
       image_url: projectImageUrl(project),
       custom_price: isFreePrice ? 0 : price,
-      owned: false,
-      covered_by_subscription: subscriptionActive || isFreePrice,
+      owned,
+      covered_by_subscription: subscriptionActive,
       action,
       install_url: installUrl,
       buy_url: buyUrl,
@@ -345,6 +350,8 @@ export async function userCanDownloadCepPack(opts: {
   if (sub.active) return { ok: true };
 
   if ((Number(project.price) || 0) <= 0) return { ok: true };
+
+  if (await userOwnsItem(userId, packId)) return { ok: true };
 
   return { ok: false, error: "NOT_OWNED" };
 }

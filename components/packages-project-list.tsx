@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -48,9 +48,12 @@ type Project = {
   host: "PR" | "AE";
   previewUrl: string | null;
   downloadKey: string | null;
+  price: number;
   visible: boolean;
   updated_at: string;
 };
+
+const DEFAULT_PAID_PRICE = 9.99;
 
 function formatUpdated(iso: string): string {
   try {
@@ -107,6 +110,11 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [togglingId, setTogglingId] = useState<number | null>(null);
+  const lastPaidPriceRef = useRef<Map<number, number>>(new Map());
+
+  const rememberPaidPrice = (id: number, price: number) => {
+    if (price > 0) lastPaidPriceRef.current.set(id, price);
+  };
 
   const [displayLabel, setDisplayLabel] = useState(author?.label ?? "");
   const [r2Bucket, setR2Bucket] = useState("");
@@ -123,7 +131,9 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
       const res = await fetch(`/api/packages/${authorId}/projects`);
       if (!res.ok) throw new Error(await res.text());
       const data = (await res.json()) as { projects: Project[] };
-      setProjects(data.projects || []);
+      const list = data.projects || [];
+      for (const p of list) rememberPaidPrice(p.id, Number(p.price) || 0);
+      setProjects(list);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -270,6 +280,42 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
         list.map((p) => (p.id === project.id ? { ...p, visible: prev } : p)),
       );
       setError(e instanceof Error ? e.message : "Could not update visibility");
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  const toggleFree = async (project: Project, free: boolean) => {
+    setTogglingId(project.id);
+    setError(null);
+    const prevPrice = Number(project.price) || 0;
+    rememberPaidPrice(project.id, prevPrice);
+    const nextPrice = free
+      ? 0
+      : lastPaidPriceRef.current.get(project.id) || DEFAULT_PAID_PRICE;
+    setProjects((list) =>
+      list.map((p) => (p.id === project.id ? { ...p, price: nextPrice } : p)),
+    );
+    try {
+      const res = await fetch(
+        `/api/packages/${authorId}/projects/${project.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ price: nextPrice }),
+        },
+      );
+      if (!res.ok) throw new Error(await res.text());
+      const data = (await res.json()) as { project: Project };
+      rememberPaidPrice(data.project.id, Number(data.project.price) || 0);
+      setProjects((list) =>
+        list.map((p) => (p.id === data.project.id ? { ...p, ...data.project } : p)),
+      );
+    } catch (e) {
+      setProjects((list) =>
+        list.map((p) => (p.id === project.id ? { ...p, price: prevPrice } : p)),
+      );
+      setError(e instanceof Error ? e.message : "Could not update free pack");
     } finally {
       setTogglingId(null);
     }
@@ -545,6 +591,9 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
                   Download
                 </TableHead>
                 <TableHead className="h-10 text-[12px] font-medium text-muted-foreground">
+                  Free pack
+                </TableHead>
+                <TableHead className="h-10 text-[12px] font-medium text-muted-foreground">
                   In CEP
                 </TableHead>
                 <TableHead className="h-10 text-[12px] font-medium text-muted-foreground">
@@ -593,6 +642,32 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
                     ) : (
                       <span className="text-[13px] text-muted-foreground">—</span>
                     )}
+                  </TableCell>
+                  <TableCell>
+                    <label className="inline-flex cursor-pointer items-center gap-2">
+                      <Switch
+                        checked={(Number(p.price) || 0) <= 0}
+                        disabled={togglingId === p.id}
+                        onCheckedChange={(checked) => void toggleFree(p, checked)}
+                        aria-label={`Free pack ${p.name}`}
+                      />
+                      <span
+                        className={cn(
+                          "w-6 text-[12px]",
+                          (Number(p.price) || 0) <= 0
+                            ? "text-foreground"
+                            : "text-muted-foreground",
+                        )}
+                      >
+                        {togglingId === p.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (Number(p.price) || 0) <= 0 ? (
+                          "On"
+                        ) : (
+                          "Off"
+                        )}
+                      </span>
+                    </label>
                   </TableCell>
                   <TableCell>
                     <label className="inline-flex cursor-pointer items-center gap-2">

@@ -161,6 +161,23 @@ export async function userOwnsItem(userId: number, itemId: number): Promise<bool
   return rows.length > 0;
 }
 
+/** Batch: which of `itemIds` the buyer owns (`sold_items.status = 1`). */
+export async function getOwnedItemIdSet(
+  userId: number,
+  itemIds: number[],
+): Promise<Set<number>> {
+  const unique = [...new Set(itemIds.filter((id) => Number.isFinite(id) && id > 0))];
+  if (unique.length === 0) return new Set();
+  const pool = getPool();
+  const placeholders = unique.map(() => "?").join(",");
+  const [rows] = await pool.execute<RowDataPacket[]>(
+    `SELECT DISTINCT item_id FROM \`${TABLE}\`
+     WHERE buyer_id = ? AND status = 1 AND item_id IN (${placeholders})`,
+    [userId, ...unique],
+  );
+  return new Set(rows.map((r) => Number(r.item_id)));
+}
+
 /** Purchase code for one-time buys — required by the main site download endpoint. */
 export async function getPurchaseCodeForOwnedItem(
   userId: number,
