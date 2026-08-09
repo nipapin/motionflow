@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
       userId: user.id,
       packId,
       cfg,
+      viewerEmail: user.email,
     });
 
     if (!gate.ok) {
@@ -58,7 +59,11 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const resolved = await resolveCepPackDownload({ packId, cfg });
+    const resolved = await resolveCepPackDownload({
+      packId,
+      cfg,
+      viewerEmail: user.email,
+    });
     if (!resolved) {
       return NextResponse.json(
         { error: "NOT_FOUND", message: "Pack not found" },

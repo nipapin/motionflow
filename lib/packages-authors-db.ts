@@ -90,6 +90,7 @@ export async function ensurePackagesProjectsTable(): Promise<void> {
        download_key VARCHAR(512) NULL,
        price DECIMAL(12,2) NOT NULL DEFAULT 0,
        visible TINYINT(1) NOT NULL DEFAULT 0,
+       admin_only TINYINT(1) NOT NULL DEFAULT 0,
        deleted_at DATETIME NULL,
        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -114,6 +115,14 @@ export async function ensurePackagesProjectsTable(): Promise<void> {
     );
   } catch {
     /* index already exists */
+  }
+  try {
+    await pool.query(
+      `ALTER TABLE \`${PROJECTS_TABLE}\`
+       ADD COLUMN admin_only TINYINT(1) NOT NULL DEFAULT 0 AFTER visible`,
+    );
+  } catch {
+    /* column already exists */
   }
   projectsTableEnsured = true;
 }

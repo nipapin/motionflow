@@ -46,6 +46,7 @@ type Project = {
   downloadUrl: string | null;
   price: number;
   visible: boolean;
+  admin_only: boolean;
 };
 
 type ZipOption = {
@@ -83,6 +84,7 @@ export function PackagesProjectEditor({
   const [detailsUrl, setDetailsUrl] = useState("");
   const [marketplaceItemId, setMarketplaceItemId] = useState("");
   const [visible, setVisible] = useState(false);
+  const [adminOnly, setAdminOnly] = useState(false);
   const [freePack, setFreePack] = useState(true);
   const [price, setPrice] = useState(String(DEFAULT_PAID_PRICE));
   const [lastPaidPrice, setLastPaidPrice] = useState(DEFAULT_PAID_PRICE);
@@ -119,6 +121,7 @@ export function PackagesProjectEditor({
           : "",
       );
       setVisible(Boolean(data.project.visible));
+      setAdminOnly(Boolean(data.project.admin_only));
       const loadedPrice = Number(data.project.price) || 0;
       const isFree = loadedPrice <= 0;
       setFreePack(isFree);
@@ -201,6 +204,7 @@ export function PackagesProjectEditor({
           // Empty Marketplace Item → try Package page URL; still empty clears the link.
           marketplace_item_id: marketRaw || parseMarketplaceItemIdInput(detailsUrl),
           visible,
+          admin_only: adminOnly,
           price: parsedPrice,
           downloadKey: downloadKey || null,
         }),
@@ -216,6 +220,7 @@ export function PackagesProjectEditor({
           : "",
       );
       setVisible(Boolean(data.project.visible));
+      setAdminOnly(Boolean(data.project.admin_only));
       const savedPrice = Number(data.project.price) || 0;
       setFreePack(savedPrice <= 0);
       if (savedPrice > 0) {
@@ -355,6 +360,21 @@ export function PackagesProjectEditor({
               )}
             >
               {visible ? "Visible in CEP" : "Hidden from CEP"}
+            </span>
+          </label>
+          <label className="inline-flex h-9 cursor-pointer items-center gap-2.5">
+            <Switch
+              checked={adminOnly}
+              onCheckedChange={setAdminOnly}
+              aria-label="Admin only"
+            />
+            <span
+              className={cn(
+                "text-[13px] font-medium",
+                adminOnly ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
+              {adminOnly ? "Admin only" : "All CEP users"}
             </span>
           </label>
           <label className="inline-flex h-9 cursor-pointer items-center gap-2.5">

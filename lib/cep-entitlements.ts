@@ -10,6 +10,7 @@ import type { Product } from "@/lib/product-types";
 import { getOwnedItemIdSet, getPurchasesForUser, userOwnsItem } from "@/lib/purchases";
 import {
   getPackagesAuthorById,
+  isPackagesAdmin,
 } from "@/lib/packages-admin";
 import {
   getPackagesProjectById,
@@ -298,16 +299,22 @@ export async function buildCepMarketPackages(opts: {
   userId: number;
   cfg: CepClientConfig;
   host: "AE" | "PR";
+  /** Packages-admin email (CEP bearer). Admin-only packs are hidden otherwise. */
+  viewerEmail?: string | null;
 }): Promise<{
   subscription_active: boolean;
   subscribe_url: string;
   Packages: CepMarketPackageDto[];
 }> {
-  const { userId, cfg, host } = opts;
-  const [subscription, projects] = await Promise.all([
+  const { userId, cfg, host, viewerEmail } = opts;
+  const viewerIsAdmin = isPackagesAdmin(viewerEmail);
+  const [subscription, projectsRaw] = await Promise.all([
     getActiveAuthorSubscription(userId, cfg.authorId),
     listVisiblePackagesProjects(cfg.authorId, host),
   ]);
+  const projects = viewerIsAdmin
+    ? projectsRaw
+    : projectsRaw.filter((p) => !p.admin_only);
 
   const subscriptionActive = subscription.active;
   const ownershipLookupIds = projects.flatMap((p) => {
@@ -381,10 +388,14 @@ export async function userCanDownloadCepPack(opts: {
   userId: number;
   packId: number;
   cfg: CepClientConfig;
+  viewerEmail?: string | null;
 }): Promise<{ ok: true } | { ok: false; error: "NOT_OWNED" | "SUBSCRIPTION_REQUIRED" | "NOT_FOUND" }> {
-  const { userId, packId, cfg } = opts;
+  const { userId, packId, cfg, viewerEmail } = opts;
   const project = await getPackagesProjectById(packId);
   if (!project || project.author_id !== cfg.authorId || !project.visible) {
+    return { ok: false, error: "NOT_FOUND" };
+  }
+  if (project.admin_only && !isPackagesAdmin(viewerEmail)) {
     return { ok: false, error: "NOT_FOUND" };
   }
 
@@ -410,12 +421,16 @@ export async function userCanDownloadCepPack(opts: {
 export async function resolveCepPackDownload(opts: {
   packId: number;
   cfg: CepClientConfig;
+  viewerEmail?: string | null;
 }): Promise<{
   project: PackagesProjectDto;
   author: NonNullable<Awaited<ReturnType<typeof getPackagesAuthorById>>>;
 } | null> {
   const project = await getPackagesProjectById(opts.packId);
   if (!project || project.author_id !== opts.cfg.authorId || !project.visible) {
+    return null;
+  }
+  if (project.admin_only && !isPackagesAdmin(opts.viewerEmail)) {
     return null;
   }
   const author = await getPackagesAuthorById(project.author_id);

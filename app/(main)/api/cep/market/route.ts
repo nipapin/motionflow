@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
       userId: user.id,
       cfg,
       host,
+      viewerEmail: user.email,
     });
 
     return NextResponse.json(payload);

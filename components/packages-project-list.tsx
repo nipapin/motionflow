@@ -50,6 +50,7 @@ type Project = {
   downloadKey: string | null;
   price: number;
   visible: boolean;
+  admin_only: boolean;
   updated_at: string;
 };
 
@@ -280,6 +281,39 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
         list.map((p) => (p.id === project.id ? { ...p, visible: prev } : p)),
       );
       setError(e instanceof Error ? e.message : "Could not update visibility");
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  const toggleAdminOnly = async (project: Project, admin_only: boolean) => {
+    setTogglingId(project.id);
+    setError(null);
+    const prev = project.admin_only;
+    setProjects((list) =>
+      list.map((p) => (p.id === project.id ? { ...p, admin_only } : p)),
+    );
+    try {
+      const res = await fetch(
+        `/api/packages/${authorId}/projects/${project.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ admin_only }),
+        },
+      );
+      if (!res.ok) throw new Error(await res.text());
+      const data = (await res.json()) as { project: Project };
+      setProjects((list) =>
+        list.map((p) => (p.id === data.project.id ? { ...p, ...data.project } : p)),
+      );
+    } catch (e) {
+      setProjects((list) =>
+        list.map((p) =>
+          p.id === project.id ? { ...p, admin_only: prev } : p,
+        ),
+      );
+      setError(e instanceof Error ? e.message : "Could not update admin only");
     } finally {
       setTogglingId(null);
     }
@@ -597,6 +631,9 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
                   In CEP
                 </TableHead>
                 <TableHead className="h-10 text-[12px] font-medium text-muted-foreground">
+                  Admin only
+                </TableHead>
+                <TableHead className="h-10 text-[12px] font-medium text-muted-foreground">
                   Updated
                 </TableHead>
                 <TableHead className="h-10 pr-4 text-right text-[12px] font-medium text-muted-foreground">
@@ -686,6 +723,34 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
                         {togglingId === p.id ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         ) : p.visible ? (
+                          "On"
+                        ) : (
+                          "Off"
+                        )}
+                      </span>
+                    </label>
+                  </TableCell>
+                  <TableCell>
+                    <label className="inline-flex cursor-pointer items-center gap-2">
+                      <Switch
+                        checked={Boolean(p.admin_only)}
+                        disabled={togglingId === p.id}
+                        onCheckedChange={(checked) =>
+                          void toggleAdminOnly(p, checked)
+                        }
+                        aria-label={`Admin only ${p.name}`}
+                      />
+                      <span
+                        className={cn(
+                          "w-6 text-[12px]",
+                          p.admin_only
+                            ? "text-foreground"
+                            : "text-muted-foreground",
+                        )}
+                      >
+                        {togglingId === p.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : p.admin_only ? (
                           "On"
                         ) : (
                           "Off"

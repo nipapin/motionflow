@@ -38,6 +38,8 @@ export type PackagesProjectDto = {
   downloadUrl: string | null;
   price: number;
   visible: boolean;
+  /** When true, pack appears in CEP market only for packages admins. */
+  admin_only: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -114,6 +116,7 @@ function rowToDto(row: RowDataPacket): PackagesProjectDto | null {
     downloadUrl,
     price: Number(row.price) || 0,
     visible: Number(row.visible) === 1,
+    admin_only: Number(row.admin_only) === 1,
     created_at:
       row.created_at instanceof Date
         ? row.created_at.toISOString()
@@ -307,8 +310,8 @@ export async function clonePackagesProject(
     `INSERT INTO \`${table}\`
       (author_id, name, version, host,
        min_extension_version, min_host_version, details_url, marketplace_item_id,
-       preview_key, download_key, price, visible, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 0, NOW(), NOW())`,
+       preview_key, download_key, price, visible, admin_only, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 0, ?, NOW(), NOW())`,
     [
       authorId,
       source.name.slice(0, 255),
@@ -320,6 +323,7 @@ export async function clonePackagesProject(
       source.marketplace_item_id,
       source.previewKey,
       source.price,
+      source.admin_only ? 1 : 0,
     ],
   );
 
@@ -342,6 +346,7 @@ export type PackagesProjectPatch = {
   downloadKey?: string | null;
   price?: number;
   visible?: boolean;
+  admin_only?: boolean;
 };
 
 async function resolveDetailsUrlForMarketplaceItem(
@@ -464,6 +469,14 @@ export async function updatePackagesProject(
       : existing.price;
   const visible =
     patch.visible !== undefined ? (patch.visible ? 1 : 0) : existing.visible ? 1 : 0;
+  const admin_only =
+    patch.admin_only !== undefined
+      ? patch.admin_only
+        ? 1
+        : 0
+      : existing.admin_only
+        ? 1
+        : 0;
 
   const pool = getPool();
   const table = packagesProjectsTableName();
@@ -472,7 +485,7 @@ export async function updatePackagesProject(
      SET name = ?, version = ?, host = ?,
          min_extension_version = ?, min_host_version = ?, details_url = ?,
          marketplace_item_id = ?,
-         preview_key = ?, download_key = ?, price = ?, visible = ?,
+         preview_key = ?, download_key = ?, price = ?, visible = ?, admin_only = ?,
          updated_at = NOW()
      WHERE id = ? AND author_id = ? AND deleted_at IS NULL`,
     [
@@ -487,6 +500,7 @@ export async function updatePackagesProject(
       download_key,
       price,
       visible,
+      admin_only,
       itemId,
       authorId,
     ],
