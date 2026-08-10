@@ -198,6 +198,65 @@ On `403` / buy-gated packs, send the user to `buy_url` or root `subscribe_url` f
 
 ---
 
+## 3b. Incremental pack update (file diff)
+
+### Endpoint
+
+`POST /api/cep/market/diff`
+
+**Headers**
+
+```
+Authorization: Bearer mfcep_…
+Content-Type: application/json
+```
+
+**Body**
+
+```json
+{
+  "pack_id": 123,
+  "manifest": [
+    { "name": "file.mogrt", "path": "Assets/…/file.mogrt", "size": 1234, "hash": "sha256…" }
+  ]
+}
+```
+
+`manifest` may also be smart_update form `{ "files": { "rel/path": { "size", "hash" } } }`.
+
+### R2 layout
+
+Author bucket root:
+
+- `{stem}.zip` — full install (`download_key`)
+- `{stem}/` — loose files + `{stem}/manifest.json` (same stem as the zip basename)
+
+### Success
+
+**HTTP 200** `application/zip` — only files whose hash differs from the client manifest, always including an updated `manifest.json`.
+
+Headers:
+
+| Header | Meaning |
+|--------|---------|
+| `X-Diff-Count` | Number of content files in the zip (excludes manifest) |
+| `X-Delete-Count` | Paths in client manifest missing remotely (client should delete after extract) |
+| `X-Pack-Stem` | Resolved R2 prefix stem |
+
+Panel: extract over the installed pack folder, delete stale paths, keep the new `manifest.json`, bump prefs `version`.
+
+### Errors (JSON)
+
+| Status | `error` | When |
+|--------|---------|------|
+| 401 | `UNAUTHORIZED` | Missing / invalid token |
+| 400 | `MISSING_PARAMS` | `pack_id` / `manifest` missing |
+| 403 / 404 | same as full download | Entitlement / not found |
+| 409 | `NO_DIFF_SOURCE` | No `{stem}/manifest.json` on R2 — fall back to full zip download |
+| 404 | `NO_DOWNLOAD_KEY` / `NO_BUCKET` | Pack has no zip key or author bucket |
+
+---
+
 ## 4. Recommended panel flow
 
 ```
@@ -207,9 +266,12 @@ On `403` / buy-gated packs, send the user to `buy_url` or root `subscribe_url` f
 4. On Install / Get free:
      - Check min_extension_version / min_host_version locally
      - GET install_url with Bearer, follow redirects, save zip
-5. On Buy:
+5. On Update (installed version ≠ catalog, local manifest.json present):
+     - POST /api/cep/market/diff with local manifest
+     - On NO_DIFF_SOURCE → full zip download instead
+6. On Buy:
      - shell.openExternal(buy_url || subscribe_url)
-6. Optionally refresh GET /api/cep/me after returning from browser
+7. Optionally refresh GET /api/cep/me after returning from browser
 ```
 
 ---
@@ -247,5 +309,6 @@ Unknown `client` → `400 UNKNOWN_CLIENT` on device login.
 | Profile / entitlements | `GET` | `/api/cep/me` |
 | List packs | `GET` | `/api/cep/market?host=AE\|PR` |
 | Download zip | `GET` | `/api/cep/market/download?pack_id=` |
+| Pack file diff | `POST` | `/api/cep/market/diff` |
 
 All market + download calls require **`Authorization: Bearer`**.
