@@ -8,6 +8,7 @@ const PageSetsContext = createContext<PremiereGalPageSets>({
   discount_percent: null,
   is_beta_tester: false,
   had_toolkit_max: false,
+  has_qualifying_purchase: false,
 });
 
 export function PageSetsProvider({

@@ -28,13 +28,30 @@ type RequestLike = {
   nextUrl?: { hostname?: string };
 };
 
-function extractHostname(req?: RequestLike): string | undefined {
+function isLoopbackOrIpHostname(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)
+  );
+}
+
+/**
+ * Public hostname as the browser sees it. Prefer `x-forwarded-host` — behind nginx
+ * `Host` is often `127.0.0.1:3000` while the client is on `motionflow.pro`.
+ */
+export function extractPublicHostname(req?: RequestLike): string | undefined {
   if (!req) return undefined;
-  const fromNextUrl = req.nextUrl?.hostname;
+  const forwarded = req.headers.get("x-forwarded-host");
+  if (forwarded) {
+    const first = forwarded.split(",")[0]?.trim();
+    if (first) return first.split(":")[0]?.trim().toLowerCase() || undefined;
+  }
+  const fromNextUrl = req.nextUrl?.hostname?.trim().toLowerCase();
   if (fromNextUrl) return fromNextUrl;
-  const hostHeader = req.headers.get("host") ?? req.headers.get("x-forwarded-host");
+  const hostHeader = req.headers.get("host");
   if (!hostHeader) return undefined;
-  return hostHeader.split(":")[0]?.trim() || undefined;
+  return hostHeader.split(":")[0]?.trim().toLowerCase() || undefined;
 }
 
 function hostMatchesDomain(hostname: string, domain: string): boolean {
@@ -44,15 +61,15 @@ function hostMatchesDomain(hostname: string, domain: string): boolean {
 }
 
 /**
- * Returns the cookie `Domain` shared with the Laravel app (e.g. `.motionflow.com`).
+ * Returns the cookie `Domain` shared across apex + author subdomains (e.g. `.motionflow.pro`).
  *
- * Reads `COOKIE_DOMAIN` first, then falls back to Laravel's `SESSION_DOMAIN` so
- * Next.js cookies live in the same scope as Laravel cookies in production.
+ * Reads `COOKIE_DOMAIN` first, then Laravel's `SESSION_DOMAIN`.
  *
- * Browsers reject `Set-Cookie` with a `Domain=` attribute that is not a suffix
- * of the request host (e.g. setting `Domain=.motionflow.com` from `localhost`).
- * When `req` is provided, we drop the domain unless the current host actually
- * belongs to it — otherwise the cookie would be silently dropped.
+ * Important: behind a reverse proxy Next may see Host=`127.0.0.1` while the browser
+ * is on `motionflow.pro`. Dropping `Domain` in that case makes a host-only cookie that
+ * works on the apex and breaks on `premieregal.motionflow.pro`. In production we still
+ * emit the configured domain for loopback Host values; browsers validate Domain against
+ * the URL they requested, not the upstream Host header.
  */
 export function sharedCookieDomain(req?: RequestLike): string | undefined {
   const raw = process.env.COOKIE_DOMAIN || process.env.SESSION_DOMAIN || "";
@@ -62,18 +79,35 @@ export function sharedCookieDomain(req?: RequestLike): string | undefined {
   if (domain === "localhost" || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(domain)) {
     return undefined;
   }
-  const hostname = extractHostname(req);
-  if (hostname && !hostMatchesDomain(hostname, domain)) {
-    return undefined;
+
+  const hostname = extractPublicHostname(req);
+  if (!hostname) {
+    return process.env.NODE_ENV === "production" ? domain : undefined;
   }
-  return domain;
+
+  if (hostMatchesDomain(hostname, domain)) {
+    return domain;
+  }
+
+  // Proxy hop: trust configured domain in production so subdomain SSO works.
+  if (isLoopbackOrIpHostname(hostname) && process.env.NODE_ENV === "production") {
+    return domain;
+  }
+
+  // Localhost / wrong public host (e.g. tunnel on another TLD): omit Domain.
+  return undefined;
 }
 
 export function baseCookieOptions(req?: RequestLike) {
   const domain = sharedCookieDomain(req);
+  const forwardedProto = req?.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+  const secure =
+    process.env.NODE_ENV === "production" ||
+    forwardedProto === "https" ||
+    process.env.SESSION_SECURE_COOKIE === "true";
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure,
     sameSite: "lax" as const,
     path: "/",
     ...(domain ? { domain } : {}),

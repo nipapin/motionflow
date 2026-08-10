@@ -2,12 +2,24 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { LARAVEL_COOKIE_NAME, SESSION_COOKIE_NAME } from "@/lib/auth/session";
 
+/** Prefer nginx `X-Forwarded-Host` — raw `Host` is often the upstream loopback. */
+function requestHost(request: NextRequest): string {
+  const forwarded = request.headers.get("x-forwarded-host");
+  if (forwarded) {
+    return forwarded.split(",")[0]?.trim().toLowerCase() ?? "";
+  }
+  return (request.headers.get("host") ?? "").toLowerCase();
+}
+
+function hostMatches(host: string, apex: string): boolean {
+  return host === apex || host.startsWith(`${apex}:`);
+}
+
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const host = request.headers.get("host")?.toLowerCase() ?? "";
-  const isSpunkramHost =
-    host === "spunkramv2.motionflow.pro" || host.startsWith("spunkramv2.motionflow.pro:");
-  const isPremiereGalHost = host === "premieregal.motionflow.pro" || host.startsWith("premieregal.motionflow.pro:");
+  const host = requestHost(request);
+  const isSpunkramHost = hostMatches(host, "spunkramv2.motionflow.pro");
+  const isPremiereGalHost = hostMatches(host, "premieregal.motionflow.pro");
 
   // Demo: route a specific subdomain into a dedicated Next.js page.
   if (isSpunkramHost && (pathname === "/" || pathname.startsWith("/item/"))) {
