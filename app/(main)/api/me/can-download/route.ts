@@ -1,20 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth/get-session-user";
+import { resolveRequestUser } from "@/lib/auth/resolve-request-user";
 import { getActiveAuthorSubscription } from "@/lib/cep-entitlements";
 import { getMarketItemsByIds } from "@/lib/market-items";
 import { userOwnsItem } from "@/lib/purchases";
 import { hasActiveMotionflowSubscription } from "@/lib/subscriptions";
 
+/**
+ * GET /api/me/can-download?itemId=
+ * Cookie session or CEP Bearer (`mfcep_…`).
+ */
 export async function GET(req: NextRequest) {
   const itemIdRaw = req.nextUrl.searchParams.get("itemId");
   const itemId = itemIdRaw == null ? NaN : Number(itemIdRaw);
   if (!Number.isFinite(itemId) || itemId <= 0) {
-    return NextResponse.json({ canDownload: false, error: "invalid itemId" }, { status: 400 });
+    return NextResponse.json(
+      { canDownload: false, error: "invalid itemId" },
+      { status: 400 },
+    );
   }
 
-  const user = await getSessionUser();
+  const user = await resolveRequestUser(req);
   if (!user) {
-    return NextResponse.json({ canDownload: false });
+    return NextResponse.json({ canDownload: false, authenticated: false });
   }
 
   const products = await getMarketItemsByIds([itemId]);
@@ -34,6 +41,7 @@ export async function GET(req: NextRequest) {
   ]);
 
   return NextResponse.json({
+    authenticated: true,
     canDownload: subOk || owns || authorSub.active || freePack,
   });
 }

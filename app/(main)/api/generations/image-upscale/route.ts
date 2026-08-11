@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Replicate from "replicate";
-import { getSessionUser } from "@/lib/auth/get-session-user";
+import { resolveRequestUser } from "@/lib/auth/resolve-request-user";
 import {
     consumeGeneration,
     getGenerationsStatus,
@@ -60,7 +60,7 @@ function formatKeyToMime(fmt: "jpg" | "png" | "webp"): string {
 
 export async function POST(req: NextRequest) {
     try {
-        const user = await getSessionUser();
+        const user = await resolveRequestUser(req);
         if (!user) {
             return NextResponse.json(
                 { error: "Please sign in to use this tool." },

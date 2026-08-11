@@ -300,7 +300,39 @@ Unknown `client` → `400 UNKNOWN_CLIENT` on device login.
 
 ---
 
-## 7. Quick reference
+## 7. Motion Flow DaVinci script (`motionflow-davinci`)
+
+Same device-login as Spunkram, different `client`:
+
+```json
+POST /api/cep/auth/device
+{ "client": "motionflow-davinci", "device": { "mac": "…", "user": "…", "os": "…" } }
+```
+
+`verification_url` opens `https://motionflow.pro/cep/login?code=…&client=motionflow-davinci` (Allow / Deny).
+
+`GET /api/cep/me` with this client returns **Motion Flow Creator** subscription (not Spunkram packs):
+
+- `subscription.active` → can download marketplace templates
+- `platform.generations` → Creator + AI quota
+- `entitlements.creator_ai` / `marketplace_download`
+
+These website APIs also accept the same `Authorization: Bearer mfcep_…` token:
+
+| Goal | Method | Path |
+|------|--------|------|
+| Creator sub status | `GET` | `/api/me/subscription-status` |
+| Can download item | `GET` | `/api/me/can-download?itemId=` |
+| Download item zip | `GET` | `/api/download/{itemId}` |
+| Favourites | `GET`/`POST` | `/api/favorites` |
+| Generation quota | `GET` | `/api/me/generations` |
+| Generation history | `GET` | `/api/me/generation-records` |
+| My downloads | `GET` | `/api/me/downloads` |
+| AI tools | `POST` | `/api/generations/*` |
+
+---
+
+## 8. Quick reference
 
 | Goal | Method | Path |
 |------|--------|------|

@@ -1,7 +1,10 @@
 import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import type { ResultSetHeader } from "mysql2/promise";
-import { getSessionUser } from "@/lib/auth/get-session-user";
+import {
+  requestHasCepBearer,
+  resolveRequestUser,
+} from "@/lib/auth/resolve-request-user";
 import { getPool } from "@/lib/db";
 import { getMarketItemsByIds } from "@/lib/market-items";
 import { getPurchaseCodeForOwnedItem, userOwnsItem } from "@/lib/purchases";
@@ -37,7 +40,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ itemId: string }> },
 ) {
   const { itemId: rawId } = await context.params;
@@ -46,8 +49,15 @@ export async function GET(
     return NextResponse.json({ error: "invalid item" }, { status: 400 });
   }
 
-  const user = await getSessionUser();
+  const apiClient = requestHasCepBearer(req);
+  const user = await resolveRequestUser(req);
   if (!user) {
+    if (apiClient) {
+      return NextResponse.json(
+        { error: "UNAUTHORIZED", message: "Invalid or revoked token" },
+        { status: 401 },
+      );
+    }
     return redirectRelative("/?signin=1");
   }
 
@@ -70,11 +80,26 @@ export async function GET(
 
   const authorSubOk = authorSub.active;
   if (!subOk && !owns && !authorSubOk && !freePack) {
+    if (apiClient) {
+      return NextResponse.json(
+        {
+          error: "NOT_OWNED",
+          message: "Motion Flow Creator subscription or purchase required",
+        },
+        { status: 403 },
+      );
+    }
     return redirectRelative("/pricing");
   }
 
   const rate = await checkMarketplaceDownloadRateLimit(user.id);
   if (!rate.ok) {
+    if (apiClient) {
+      return NextResponse.json(
+        { error: "RATE_LIMITED", message: "Download limit reached" },
+        { status: 429 },
+      );
+    }
     return redirectRelative("/profile/downloads/download-limit", 302);
   }
 

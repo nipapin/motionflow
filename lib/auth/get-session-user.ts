@@ -33,7 +33,7 @@ export type SessionUser = {
   access: number;
 };
 
-async function loadUserById(id: number): Promise<SessionUser | null> {
+export async function loadUserById(id: number): Promise<SessionUser | null> {
   try {
     return await withDbRetry(async () => {
       const pool = getPool();
