@@ -276,6 +276,18 @@ Panel: extract over the installed pack folder, delete stale paths, keep the new 
 
 ---
 
+## 5b. Client environment telemetry
+
+`POST /api/cep/telemetry/session` — after CEP sign-in / session hydrate. Bearer required.
+
+Records host app id/version (AEFT/PPRO), OS, and extension version into `cep_client_sessions` so we can see which Adobe versions still open the panel (e.g. CC2023).
+
+Server dedupes identical user+device+host+os+extension within ~12 hours.
+
+See CEP `docs/BACKEND_CEP_API.md` §6.0 and migration `db/migrations/2026_08_11_cep_client_sessions.sql`.
+
+---
+
 ## 5. Admin → CEP visibility (how packs appear)
 
 Packs are managed in Motion Flow admin (`/profile/packages`). For a pack to show in `/api/cep/market`:
