@@ -15,6 +15,7 @@ import {
   baseCookieOptions,
   sessionCookieMaxAgeSec,
   signSessionToken,
+  appendHostOnlySessionCookieClears,
 } from "@/lib/auth/session";
 import {
   createLaravelSession,
@@ -176,6 +177,7 @@ export async function GET(req: NextRequest) {
     );
     const home = new URL(nextPath || "/", oauthPublicOrigin(req));
     const res = NextResponse.redirect(home);
+    appendHostOnlySessionCookieClears(res);
     const cookieOpts = { ...baseCookieOptions(req), maxAge: sessionCookieMaxAgeSec() };
     res.cookies.set(GOOGLE_OAUTH_STATE_COOKIE, "", { ...baseCookieOptions(req), maxAge: 0 });
     res.cookies.set(GOOGLE_OAUTH_NEXT_COOKIE, "", { ...baseCookieOptions(req), maxAge: 0 });

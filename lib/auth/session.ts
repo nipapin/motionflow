@@ -114,6 +114,59 @@ export function baseCookieOptions(req?: RequestLike) {
   };
 }
 
+function serializeClearedCookie(
+  name: string,
+  opts: { domain?: string; secure: boolean },
+): string {
+  // Max-Age=0 + past Expires: covers browsers that honor only one of them.
+  let value = `${name}=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax; HttpOnly`;
+  if (opts.domain) value += `; Domain=${opts.domain}`;
+  if (opts.secure) value += "; Secure";
+  return value;
+}
+
+/**
+ * Expire session cookies in every scope they may exist under.
+ *
+ * `NextResponse.cookies.set(name, …)` keeps only the last Set-Cookie for a given
+ * name, so host-only + Domain=.motionflow.pro cannot both be cleared that way —
+ * after the Domain migration, logout looked broken until users wiped cookies manually.
+ *
+ * We `headers.append("Set-Cookie", …)` for each variant: host-only and shared
+ * domain(s), Secure and non-Secure (Chromium matches Secure on delete).
+ */
+export function appendClearedSessionCookies(
+  res: { headers: { append(name: string, value: string): void } },
+  req?: RequestLike,
+): void {
+  const domains = new Set<string | undefined>([undefined]);
+  const configured = sharedCookieDomain(req);
+  if (configured) domains.add(configured);
+  // Legacy apex from before the .com → .pro cutover.
+  domains.add(".motionflow.com");
+  domains.add(".motionflow.pro");
+
+  const names = [SESSION_COOKIE_NAME, LARAVEL_COOKIE_NAME];
+  for (const name of names) {
+    for (const domain of domains) {
+      for (const secure of [true, false]) {
+        res.headers.append("Set-Cookie", serializeClearedCookie(name, { domain, secure }));
+      }
+    }
+  }
+}
+
+/** Drop pre-migration host-only session cookies before issuing a Domain-scoped one. */
+export function appendHostOnlySessionCookieClears(res: {
+  headers: { append(name: string, value: string): void };
+}): void {
+  for (const name of [SESSION_COOKIE_NAME, LARAVEL_COOKIE_NAME]) {
+    for (const secure of [true, false]) {
+      res.headers.append("Set-Cookie", serializeClearedCookie(name, { secure }));
+    }
+  }
+}
+
 export function sessionCookieMaxAgeSec(): number {
   const laravelMinutes = Number(process.env.SESSION_LIFETIME);
   if (Number.isFinite(laravelMinutes) && laravelMinutes > 0) {

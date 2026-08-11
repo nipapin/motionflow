@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  SESSION_COOKIE_NAME,
   LARAVEL_COOKIE_NAME,
-  baseCookieOptions,
-  sharedCookieDomain,
+  appendClearedSessionCookies,
 } from "@/lib/auth/session";
 import {
   decryptLaravelCookie,
@@ -18,23 +16,6 @@ export async function POST(req: NextRequest) {
   }
 
   const res = NextResponse.json({ success: true as const });
-
-  // Clear cookies in every scope they could have been set under.
-  // A cookie is only removed if the Set-Cookie used to remove it has the
-  // same Domain attribute, so we emit one Set-Cookie per scope:
-  //   1. host-only (no Domain)        — used by older / dev Next.js logins
-  //   2. shared domain (.motionflow.pro) — used by Laravel + current prod logins
-  const baseClear = { ...baseCookieOptions(req), maxAge: 0 };
-  const hostOnlyClear = { ...baseClear };
-  delete (hostOnlyClear as { domain?: string }).domain;
-  const sharedDomain = sharedCookieDomain(req);
-
-  for (const name of [SESSION_COOKIE_NAME, LARAVEL_COOKIE_NAME]) {
-    res.cookies.set(name, "", hostOnlyClear);
-    if (sharedDomain) {
-      res.cookies.set(name, "", { ...baseClear, domain: sharedDomain });
-    }
-  }
-
+  appendClearedSessionCookies(res, req);
   return res;
 }

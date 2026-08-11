@@ -8,6 +8,7 @@ import {
   baseCookieOptions,
   sessionCookieMaxAgeSec,
   signSessionToken,
+  appendHostOnlySessionCookieClears,
 } from "@/lib/auth/session";
 import { authUserPayloadFromRow } from "@/lib/auth/user-payload";
 import { loginSchema } from "@/lib/validations/auth";
@@ -88,6 +89,7 @@ export async function POST(req: NextRequest) {
       success: true as const,
       user: await authUserPayloadFromRow(user),
     });
+    appendHostOnlySessionCookieClears(res);
     const cookieOpts = { ...baseCookieOptions(req), maxAge: sessionCookieMaxAgeSec() };
     res.cookies.set(SESSION_COOKIE_NAME, token, cookieOpts);
 

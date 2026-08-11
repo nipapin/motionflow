@@ -4,7 +4,7 @@ import { getPool } from "@/lib/db";
 import {
   SESSION_COOKIE_NAME,
   LARAVEL_COOKIE_NAME,
-  baseCookieOptions,
+  appendClearedSessionCookies,
   verifySessionToken,
 } from "@/lib/auth/session";
 import { authUserPayloadFromRow } from "@/lib/auth/user-payload";
@@ -53,9 +53,9 @@ export async function GET(req: NextRequest) {
         console.error("[auth/me]", e);
       }
     }
-    // Invalid JWT — clear it
+    // Invalid JWT — clear every cookie scope (host-only + shared Domain).
     const res = NextResponse.json({ user: null }, { status: 200 });
-    res.cookies.set(SESSION_COOKIE_NAME, "", { ...baseCookieOptions(req), maxAge: 0 });
+    appendClearedSessionCookies(res, req);
     return res;
   }
 
