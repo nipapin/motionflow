@@ -76,7 +76,10 @@ export async function POST(req: NextRequest) {
     });
 
     const origin = verificationOrigin(req);
-    const verificationUrl = new URL(`${origin}/spunkram`);
+    const path = cfg.verificationPath.startsWith("/")
+      ? cfg.verificationPath
+      : `/${cfg.verificationPath}`;
+    const verificationUrl = new URL(`${origin}${path}`);
     verificationUrl.searchParams.set("code", code);
     verificationUrl.searchParams.set("client", cfg.client);
 

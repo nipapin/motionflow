@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth/get-session-user";
+import { resolveRequestUser } from "@/lib/auth/resolve-request-user";
 import { parseTool } from "@/lib/generations";
 import { listGenerationRecords } from "@/lib/generation-records";
 
 export async function GET(req: NextRequest) {
-    const user = await getSessionUser();
+    const user = await resolveRequestUser(req);
     if (!user) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

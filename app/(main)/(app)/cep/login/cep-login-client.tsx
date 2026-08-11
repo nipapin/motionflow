@@ -42,6 +42,11 @@ const CLIENT_COPY: Record<string, { title: string; description: string }> = {
     description:
       "The Spunkram extension in Premiere Pro / After Effects is asking to use your account.",
   },
+  "motionflow-davinci": {
+    title: "Sign in to the Motion Flow DaVinci script",
+    description:
+      "The Motion Flow script in DaVinci Resolve is asking to use your account.",
+  },
 };
 
 export function CepLoginClient({
@@ -62,9 +67,8 @@ export function CepLoginClient({
     const client = info?.client || initialClient || "spunkram-cep";
     return (
       CLIENT_COPY[client] ?? {
-        title: "Sign in to the Spunkram extension",
-        description:
-          "An Adobe extension is asking to use your Motionflow account.",
+        title: "Sign in to Motion Flow",
+        description: "An app is asking to use your Motionflow account.",
       }
     );
   }, [info?.client, initialClient]);
@@ -160,31 +164,31 @@ export function CepLoginClient({
             <StatusBlock
               icon={<ShieldAlert className="size-8 text-destructive" />}
               title="Invalid link"
-              text="This sign-in code is missing or malformed. Start the sign-in again from the extension."
+              text="This sign-in code is missing or malformed. Start the sign-in again from the app."
             />
           ) : phase === "expired" ? (
             <StatusBlock
               icon={<XCircle className="size-8 text-amber-500" />}
               title="Code expired"
-              text="This code is no longer valid. Click “Sign in with Motionflow” in the extension to get a new one."
+              text="This code is no longer valid. Start sign-in again from the app to get a new code."
             />
           ) : phase === "approved" ? (
             <StatusBlock
               icon={<CheckCircle2 className="size-8 text-emerald-500" />}
               title="You're signed in"
-              text="Return to the extension — it will finish signing in automatically. You can close this tab."
+              text="Return to the app — it will finish signing in automatically. You can close this tab."
             />
           ) : phase === "denied" ? (
             <StatusBlock
               icon={<XCircle className="size-8 text-muted-foreground" />}
               title="Request denied"
-              text="The extension was not signed in. You can close this tab."
+              text="The app was not signed in. You can close this tab."
             />
           ) : phase === "device_limit" ? (
             <StatusBlock
               icon={<ShieldAlert className="size-8 text-amber-500" />}
               title="Device limit reached"
-              text="Your account is signed in on too many devices. Remove one in the extension's Account tab, then try again."
+              text="Your account is signed in on too many devices. Remove one in the Account tab, then try again."
             />
           ) : phase === "error" ? (
             <StatusBlock

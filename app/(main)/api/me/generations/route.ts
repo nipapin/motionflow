@@ -1,9 +1,13 @@
-import { NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth/get-session-user";
+import { NextRequest, NextResponse } from "next/server";
+import { resolveRequestUser } from "@/lib/auth/resolve-request-user";
 import { getGenerationsStatus } from "@/lib/generations";
 
-export async function GET() {
-  const user = await getSessionUser();
+/**
+ * GET /api/me/generations
+ * Cookie session or CEP Bearer (`mfcep_…`).
+ */
+export async function GET(req: NextRequest) {
+  const user = await resolveRequestUser(req);
   if (!user) {
     return NextResponse.json({ authenticated: false }, { status: 401 });
   }

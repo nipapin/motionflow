@@ -1,50 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  SESSION_COOKIE_NAME,
-  LARAVEL_COOKIE_NAME,
-  verifySessionToken,
-} from "@/lib/auth/session";
+import { resolveRequestUser } from "@/lib/auth/resolve-request-user";
 import { getFavoriteItemIds, toggleFavorite } from "@/lib/favorites";
-import {
-  decryptLaravelCookie,
-  readLaravelSessionUserId,
-} from "@/lib/auth/laravel-session";
 
-async function getUserId(req: NextRequest): Promise<number | null> {
-  const jwtToken = req.cookies.get(SESSION_COOKIE_NAME)?.value;
-  if (jwtToken) {
-    const session = await verifySessionToken(jwtToken);
-    if (session) {
-      const id = Number(session.sub);
-      if (Number.isFinite(id) && id > 0) return id;
-    }
-  }
-  const laravelCookie = req.cookies.get(LARAVEL_COOKIE_NAME)?.value;
-  if (laravelCookie) {
-    const sessionId = decryptLaravelCookie(laravelCookie);
-    if (sessionId) return readLaravelSessionUserId(sessionId);
-  }
-  return null;
-}
-
-/** GET /api/favorites — return array of favorite item IDs for the current user */
+/** GET /api/favorites — favorite item IDs (cookie or CEP Bearer). */
 export async function GET(req: NextRequest) {
-  const userId = await getUserId(req);
-  if (!userId) return NextResponse.json({ ids: [] });
+  const user = await resolveRequestUser(req);
+  if (!user) return NextResponse.json({ ids: [], authenticated: false });
 
   try {
-    const ids = await getFavoriteItemIds(userId);
-    return NextResponse.json({ ids });
+    const ids = await getFavoriteItemIds(user.id);
+    return NextResponse.json({ ids, authenticated: true });
   } catch (e) {
     console.error("[favorites] GET", e);
     return NextResponse.json({ ids: [] }, { status: 500 });
   }
 }
 
-/** POST /api/favorites — toggle a favorite; body: { itemId: number } */
+/** POST /api/favorites — toggle; body: { itemId: number } */
 export async function POST(req: NextRequest) {
-  const userId = await getUserId(req);
-  if (!userId) {
+  const user = await resolveRequestUser(req);
+  if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -55,7 +30,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const added = await toggleFavorite(userId, itemId);
+    const added = await toggleFavorite(user.id, itemId);
     return NextResponse.json({ favorited: added });
   } catch (e) {
     console.error("[favorites] POST", e);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth/get-session-user";
+import { resolveRequestUser } from "@/lib/auth/resolve-request-user";
 import {
   isAllowedGenerationAssetUrl,
   safeAttachmentFilename,
@@ -12,7 +12,7 @@ export const runtime = "nodejs";
  * when upstream CORS blocks browser `fetch(url)`.
  */
 export async function GET(req: NextRequest) {
-  const user = await getSessionUser();
+  const user = await resolveRequestUser(req);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

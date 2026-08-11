@@ -43,6 +43,11 @@ const CLIENT_COPY: Record<string, { title: string; description: string }> = {
     description:
       "The Spunkram extension in Premiere Pro / After Effects is asking to use your account.",
   },
+  "motionflow-davinci": {
+    title: "Sign in to the Motion Flow DaVinci script",
+    description:
+      "The Motion Flow script in DaVinci Resolve is asking to use your account.",
+  },
 };
 
 /** Display `ABCD-1234` as `ABCD - 1234` (Motionflow confirm card). */
@@ -73,9 +78,9 @@ export function CepExtensionAuthDialog({
     const client = info?.client || initialClient || "spunkram-cep";
     return (
       CLIENT_COPY[client] ?? {
-        title: "Sign in to the Spunkram extension",
+        title: "Sign in to Motion Flow",
         description:
-          "An Adobe extension is asking to use your Motionflow account.",
+          "An app is asking to use your Motionflow account.",
       }
     );
   }, [info?.client, initialClient]);

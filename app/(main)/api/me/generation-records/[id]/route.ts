@@ -1,12 +1,12 @@
-import { NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth/get-session-user";
+import { NextRequest, NextResponse } from "next/server";
+import { resolveRequestUser } from "@/lib/auth/resolve-request-user";
 import { deleteGenerationRecord } from "@/lib/generation-records";
 
 export async function DELETE(
-    _req: Request,
+    req: NextRequest,
     context: { params: Promise<{ id: string }> },
 ) {
-    const user = await getSessionUser();
+    const user = await resolveRequestUser(req);
     if (!user) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

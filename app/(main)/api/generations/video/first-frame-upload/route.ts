@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth/get-session-user";
+import { resolveRequestUser } from "@/lib/auth/resolve-request-user";
 import { requireCreatorAiForGeneration } from "@/lib/creator-ai-generation-access";
 import { uploadBufferToR2 } from "@/lib/r2-storage";
 
@@ -15,7 +15,7 @@ const ALLOWED_TYPES = new Set([
 
 export async function POST(req: NextRequest) {
     try {
-        const user = await getSessionUser();
+        const user = await resolveRequestUser(req);
         if (!user) {
             return NextResponse.json(
                 { error: "Please sign in to upload images." },
