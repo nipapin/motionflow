@@ -7,8 +7,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Port of Laravel `GalContactFormController::sendContactForm` — validates the
- * payload with the same field limits and dispatches an email through SMTP
- * (using the existing `MAIL_*` env config + `CONTACT_FORM_EMAIL`).
+ * payload with the same field limits and sends via Resend to `CONTACT_FORM_EMAIL`.
  *
  * Distinct from `/api/contact` (the newer R2 + Telegram pipeline). This one is
  * the simple `name/email/message` mailer used by the PremiereGal Galtoolkit

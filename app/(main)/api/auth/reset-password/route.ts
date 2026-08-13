@@ -8,6 +8,7 @@ import {
   verifyPasswordResetToken,
 } from "@/lib/auth/password-reset";
 import { resetPasswordSchema } from "@/lib/validations/auth";
+import { deleteEmailVerificationToken } from "@/lib/auth/email-verification";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -106,10 +107,11 @@ export async function POST(req: NextRequest) {
 
     const hashed = await bcrypt.hash(password, 10);
     await pool.execute(
-      "UPDATE users SET password = ?, updated_at = NOW() WHERE id = ?",
+      "UPDATE users SET password = ?, email_verified_at = COALESCE(email_verified_at, NOW()), updated_at = NOW() WHERE id = ?",
       [hashed, user.id],
     );
     await deletePasswordResetToken(normalizedEmail);
+    await deleteEmailVerificationToken(normalizedEmail);
 
     return NextResponse.json({
       success: true as const,

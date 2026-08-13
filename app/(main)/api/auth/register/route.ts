@@ -2,28 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { getPool } from "@/lib/db";
-import {
-  SESSION_COOKIE_NAME,
-  LARAVEL_COOKIE_NAME,
-  baseCookieOptions,
-  sessionCookieMaxAgeSec,
-  signSessionToken,
-  appendHostOnlySessionCookieClears,
-} from "@/lib/auth/session";
-import { authUserPayloadFromRow } from "@/lib/auth/user-payload";
 import { registerSchema } from "@/lib/validations/auth";
 import {
-  createLaravelSession,
-  encryptLaravelCookie,
-} from "@/lib/auth/laravel-session";
+  generateEmailVerificationToken,
+  storeEmailVerificationToken,
+} from "@/lib/auth/email-verification";
+import { sendVerifyEmail } from "@/lib/auth/password-reset-mailer";
+import { mailSiteOriginFromHeaders } from "@/lib/mail/public-origin";
 
-type UserRow = RowDataPacket & {
-  id: number;
-  email: string;
-  name: string;
-  password: string;
-  google_id?: string | null;
-};
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 function zodFieldErrors(err: import("zod").ZodError): Record<string, string[]> {
   const out: Record<string, string[]> = {};
@@ -58,13 +46,15 @@ export async function POST(req: NextRequest) {
   }
 
   const { email, name, password, mailing } = parsed.data;
+  const normalizedEmail = email.trim().toLowerCase();
+  const siteOrigin = mailSiteOriginFromHeaders(req.headers);
 
   try {
     const pool = getPool();
 
     const [emailRows] = await pool.execute<RowDataPacket[]>(
       "SELECT id FROM users WHERE email = ? LIMIT 1",
-      [email],
+      [normalizedEmail],
     );
     if (emailRows.length > 0) {
       return NextResponse.json(
@@ -95,41 +85,40 @@ export async function POST(req: NextRequest) {
     const hashed = await bcrypt.hash(password, 10);
     const mailingVal: number | null = mailing ? 0 : null;
 
-    const [result] = await pool.execute<ResultSetHeader>(
+    await pool.execute<ResultSetHeader>(
       `INSERT INTO users (name, email, password, mailing, created_at, updated_at)
        VALUES (?, ?, ?, ?, NOW(), NOW())`,
-      [name, email, hashed, mailingVal],
+      [name, normalizedEmail, hashed, mailingVal],
     );
 
-    const id = result.insertId;
-    const token = await signSessionToken({ id, email, name });
-
-    const [inserted] = await pool.execute<UserRow[]>(
-      "SELECT id, email, name, password, google_id FROM users WHERE id = ? LIMIT 1",
-      [id],
-    );
-    const created = inserted[0];
-    if (!created) {
+    const token = generateEmailVerificationToken();
+    await storeEmailVerificationToken(normalizedEmail, token);
+    try {
+      await sendVerifyEmail({
+        email: normalizedEmail,
+        token,
+        name,
+        siteOrigin,
+      });
+    } catch (sendErr) {
+      console.error("[auth/register] verify email send", sendErr);
       return NextResponse.json(
-        { success: false as const, message: "Server error. Try again later." },
-        { status: 500 },
+        {
+          success: true as const,
+          needsEmailVerification: true as const,
+          email: normalizedEmail,
+          message:
+            "Account created, but we could not send the confirmation email. Try resending it from sign in.",
+        },
+        { status: 201 },
       );
     }
 
-    const res = NextResponse.json({
+    return NextResponse.json({
       success: true as const,
-      user: await authUserPayloadFromRow(created),
+      needsEmailVerification: true as const,
+      email: normalizedEmail,
     });
-    appendHostOnlySessionCookieClears(res);
-    const cookieOpts = { ...baseCookieOptions(req), maxAge: sessionCookieMaxAgeSec() };
-    res.cookies.set(SESSION_COOKIE_NAME, token, cookieOpts);
-
-    const laravelSessionId = await createLaravelSession(id);
-    if (laravelSessionId) {
-      res.cookies.set(LARAVEL_COOKIE_NAME, encryptLaravelCookie(laravelSessionId), cookieOpts);
-    }
-
-    return res;
   } catch (e) {
     console.error("[auth/register]", e);
     return NextResponse.json(

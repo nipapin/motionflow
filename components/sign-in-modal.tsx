@@ -17,7 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { useAuth, type AuthUser } from "@/components/auth-provider";
 
-type Mode = "signin" | "signup" | "forgot";
+type Mode = "signin" | "signup" | "forgot" | "check-email";
 
 interface SignInModalProps {
   open: boolean;
@@ -29,7 +29,14 @@ interface SignInModalProps {
 
 type AuthJson =
   | { success: true; user: AuthUser }
-  | { success: false; message?: string; errors?: Record<string, string[] | undefined> };
+  | { success: true; needsEmailVerification: true; email: string; message?: string }
+  | {
+      success: false;
+      message?: string;
+      code?: string;
+      email?: string;
+      errors?: Record<string, string[] | undefined>;
+    };
 
 type ForgotJson =
   | { success: true; message?: string }
@@ -102,11 +109,15 @@ export function SignInModal({
         body: JSON.stringify({ email, password }),
       });
       const data = (await res.json()) as AuthJson;
-      if (data.success) {
+      if (data.success && "user" in data && data.user) {
         await refresh(data.user);
         router.refresh();
         onAuthSuccess?.();
         handleOpenChange(false);
+      } else if (!data.success && data.code === "EMAIL_NOT_VERIFIED") {
+        if (data.email) setEmail(data.email);
+        setMode("check-email");
+        setFormError(data.message ?? "Confirm your email before signing in.");
       } else {
         applyAuthErrors(data);
       }
@@ -136,7 +147,14 @@ export function SignInModal({
         }),
       });
       const data = (await res.json()) as AuthJson;
-      if (data.success) {
+      if (data.success && "needsEmailVerification" in data && data.needsEmailVerification) {
+        setEmail(data.email || email);
+        setMode("check-email");
+        setForgotSuccess(
+          data.message ??
+            "Check your inbox and confirm the address below. If it looks wrong, go back and register with the correct email.",
+        );
+      } else if (data.success && "user" in data && data.user) {
         await refresh(data.user);
         router.refresh();
         onAuthSuccess?.();
@@ -193,18 +211,46 @@ export function SignInModal({
     }
   };
 
+  const handleResendVerification = async () => {
+    resetMessages();
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = (await res.json()) as ForgotJson;
+      if (data.success) {
+        setForgotSuccess(
+          data.message ?? "If this email still needs confirmation, we’ve sent a new link.",
+        );
+      } else {
+        setFormError(data.message ?? "Something went wrong");
+      }
+    } catch {
+      setFormError("Network error. Try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const title =
     mode === "signin"
       ? "Welcome back"
       : mode === "signup"
         ? "Create an account"
-        : "Reset password";
+        : mode === "check-email"
+          ? "Confirm your email"
+          : "Reset password";
   const description =
     mode === "signin"
       ? "Sign in to your account to continue"
       : mode === "signup"
         ? "Register with email to get started"
-        : "We’ll email you a link to choose a new password";
+        : mode === "check-email"
+          ? "We sent a confirmation link. Make sure the address is correct."
+          : "We’ll email you a link to choose a new password";
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -241,7 +287,7 @@ export function SignInModal({
             </div>
           ) : null}
 
-          {mode !== "forgot" ? (
+          {mode !== "forgot" && mode !== "check-email" ? (
             <>
               <Button
                 type="button"
@@ -282,7 +328,28 @@ export function SignInModal({
             </>
           ) : null}
 
-          {mode === "forgot" ? (
+          {mode === "check-email" ? (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-blue-500/25 bg-background/40 px-4 py-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                  Confirmation sent to
+                </p>
+                <p className="text-foreground font-medium break-all">{email || "—"}</p>
+              </div>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Open the link in that inbox to finish creating the account. If the
+                address is a typo, go back and register with the correct email.
+              </p>
+              <Button
+                type="button"
+                onClick={handleResendVerification}
+                disabled={loading || !email}
+                className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl font-medium shadow-lg shadow-blue-500/25 smooth"
+              >
+                {loading ? "Sending…" : "Resend confirmation"}
+              </Button>
+            </div>
+          ) : mode === "forgot" ? (
             <form onSubmit={handleForgotSubmit} className="space-y-4">
               <div className="relative space-y-1">
                 <div className="relative">
@@ -556,6 +623,31 @@ export function SignInModal({
             ) : mode === "signup" ? (
               <>
                 Already have an account?{" "}
+                <button
+                  type="button"
+                  className="text-blue-500 hover:text-blue-400 font-medium smooth"
+                  onClick={() => {
+                    resetMessages();
+                    setMode("signin");
+                  }}
+                >
+                  Sign in
+                </button>
+              </>
+            ) : mode === "check-email" ? (
+              <>
+                Wrong email?{" "}
+                <button
+                  type="button"
+                  className="text-blue-500 hover:text-blue-400 font-medium smooth"
+                  onClick={() => {
+                    resetMessages();
+                    setMode("signup");
+                  }}
+                >
+                  Register again
+                </button>
+                {" · "}
                 <button
                   type="button"
                   className="text-blue-500 hover:text-blue-400 font-medium smooth"

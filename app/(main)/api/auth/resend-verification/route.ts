@@ -1,17 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
 import { getPool } from "@/lib/db";
+import { forgotPasswordSchema } from "@/lib/validations/auth";
 import { oauthPasswordOnlyFromGoogleId } from "@/lib/auth/users-table";
 import {
-  generatePasswordResetToken,
-  storePasswordResetToken,
-  deletePasswordResetToken,
-} from "@/lib/auth/password-reset";
-import {
-  sendGoogleAccountPasswordHintEmail,
-  sendPasswordResetEmail,
-} from "@/lib/auth/password-reset-mailer";
-import { forgotPasswordSchema } from "@/lib/validations/auth";
+  generateEmailVerificationToken,
+  storeEmailVerificationToken,
+} from "@/lib/auth/email-verification";
+import { sendVerifyEmail } from "@/lib/auth/password-reset-mailer";
 import { mailSiteOriginFromHeaders } from "@/lib/mail/public-origin";
 
 export const runtime = "nodejs";
@@ -21,11 +17,12 @@ type UserRow = RowDataPacket & {
   id: number;
   email: string;
   name: string;
+  email_verified_at?: Date | string | null;
   google_id?: string | null;
 };
 
 const GENERIC_SUCCESS =
-  "If an account exists for that email, we’ve sent password reset instructions.";
+  "If this email still needs confirmation, we’ve sent a new link.";
 
 function zodFieldErrors(err: import("zod").ZodError): Record<string, string[]> {
   const out: Record<string, string[]> = {};
@@ -34,10 +31,6 @@ function zodFieldErrors(err: import("zod").ZodError): Record<string, string[]> {
     if (v?.length) out[k] = v;
   }
   return out;
-}
-
-function requestSiteOrigin(req: NextRequest): string {
-  return mailSiteOriginFromHeaders(req.headers);
 }
 
 export async function POST(req: NextRequest) {
@@ -64,39 +57,29 @@ export async function POST(req: NextRequest) {
   }
 
   const email = parsed.data.email.trim().toLowerCase();
-  const siteOrigin = requestSiteOrigin(req);
+  const siteOrigin = mailSiteOriginFromHeaders(req.headers);
 
   try {
     const pool = getPool();
     const [rows] = await pool.execute<UserRow[]>(
-      "SELECT id, email, name, google_id FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1",
+      "SELECT id, email, name, email_verified_at, google_id FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1",
       [email],
     );
     const user = rows[0];
 
-    if (user) {
-      const googleLinked = oauthPasswordOnlyFromGoogleId(user);
-      if (googleLinked) {
-        await sendGoogleAccountPasswordHintEmail({
-          email: user.email,
-          name: user.name,
-          siteOrigin,
-        });
-      } else {
-        const token = generatePasswordResetToken();
-        await storePasswordResetToken(user.email, token);
-        try {
-          await sendPasswordResetEmail({
-            email: user.email,
-            token,
-            name: user.name,
-            siteOrigin,
-          });
-        } catch (sendErr) {
-          await deletePasswordResetToken(user.email).catch(() => undefined);
-          throw sendErr;
-        }
-      }
+    if (
+      user &&
+      !user.email_verified_at &&
+      !oauthPasswordOnlyFromGoogleId(user)
+    ) {
+      const token = generateEmailVerificationToken();
+      await storeEmailVerificationToken(user.email, token);
+      await sendVerifyEmail({
+        email: user.email,
+        token,
+        name: user.name,
+        siteOrigin,
+      });
     }
 
     return NextResponse.json({
@@ -104,7 +87,7 @@ export async function POST(req: NextRequest) {
       message: GENERIC_SUCCESS,
     });
   } catch (e) {
-    console.error("[auth/forgot-password]", e);
+    console.error("[auth/resend-verification]", e);
     return NextResponse.json(
       { success: false as const, message: "Server error. Try again later." },
       { status: 500 },

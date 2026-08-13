@@ -45,7 +45,13 @@ export const resetPasswordSchema = z
     path: ["password_confirmation"],
   });
 
+export const verifyEmailSchema = z.object({
+  email: z.string().trim().email().max(255),
+  token: z.string().min(1, "Verification token is required").max(255),
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
