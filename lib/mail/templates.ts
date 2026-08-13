@@ -36,7 +36,7 @@ export function renderMotionflowEmail(input: BrandedEmailInput): {
   text: string;
 } {
   const origin = motionflowSiteOrigin().replace(/\/$/, "");
-  const logoUrl = `${origin}/assets/logo.png`;
+  const logoUrl = `${origin}/assets/logo_square_white.png`;
   const brand = mailFromName();
   const greeting = input.greetingName?.trim()
     ? `Hi ${input.greetingName.trim()},`
