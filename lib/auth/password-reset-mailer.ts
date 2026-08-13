@@ -1,72 +1,11 @@
 import "server-only";
 
-import nodemailer, { type Transporter } from "nodemailer";
 import { motionflowSiteOrigin } from "@/lib/motionflow-urls";
 import { PASSWORD_RESET_EXPIRE_MINUTES } from "@/lib/auth/password-reset";
-
-let cachedTransporter: Transporter | null = null;
-
-interface MailerConfig {
-  host: string;
-  port: number;
-  secure: boolean;
-  user: string;
-  pass: string;
-  fromAddress: string;
-  fromName: string;
-}
-
-function stripQuotes(value: string | undefined): string | undefined {
-  if (value == null) return undefined;
-  const t = value.trim();
-  if (
-    (t.startsWith('"') && t.endsWith('"')) ||
-    (t.startsWith("'") && t.endsWith("'"))
-  ) {
-    return t.slice(1, -1);
-  }
-  return t;
-}
-
-function readConfig(): MailerConfig {
-  const host = process.env.MAIL_HOST;
-  const port = Number(process.env.MAIL_PORT ?? 587);
-  const encryption = (process.env.MAIL_ENCRYPTION ?? "").toLowerCase();
-  const user = stripQuotes(process.env.MAIL_USERNAME);
-  const pass = stripQuotes(process.env.MAIL_PASSWORD);
-  const fromAddress = stripQuotes(process.env.MAIL_FROM_ADDRESS);
-  const fromName =
-    stripQuotes(process.env.MAIL_FROM_NAME) ??
-    process.env.APP_NAME ??
-    "Motion Flow";
-
-  if (!host || !user || !pass || !fromAddress) {
-    throw new Error(
-      "[password-reset-mailer] Missing MAIL_HOST/MAIL_USERNAME/MAIL_PASSWORD/MAIL_FROM_ADDRESS env vars",
-    );
-  }
-
-  return {
-    host,
-    port: Number.isFinite(port) ? port : 587,
-    secure: encryption === "ssl" || port === 465,
-    user,
-    pass,
-    fromAddress,
-    fromName,
-  };
-}
-
-function getTransporter(config: MailerConfig): Transporter {
-  if (cachedTransporter) return cachedTransporter;
-  cachedTransporter = nodemailer.createTransport({
-    host: config.host,
-    port: config.port,
-    secure: config.secure,
-    auth: { user: config.user, pass: config.pass },
-  });
-  return cachedTransporter;
-}
+import {
+  readSmtpMailerConfig,
+  sendSmtpMail,
+} from "@/lib/mail/smtp-transport";
 
 function escapeHtml(input: string): string {
   return input
@@ -77,12 +16,44 @@ function escapeHtml(input: string): string {
     .replace(/'/g, "&#39;");
 }
 
+function isLoopbackHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return (
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "0.0.0.0" ||
+    host === "::1" ||
+    host.endsWith(".local")
+  );
+}
+
+function isLoopbackOrigin(origin: string): boolean {
+  try {
+    return isLoopbackHostname(new URL(origin).hostname);
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Public Next site for reset links in email.
+ * Apex is Next (`motionflow.pro`); Laravel lives on `authors.motionflow.pro` only.
+ * Never embed localhost — mail filters often drop those messages.
+ */
+export function resolvePasswordResetSiteOrigin(siteOrigin?: string): string {
+  const configured = motionflowSiteOrigin().replace(/\/$/, "");
+  if (!siteOrigin?.trim()) return configured;
+  const candidate = siteOrigin.trim().replace(/\/$/, "");
+  if (isLoopbackOrigin(candidate)) return configured;
+  return candidate;
+}
+
 export function buildPasswordResetUrl(
   email: string,
   token: string,
   siteOrigin?: string,
 ): string {
-  const base = (siteOrigin ?? motionflowSiteOrigin()).replace(/\/$/, "");
+  const base = resolvePasswordResetSiteOrigin(siteOrigin);
   const qs = new URLSearchParams({
     email,
     token,
@@ -96,18 +67,18 @@ export async function sendPasswordResetEmail(opts: {
   name?: string | null;
   siteOrigin?: string;
 }): Promise<void> {
-  const config = readConfig();
-  const transporter = getTransporter(config);
+  const config = readSmtpMailerConfig();
   const resetUrl = buildPasswordResetUrl(opts.email, opts.token, opts.siteOrigin);
   const safeName = escapeHtml((opts.name ?? "").trim() || "there");
   const safeUrl = escapeHtml(resetUrl);
   const minutes = PASSWORD_RESET_EXPIRE_MINUTES;
 
-  await transporter.sendMail({
-    from: { name: config.fromName, address: config.fromAddress },
-    to: opts.email,
-    subject: "Reset your Motion Flow password",
-    text: `Hi ${opts.name?.trim() || "there"},
+  await sendSmtpMail(
+    {
+      from: { name: config.fromName, address: config.fromAddress },
+      to: opts.email,
+      subject: "Reset your Motion Flow password",
+      text: `Hi ${opts.name?.trim() || "there"},
 
 We received a request to reset your Motion Flow password.
 
@@ -117,7 +88,7 @@ ${resetUrl}
 If you did not request this, you can ignore this email.
 
 — ${config.fromName}`,
-    html: `<!doctype html>
+      html: `<!doctype html>
 <html><body style="font-family: Arial, Helvetica, sans-serif; line-height: 1.5; color: #111;">
 <p>Hi ${safeName},</p>
 <p>We received a request to reset your Motion Flow password.</p>
@@ -126,7 +97,9 @@ If you did not request this, you can ignore this email.
 <p>This link expires in ${minutes} minutes. If you did not request a reset, you can ignore this email.</p>
 <p>— ${escapeHtml(config.fromName)}</p>
 </body></html>`,
-  });
+    },
+    "[password-reset-mail]",
+  );
 }
 
 /** For Google-linked accounts: no reset link — point them at Google sign-in. */
@@ -135,17 +108,17 @@ export async function sendGoogleAccountPasswordHintEmail(opts: {
   name?: string | null;
   siteOrigin?: string;
 }): Promise<void> {
-  const config = readConfig();
-  const transporter = getTransporter(config);
-  const signInUrl = (opts.siteOrigin ?? motionflowSiteOrigin()).replace(/\/$/, "") + "/";
+  const config = readSmtpMailerConfig();
+  const signInUrl = `${resolvePasswordResetSiteOrigin(opts.siteOrigin)}/`;
   const safeName = escapeHtml((opts.name ?? "").trim() || "there");
   const safeUrl = escapeHtml(signInUrl);
 
-  await transporter.sendMail({
-    from: { name: config.fromName, address: config.fromAddress },
-    to: opts.email,
-    subject: "Sign in to Motion Flow with Google",
-    text: `Hi ${opts.name?.trim() || "there"},
+  await sendSmtpMail(
+    {
+      from: { name: config.fromName, address: config.fromAddress },
+      to: opts.email,
+      subject: "Sign in to Motion Flow with Google",
+      text: `Hi ${opts.name?.trim() || "there"},
 
 Someone requested a password reset for this email on Motion Flow.
 
@@ -155,7 +128,7 @@ ${signInUrl}
 If you did not request this, you can ignore this email.
 
 — ${config.fromName}`,
-    html: `<!doctype html>
+      html: `<!doctype html>
 <html><body style="font-family: Arial, Helvetica, sans-serif; line-height: 1.5; color: #111;">
 <p>Hi ${safeName},</p>
 <p>Someone requested a password reset for this email on Motion Flow.</p>
@@ -164,5 +137,7 @@ If you did not request this, you can ignore this email.
 <p>If you did not request this, you can ignore this email.</p>
 <p>— ${escapeHtml(config.fromName)}</p>
 </body></html>`,
-  });
+    },
+    "[password-reset-google-hint]",
+  );
 }

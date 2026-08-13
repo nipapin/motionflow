@@ -5,6 +5,7 @@ import { oauthPasswordOnlyFromGoogleId } from "@/lib/auth/users-table";
 import {
   generatePasswordResetToken,
   storePasswordResetToken,
+  deletePasswordResetToken,
 } from "@/lib/auth/password-reset";
 import {
   sendGoogleAccountPasswordHintEmail,
@@ -93,12 +94,17 @@ export async function POST(req: NextRequest) {
       } else {
         const token = generatePasswordResetToken();
         await storePasswordResetToken(user.email, token);
-        await sendPasswordResetEmail({
-          email: user.email,
-          token,
-          name: user.name,
-          siteOrigin,
-        });
+        try {
+          await sendPasswordResetEmail({
+            email: user.email,
+            token,
+            name: user.name,
+            siteOrigin,
+          });
+        } catch (sendErr) {
+          await deletePasswordResetToken(user.email).catch(() => undefined);
+          throw sendErr;
+        }
       }
     }
 
