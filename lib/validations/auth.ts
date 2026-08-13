@@ -29,5 +29,23 @@ export const registerSchema = z
     path: ["password_confirmation"],
   });
 
+export const forgotPasswordSchema = z.object({
+  email: z.string().trim().email().max(255),
+});
+
+export const resetPasswordSchema = z
+  .object({
+    email: z.string().trim().email().max(255),
+    token: z.string().min(1, "Reset token is required").max(255),
+    password: z.string().min(8, "Password must be at least 8 characters"),
+    password_confirmation: z.string(),
+  })
+  .refine((d) => d.password === d.password_confirmation, {
+    message: "Password confirmation does not match",
+    path: ["password_confirmation"],
+  });
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

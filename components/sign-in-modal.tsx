@@ -17,7 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { useAuth, type AuthUser } from "@/components/auth-provider";
 
-type Mode = "signin" | "signup";
+type Mode = "signin" | "signup" | "forgot";
 
 interface SignInModalProps {
   open: boolean;
@@ -29,6 +29,10 @@ interface SignInModalProps {
 
 type AuthJson =
   | { success: true; user: AuthUser }
+  | { success: false; message?: string; errors?: Record<string, string[] | undefined> };
+
+type ForgotJson =
+  | { success: true; message?: string }
   | { success: false; message?: string; errors?: Record<string, string[] | undefined> };
 
 export function SignInModal({
@@ -51,10 +55,12 @@ export function SignInModal({
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [agree, setAgree] = useState(false);
   const [mailing, setMailing] = useState(false);
+  const [forgotSuccess, setForgotSuccess] = useState<string | null>(null);
 
   const resetMessages = () => {
     setFormError(null);
     setFieldErrors({});
+    setForgotSuccess(null);
   };
 
   useEffect(() => {
@@ -154,6 +160,52 @@ export function SignInModal({
     window.location.href = `/api/auth/google${qs}`;
   };
 
+  const handleForgotSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    resetMessages();
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = (await res.json()) as ForgotJson;
+      if (data.success) {
+        setForgotSuccess(
+          data.message ??
+            "If an account exists for that email, we’ve sent password reset instructions.",
+        );
+      } else {
+        setFormError(data.message ?? "Something went wrong");
+        const next: Record<string, string> = {};
+        if (data.errors) {
+          for (const [key, msgs] of Object.entries(data.errors)) {
+            if (msgs?.[0]) next[key] = msgs[0];
+          }
+        }
+        setFieldErrors(next);
+      }
+    } catch {
+      setFormError("Network error. Try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const title =
+    mode === "signin"
+      ? "Welcome back"
+      : mode === "signup"
+        ? "Create an account"
+        : "Reset password";
+  const description =
+    mode === "signin"
+      ? "Sign in to your account to continue"
+      : mode === "signup"
+        ? "Register with email to get started"
+        : "We’ll email you a link to choose a new password";
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md bg-card/95 backdrop-blur-xl border-blue-500/20 overflow-hidden p-0 max-h-[90vh] overflow-y-auto">
@@ -165,12 +217,10 @@ export function SignInModal({
         <div className="relative p-6">
           <DialogHeader className="mb-6">
             <DialogTitle className="text-2xl font-semibold text-foreground tracking-tight text-center">
-              {mode === "signin" ? "Welcome back" : "Create an account"}
+              {title}
             </DialogTitle>
             <DialogDescription className="text-muted-foreground text-center">
-              {mode === "signin"
-                ? "Sign in to your account to continue"
-                : "Register with email to get started"}
+              {description}
             </DialogDescription>
           </DialogHeader>
 
@@ -182,45 +232,90 @@ export function SignInModal({
               {formError}
             </div>
           ) : null}
-
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleGoogleSignIn}
-            disabled={loading}
-            className="w-full h-12 rounded-xl border-blue-500/30 bg-background/50 hover:bg-foreground/5 hover:border-blue-500/50 text-foreground font-medium mb-6 smooth"
-          >
-            <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24" aria-hidden>
-              <path
-                fill="#4285F4"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-              />
-            </svg>
-            Continue with Google
-          </Button>
-
-          <div className="relative mb-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-border/50" />
+          {forgotSuccess ? (
+            <div
+              role="status"
+              className="mb-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-400"
+            >
+              {forgotSuccess}
             </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-3 text-muted-foreground">or continue with email</span>
-            </div>
-          </div>
+          ) : null}
 
-          {mode === "signin" ? (
+          {mode !== "forgot" ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleGoogleSignIn}
+                disabled={loading}
+                className="w-full h-12 rounded-xl border-blue-500/30 bg-background/50 hover:bg-foreground/5 hover:border-blue-500/50 text-foreground font-medium mb-6 smooth"
+              >
+                <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24" aria-hidden>
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                  />
+                </svg>
+                Continue with Google
+              </Button>
+
+              <div className="relative mb-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-border/50" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-card px-3 text-muted-foreground">or continue with email</span>
+                </div>
+              </div>
+            </>
+          ) : null}
+
+          {mode === "forgot" ? (
+            <form onSubmit={handleForgotSubmit} className="space-y-4">
+              <div className="relative space-y-1">
+                <div className="relative">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    type="email"
+                    name="email"
+                    placeholder="Email address"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className={cn(
+                      "pl-11 h-12 bg-background/50 border-blue-500/30 hover:border-blue-500/40 focus:border-blue-500/60 rounded-xl",
+                      fieldErrors.email && "border-destructive",
+                    )}
+                    autoComplete="email"
+                    required
+                    disabled={loading || Boolean(forgotSuccess)}
+                  />
+                </div>
+                {fieldErrors.email ? (
+                  <p className="text-xs text-destructive px-1">{fieldErrors.email}</p>
+                ) : null}
+              </div>
+
+              <Button
+                type="submit"
+                disabled={loading || Boolean(forgotSuccess)}
+                className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl font-medium shadow-lg shadow-blue-500/25 smooth"
+              >
+                {loading ? "Sending…" : "Send reset link"}
+              </Button>
+            </form>
+          ) : mode === "signin" ? (
             <form onSubmit={handleSignInSubmit} className="space-y-4">
               <div className="relative space-y-1">
                 <div className="relative">
@@ -279,9 +374,10 @@ export function SignInModal({
                 <button
                   type="button"
                   className="text-sm text-muted-foreground hover:text-blue-500 smooth"
-                  onClick={() =>
-                    setFormError("Password reset is not wired in this app yet. Use the main site.")
-                  }
+                  onClick={() => {
+                    resetMessages();
+                    setMode("forgot");
+                  }}
                 >
                   Forgot password?
                 </button>
@@ -457,7 +553,7 @@ export function SignInModal({
                   Sign up for free
                 </button>
               </>
-            ) : (
+            ) : mode === "signup" ? (
               <>
                 Already have an account?{" "}
                 <button
@@ -469,6 +565,20 @@ export function SignInModal({
                   }}
                 >
                   Sign in
+                </button>
+              </>
+            ) : (
+              <>
+                Remember your password?{" "}
+                <button
+                  type="button"
+                  className="text-blue-500 hover:text-blue-400 font-medium smooth"
+                  onClick={() => {
+                    resetMessages();
+                    setMode("signin");
+                  }}
+                >
+                  Back to sign in
                 </button>
               </>
             )}
