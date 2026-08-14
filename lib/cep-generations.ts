@@ -88,12 +88,13 @@ export async function generationsStatusForResolvedUser(
 }
 
 /**
- * Atomically consume 1 generation. Non-billable identities always fail
- * (no silent unlimited path).
+ * Atomically consume generation(s). Non-billable identities always fail
+ * (no silent unlimited path). `amount` defaults to 1; 0 skips metering.
  */
 export async function consumeGenerationForResolvedUser(
   user: ResolvedCaptionsUser,
   tool: GenerationTool,
+  amount: number = 1,
 ): Promise<ConsumeResult> {
   if (!isBillableCepUser(user)) {
     return { ok: false, reason: "limit_reached", status: emptyStatus() };
@@ -106,7 +107,8 @@ export async function consumeGenerationForResolvedUser(
       monthlyLimit,
       authorSubscribed,
       authorId,
+      amount,
     );
   }
-  return consumeGeneration(user.id, tool);
+  return consumeGeneration(user.id, tool, amount);
 }

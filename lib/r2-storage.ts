@@ -46,6 +46,15 @@ export function getR2Bucket(): string {
     return readEnv("R2_PUBLIC_BUCKET");
 }
 
+/**
+ * Private / non-CDN bucket (same as marketplace packs). Used for caption
+ * mogrt/aep/definition so they are never anonymously fetchable via CDN.
+ * Falls back to public bucket only if unset (dev) — prefer setting `R2_BUCKET`.
+ */
+export function getR2PrivateBucket(): string {
+    return readEnvOptional("R2_BUCKET") ?? getR2Bucket();
+}
+
 export function getR2PublicBaseUrl(): string {
     return readEnv("R2_PUBLIC_CDN").replace(/\/+$/, "");
 }

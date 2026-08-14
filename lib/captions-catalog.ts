@@ -4,7 +4,22 @@ import {
   HeadObjectCommand,
   ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
-import { getR2Bucket, getR2Client, r2PublicUrlForKey } from "@/lib/r2-storage";
+import {
+  getR2Bucket,
+  getR2Client,
+  getR2PrivateBucket,
+  r2PublicUrlForKey,
+} from "@/lib/r2-storage";
+
+/** Bucket for thumb/preview (CDN). */
+function publicBucket(): string {
+  return getR2Bucket();
+}
+
+/** Bucket for mogrt/aep/definition (no anonymous CDN). */
+function privateBucket(): string {
+  return getR2PrivateBucket();
+}
 
 /** Public preview filenames served without auth. */
 export const CAPTION_PREVIEW_FILES = new Set([
@@ -49,9 +64,9 @@ export type CaptionTree = {
 };
 
 /**
- * Which product's catalog to read. Data lives in the same public R2 bucket
- * under a top-level key prefix per brand — for now both prefixes hold
- * identical files (see `scripts/migrate-captions-to-r2.mjs`).
+ * Which product's catalog to read.
+ * Previews live in the public CDN bucket; mogrt/aep/definition in the private
+ * bucket under the same key prefix (see migrate-captions-to-r2.mjs).
  */
 export type CaptionsBrand = "gal" | "spunkram";
 
@@ -124,9 +139,11 @@ function isNotFoundError(e: unknown): boolean {
 
 type CaptionEntry = { category: string; caption: string; file: string };
 
-async function listCaptionObjects(brand: CaptionsBrand): Promise<CaptionEntry[]> {
+async function listCaptionObjectsInBucket(
+  bucket: string,
+  brand: CaptionsBrand,
+): Promise<CaptionEntry[]> {
   const client = getR2Client();
-  const bucket = getR2Bucket();
   const prefix = `${captionsBrandPrefix(brand)}/`;
 
   const entries: CaptionEntry[] = [];
@@ -157,6 +174,34 @@ async function listCaptionObjects(brand: CaptionsBrand): Promise<CaptionEntry[]>
   } while (continuationToken);
 
   return entries;
+}
+
+/**
+ * Merge public (previews) + private (protected) listings.
+ * During migration, protected files may still exist only on public — include
+ * those flags so the catalog stays accurate until public copies are deleted.
+ */
+async function listCaptionObjects(brand: CaptionsBrand): Promise<CaptionEntry[]> {
+  const pub = publicBucket();
+  const priv = privateBucket();
+
+  const [publicEntries, privateEntries] = await Promise.all([
+    listCaptionObjectsInBucket(pub, brand),
+    pub === priv
+      ? Promise.resolve([] as CaptionEntry[])
+      : listCaptionObjectsInBucket(priv, brand),
+  ]);
+
+  const byKey = new Map<string, CaptionEntry>();
+  for (const e of publicEntries) {
+    // Prefer private for protected filenames when both exist; still accept
+    // public protected during cutover so catalog flags stay true.
+    byKey.set(`${e.category}/${e.caption}/${e.file}`, e);
+  }
+  for (const e of privateEntries) {
+    byKey.set(`${e.category}/${e.caption}/${e.file}`, e);
+  }
+  return Array.from(byKey.values());
 }
 
 type CaptionFlags = {
@@ -259,12 +304,12 @@ export async function buildCaptionsTree(
   return tree;
 }
 
-/** Resolve `{id, kind}` → R2 object key, verifying the object exists. */
+/** Resolve `{id, kind}` → R2 object key, verifying the object exists (private first). */
 export async function resolveProjectFile(
   brand: CaptionsBrand,
   id: string,
   kind: CaptionProjectFileKind,
-): Promise<{ key: string; filename: string } | null> {
+): Promise<{ key: string; filename: string; bucket: string } | null> {
   const split = splitCaptionId(id);
   if (!split) return null;
 
@@ -272,17 +317,23 @@ export async function resolveProjectFile(
   const key = objectKey(brand, split.category, split.caption, fileName);
 
   const client = getR2Client();
-  const bucket = getR2Bucket();
-  try {
-    await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
-  } catch (e) {
-    if (isNotFoundError(e)) return null;
-    throw e;
+  const buckets = [privateBucket(), publicBucket()].filter(
+    (b, i, arr) => arr.indexOf(b) === i,
+  );
+
+  for (const bucket of buckets) {
+    try {
+      await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+      const ext = extname(fileName);
+      const filename = kind === "definition" ? "definition.json" : `${split.caption}${ext}`;
+      return { key, filename, bucket };
+    } catch (e) {
+      if (isNotFoundError(e)) continue;
+      throw e;
+    }
   }
 
-  const ext = extname(fileName);
-  const filename = kind === "definition" ? "definition.json" : `${split.caption}${ext}`;
-  return { key, filename };
+  return null;
 }
 
 const MIME: Record<string, string> = {
@@ -320,23 +371,53 @@ export function resolvePreviewMediaUrl(
   return previewMediaUrl(brand, category, caption, file);
 }
 
-export async function readR2ObjectBuffer(key: string): Promise<Buffer> {
+export async function readR2ObjectBuffer(
+  key: string,
+  bucket?: string,
+): Promise<Buffer> {
   const client = getR2Client();
-  const bucket = getR2Bucket();
-  const res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-  if (!res.Body) throw new Error(`Empty body for key "${key}"`);
-  const bytes = await res.Body.transformToByteArray();
-  return Buffer.from(bytes);
+  const buckets = bucket
+    ? [bucket]
+    : [privateBucket(), publicBucket()].filter((b, i, arr) => arr.indexOf(b) === i);
+
+  let lastErr: unknown;
+  for (const b of buckets) {
+    try {
+      const res = await client.send(new GetObjectCommand({ Bucket: b, Key: key }));
+      if (!res.Body) throw new Error(`Empty body for key "${key}"`);
+      const bytes = await res.Body.transformToByteArray();
+      return Buffer.from(bytes);
+    } catch (e) {
+      lastErr = e;
+      if (isNotFoundError(e)) continue;
+      throw e;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(`Missing object "${key}"`);
 }
 
 export async function createR2ObjectWebStream(
   key: string,
+  bucket?: string,
 ): Promise<ReadableStream<Uint8Array>> {
   const client = getR2Client();
-  const bucket = getR2Bucket();
-  const res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-  if (!res.Body) throw new Error(`Empty body for key "${key}"`);
-  return res.Body.transformToWebStream();
+  const buckets = bucket
+    ? [bucket]
+    : [privateBucket(), publicBucket()].filter((b, i, arr) => arr.indexOf(b) === i);
+
+  let lastErr: unknown;
+  for (const b of buckets) {
+    try {
+      const res = await client.send(new GetObjectCommand({ Bucket: b, Key: key }));
+      if (!res.Body) throw new Error(`Empty body for key "${key}"`);
+      return res.Body.transformToWebStream();
+    } catch (e) {
+      lastErr = e;
+      if (isNotFoundError(e)) continue;
+      throw e;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(`Missing object "${key}"`);
 }
 
 export function parseProjectFileKind(raw: unknown): CaptionProjectFileKind | null {

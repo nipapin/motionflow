@@ -3,7 +3,7 @@ import Replicate from "replicate";
 import {
   bearerFromRequest,
   identityFromJsonBody,
-  requireCaptionsAccess,
+  requireCaptionsAuth,
 } from "@/lib/auth/resolve-captions-user";
 import { GENERATION_LIMIT_REACHED_CODE } from "@/lib/ai-generation-gate";
 import {
@@ -141,7 +141,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null);
 
-    const access = await requireCaptionsAccess({
+    const access = await requireCaptionsAuth({
       ...identityFromJsonBody(body),
       bearer: bearerFromRequest(req),
     });

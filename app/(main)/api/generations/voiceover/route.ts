@@ -3,7 +3,7 @@ import Replicate, { type FileOutput } from "replicate";
 import {
   bearerFromRequest,
   identityFromJsonBody,
-  requireCaptionsAccess,
+  requireCaptionsAuth,
 } from "@/lib/auth/resolve-captions-user";
 import {
   consumeGenerationForResolvedUser,
@@ -16,6 +16,7 @@ import { insertGenerationRecord } from "@/lib/generation-records";
 import { uploadBufferToR2 } from "@/lib/r2-storage";
 import { resolveVoiceId } from "@/lib/cep-voiceover";
 import { resolveLanguageBoost } from "@/lib/minimax-language-boost";
+import { textGenerationsCost } from "@/lib/generation-cost";
 
 export const runtime = "nodejs";
 /** CEP client timeout is 120s — keep the whole job inside that budget. */
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => ({}))) as VoiceoverBody;
 
-    const access = await requireCaptionsAccess({
+    const access = await requireCaptionsAuth({
       ...identityFromJsonBody(body),
       bearer: bearerFromRequest(req),
     });
@@ -131,10 +132,11 @@ export async function POST(req: NextRequest) {
         ? body.emotion
         : "auto";
 
+    const cost = textGenerationsCost(text.length);
     const preStatus = await generationsStatusForResolvedUser(user);
-    if (preStatus.total_generations_left <= 0) {
+    if (preStatus.total_generations_left < cost) {
       return NextResponse.json(
-        { code: GENERATION_LIMIT_REACHED_CODE, error: "GENERATION_LIMIT_REACHED", ...preStatus },
+        { code: GENERATION_LIMIT_REACHED_CODE, error: "GENERATION_LIMIT_REACHED", ...preStatus, cost },
         { status: 402 },
       );
     }
@@ -231,10 +233,10 @@ export async function POST(req: NextRequest) {
     const duration =
       Math.round(((audioBuffer.length * 8) / BITRATE) * 10) / 10;
 
-    const consumed = await consumeGenerationForResolvedUser(user, "tts");
+    const consumed = await consumeGenerationForResolvedUser(user, "tts", cost);
     if (!consumed.ok) {
       return NextResponse.json(
-        { code: GENERATION_LIMIT_REACHED_CODE, error: "GENERATION_LIMIT_REACHED", ...consumed.status },
+        { code: GENERATION_LIMIT_REACHED_CODE, error: "GENERATION_LIMIT_REACHED", ...consumed.status, cost },
         { status: 402 },
       );
     }
@@ -257,6 +259,7 @@ export async function POST(req: NextRequest) {
       pitch,
       emotion,
       language_boost: languageBoost,
+      cost,
       generations,
     });
   } catch (error) {

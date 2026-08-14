@@ -261,13 +261,16 @@ export type ConsumeResult =
   | { ok: false; status: GenerationStatus; reason: "limit_reached" };
 
 /**
- * Atomically reserves one Motionflow-scoped generation.
+ * Atomically reserves Motionflow-scoped generation(s).
  * Deducts subscription/free quota first, then platform extra_balance.
+ * `amount` defaults to 1; use 0 to skip metering and only return status.
  */
 export async function consumeGeneration(
   userId: number,
   tool: GenerationTool,
+  amount: number = 1,
 ): Promise<ConsumeResult> {
+  const units = Math.max(0, Math.floor(Number(amount) || 0));
   await ensureTable();
   await ensureUserGenerationCreditsSchema();
   const authorId = MOTIONFLOW_CREDITS_AUTHOR_ID;
@@ -308,7 +311,25 @@ export async function consumeGeneration(
       total_generations_left: 0,
     });
 
-    if (totalLeft <= 0) {
+    if (units === 0) {
+      await conn.commit();
+      return {
+        ok: true,
+        status: {
+          used,
+          limit,
+          effective_limit: effectiveLimit,
+          remaining: subscriptionLeft,
+          hasSubscription,
+          plan,
+          subscription_generations_left: subscriptionLeft,
+          extra_generations_left: extraCount,
+          total_generations_left: totalLeft,
+        },
+      };
+    }
+
+    if (totalLeft < units) {
       await conn.rollback();
       return {
         ok: false,
@@ -317,33 +338,34 @@ export async function consumeGeneration(
       };
     }
 
-    let newSubscriptionLeft: number;
-    let newExtraLeft: number;
+    let newSubscriptionLeft = subscriptionLeft;
+    let newExtraLeft = extraCount;
+    let newUsed = used;
 
-    if (subscriptionLeft > 0) {
-      await conn.execute<ResultSetHeader>(
-        `INSERT INTO \`${TABLE}\` (user_id, author_id, tool) VALUES (?, ?, ?)`,
-        [userId, authorId, tool],
-      );
-      newSubscriptionLeft = subscriptionLeft - 1;
-      newExtraLeft = extraCount;
-    } else {
-      const dec = await decrementExtraBalanceOne(userId, conn, authorId);
-      if (!dec) {
-        await conn.rollback();
-        return {
-          ok: false,
-          reason: "limit_reached",
-          status: emptyStatus(used),
-        };
+    for (let i = 0; i < units; i++) {
+      if (newSubscriptionLeft > 0) {
+        await conn.execute<ResultSetHeader>(
+          `INSERT INTO \`${TABLE}\` (user_id, author_id, tool) VALUES (?, ?, ?)`,
+          [userId, authorId, tool],
+        );
+        newSubscriptionLeft -= 1;
+        newUsed += 1;
+      } else {
+        const dec = await decrementExtraBalanceOne(userId, conn, authorId);
+        if (!dec) {
+          await conn.rollback();
+          return {
+            ok: false,
+            reason: "limit_reached",
+            status: emptyStatus(used),
+          };
+        }
+        newExtraLeft -= 1;
       }
-      newSubscriptionLeft = 0;
-      newExtraLeft = extraCount - 1;
     }
 
     await conn.commit();
 
-    const newUsed = subscriptionLeft > 0 ? used + 1 : used;
     const newTotal = newSubscriptionLeft + newExtraLeft;
     return {
       ok: true,
@@ -413,7 +435,9 @@ export async function consumeCepSpunkramGeneration(
   monthlyLimit: number,
   authorSubscribed: boolean,
   authorId: number,
+  amount: number = 1,
 ): Promise<ConsumeResult> {
+  const units = Math.max(0, Math.floor(Number(amount) || 0));
   await ensureTable();
   await ensureUserGenerationCreditsSchema();
   const pool = getPool();
@@ -446,33 +470,52 @@ export async function consumeCepSpunkramGeneration(
       total_generations_left: 0,
     });
 
-    if (totalLeft <= 0) {
+    if (units === 0) {
+      await conn.commit();
+      return {
+        ok: true,
+        status: {
+          used,
+          limit,
+          effective_limit: limit,
+          remaining: subscriptionLeft,
+          hasSubscription,
+          plan: hasSubscription ? "creator_ai" : "none",
+          subscription_generations_left: subscriptionLeft,
+          extra_generations_left: extraCount,
+          total_generations_left: totalLeft,
+        },
+      };
+    }
+
+    if (totalLeft < units) {
       await conn.rollback();
       return { ok: false, reason: "limit_reached", status: emptyStatus(used) };
     }
 
-    let newSubscriptionLeft: number;
-    let newExtraLeft: number;
+    let newSubscriptionLeft = subscriptionLeft;
+    let newExtraLeft = extraCount;
+    let newUsed = used;
 
-    if (subscriptionLeft > 0) {
-      await conn.execute<ResultSetHeader>(
-        `INSERT INTO \`${TABLE}\` (user_id, author_id, tool) VALUES (?, ?, ?)`,
-        [userId, authorId, tool],
-      );
-      newSubscriptionLeft = subscriptionLeft - 1;
-      newExtraLeft = extraCount;
-    } else {
-      const dec = await decrementExtraBalanceOne(userId, conn, authorId);
-      if (!dec) {
-        await conn.rollback();
-        return { ok: false, reason: "limit_reached", status: emptyStatus(used) };
+    for (let i = 0; i < units; i++) {
+      if (newSubscriptionLeft > 0) {
+        await conn.execute<ResultSetHeader>(
+          `INSERT INTO \`${TABLE}\` (user_id, author_id, tool) VALUES (?, ?, ?)`,
+          [userId, authorId, tool],
+        );
+        newSubscriptionLeft -= 1;
+        newUsed += 1;
+      } else {
+        const dec = await decrementExtraBalanceOne(userId, conn, authorId);
+        if (!dec) {
+          await conn.rollback();
+          return { ok: false, reason: "limit_reached", status: emptyStatus(used) };
+        }
+        newExtraLeft -= 1;
       }
-      newSubscriptionLeft = 0;
-      newExtraLeft = extraCount - 1;
     }
 
     await conn.commit();
-    const newUsed = subscriptionLeft > 0 ? used + 1 : used;
     return {
       ok: true,
       status: {

@@ -37,12 +37,18 @@ Gal Captions/
       definition.json
 ```
 
-`thumb.png` / `preview.mp4` лежат в **публичном** бакете и отдаются прямыми ссылками на CDN (`R2_PUBLIC_CDN`), но `project.mogrt` / `project.aep` / `definition.json` **никогда** не отдаются как прямой CDN-URL — сервер всегда сам читает объект из R2 (`GetObjectCommand`) и стримит его клиенту только после проверки сессии/подписки в `POST /api/captions`.
+`thumb.png` / `preview.mp4` лежат в **публичном** бакете (`R2_PUBLIC_BUCKET`) и отдаются прямыми ссылками на CDN (`R2_PUBLIC_CDN`).
+
+`project.mogrt` / `project.aep` / `definition.json` лежат в **приватном** бакете (`R2_BUCKET`) и **никогда** не отдаются как CDN-URL — только через auth `POST /api/captions` (стрим с сервера). Публичный бакет при этом можно оставить открытым для прочих ассетов проекта.
 
 ### Заливка / обновление файлов
 
 ```bash
+# upload: previews → public, protected → private
 node --env-file=.env scripts/migrate-captions-to-r2.mjs [--dry-run] [--source=<dir>] [--dest=<a,b>] [--skip-existing]
+
+# cutover already-uploaded public protected files (no local folder needed):
+node --env-file=.env scripts/migrate-captions-to-r2.mjs --copy-public-to-private --purge-public-protected
 ```
 
 Скрипт читает локальную папку (по умолчанию `C:\Users\nipap\Desktop\Captions`, либо `CAPTIONS_ROOT`) и заливает файлы под оба префикса (`--dest` по умолчанию `"Gal Captions,Spunkram Captions"`).
@@ -257,8 +263,11 @@ ASR: [ElevenLabs Scribe v2](https://replicate.com/elevenlabs/scribe-v2) на Rep
 | `file` | audio/mpeg (mp3) | да | Аудио для распознавания |
 | `language` | string | нет | ISO-код; `auto` не передаём (сервер шлёт `language_code: "auto"`) |
 | `translateTo` | string | нет | ISO-код; `off` не передаём — перевод через Claude, слова пересобираются пропорционально, форма ответа остаётся Scribe |
+| `durationSeconds` | number/string | нет | Длительность In/Out / Work Area (сек). Биллинг: `ceil(minutes / 10)` генераций |
 | `userId` | string | нет | CEP identity id |
 | `email` | string | нет | CEP identity email |
+
+**Биллинг:** Captions / Chapters — `1 gen = 10 минут` (округление вверх). Voiceover — `1 gen = 1000 символов`. Ответ включает `cost` и обновлённый `generations`.
 
 #### Успешный ответ `200` (JSON)
 

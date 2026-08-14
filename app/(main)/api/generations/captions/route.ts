@@ -3,7 +3,7 @@ import Replicate from "replicate";
 import {
   bearerFromRequest,
   identityFromFormData,
-  requireCaptionsAccess,
+  requireCaptionsAuth,
 } from "@/lib/auth/resolve-captions-user";
 import { GENERATION_LIMIT_REACHED_CODE } from "@/lib/ai-generation-gate";
 import {
@@ -17,6 +17,13 @@ import {
   isBillableCepUser,
 } from "@/lib/cep-generations";
 import { uploadBufferToR2 } from "@/lib/r2-storage";
+import { issueCaptionsChaptersReceipt } from "@/lib/captions-chapters-receipt";
+import {
+  durationGenerationsCost,
+  durationFromTimestampChunks,
+  parseDurationSeconds,
+  resolveMeterDuration,
+} from "@/lib/generation-cost";
 
 export const runtime = "nodejs";
 /** Scribe v2 + optional translation on longer files can take several minutes. */
@@ -330,7 +337,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const access = await requireCaptionsAccess({
+    const access = await requireCaptionsAuth({
       ...identityFromFormData(form),
       bearer: bearerFromRequest(req),
     });
@@ -394,11 +401,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Meter before the expensive ASR call.
+    // Meter before the expensive ASR call: 1 gen per 10 minutes (ceil).
+    // Client duration = In/Out / Work Area the panel already showed on the button.
+    const clientDuration = parseDurationSeconds(form.get("durationSeconds"));
+    const preCost = durationGenerationsCost(clientDuration ?? 0);
     const preStatus = await generationsStatusForResolvedUser(access.user);
-    if (preStatus.total_generations_left <= 0) {
+    if (preStatus.total_generations_left < preCost) {
       return NextResponse.json(
-        { code: GENERATION_LIMIT_REACHED_CODE, ...preStatus },
+        { code: GENERATION_LIMIT_REACHED_CODE, ...preStatus, cost: preCost },
         { status: 402 },
       );
     }
@@ -477,15 +487,56 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const consumed = await consumeGenerationForResolvedUser(access.user, "captions");
-    if (!consumed.ok) {
+    // Prefer max(client, ASR, word span) — never bill only on client claim.
+    const wordSpan = durationFromTimestampChunks(spokenWordChunks(scribe));
+    const asrDuration =
+      typeof scribe.duration_seconds === "number" && scribe.duration_seconds > 0
+        ? scribe.duration_seconds
+        : undefined;
+    const meterSeconds = resolveMeterDuration({
+      clientSeconds: clientDuration,
+      modelSeconds: asrDuration,
+      fromTimestamps: wordSpan,
+    });
+    const finalCost = durationGenerationsCost(meterSeconds);
+
+    // If ASR span is longer than the pre-check estimate, re-validate before consume.
+    if (finalCost > preCost && preStatus.total_generations_left < finalCost) {
       return NextResponse.json(
-        { code: GENERATION_LIMIT_REACHED_CODE, ...consumed.status },
+        { code: GENERATION_LIMIT_REACHED_CODE, ...preStatus, cost: finalCost },
         { status: 402 },
       );
     }
 
-    return NextResponse.json({ ...scribe, translated });
+    const consumed = await consumeGenerationForResolvedUser(
+      access.user,
+      "captions",
+      finalCost,
+    );
+    if (!consumed.ok) {
+      return NextResponse.json(
+        { code: GENERATION_LIMIT_REACHED_CODE, ...consumed.status, cost: finalCost },
+        { status: 402 },
+      );
+    }
+
+    const chaptersReceipt =
+      typeof access.user.id === "number"
+        ? issueCaptionsChaptersReceipt({
+            userId: access.user.id,
+            durationSeconds: meterSeconds,
+            cost: finalCost,
+          })
+        : undefined;
+
+    return NextResponse.json({
+      ...scribe,
+      translated,
+      cost: finalCost,
+      durationSeconds: meterSeconds || undefined,
+      chaptersReceipt,
+      generations: consumed.status,
+    });
   } catch (error) {
     console.error("[captions generation] unexpected error:", error);
     return NextResponse.json({ error: GENERIC_ERROR }, { status: 500 });

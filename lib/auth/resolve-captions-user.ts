@@ -3,6 +3,11 @@ import { NextResponse } from "next/server";
 import { getSessionUser, type SessionUser } from "@/lib/auth/get-session-user";
 import { hasActiveMotionflowSubscription } from "@/lib/subscriptions";
 import { resolveCepBearerUser } from "@/lib/cep-auth";
+import {
+  getCepClientConfig,
+  requireCepClientConfig,
+} from "@/lib/cep-client-registry";
+import { getActiveAuthorSubscription } from "@/lib/cep-entitlements";
 
 export const SUBSCRIPTION_REQUIRED_CODE = "SUBSCRIPTION_REQUIRED" as const;
 export const UNAUTHORIZED_CODE = "UNAUTHORIZED" as const;
@@ -20,7 +25,10 @@ export type ResolvedCaptionsUser = {
   email: string;
   name: string;
   source: "session" | "cep-bearer";
-  /** When true, skip DB subscription lookup. */
+  /**
+   * @deprecated Ignored for entitlements. Kept for type compat with older callers.
+   * Use {@link userCanDownloadCaptionProject} / billable generation checks instead.
+   */
   treatAsSubscribed: boolean;
   /** Present for CEP device tokens — used for Spunkram entitlements. */
   cepClient?: string;
@@ -30,6 +38,8 @@ export type ResolvedCaptionsUser = {
  * Resolve caller for captions CEP / web:
  * 1) CEP Bearer device token (`Authorization: Bearer mfcep_…`, see lib/cep-auth.ts)
  * 2) Motion Flow session cookie
+ *
+ * Body email/userId are NOT trusted for identity.
  */
 export async function resolveCaptionsUser(
   identity: CaptionsIdentityInput = {},
@@ -42,8 +52,7 @@ export async function resolveCaptionsUser(
         email: bearerUser.email,
         name: bearerUser.name,
         source: "cep-bearer",
-        // Free CEP tier includes limited AI gens — don't require Motionflow Creator.
-        treatAsSubscribed: true,
+        treatAsSubscribed: false,
         cepClient: bearerUser.client,
       };
     }
@@ -83,7 +92,6 @@ export function identityFromJsonBody(body: unknown): CaptionsIdentityInput {
         ? user.email
         : null;
 
-  // Prefer explicit userId / user.id — never confuse with caption `id`
   const userId =
     typeof b.userId === "string" || typeof b.userId === "number"
       ? String(b.userId)
@@ -111,19 +119,8 @@ export function identityFromFormData(form: FormData): CaptionsIdentityInput {
   };
 }
 
-export async function userHasCaptionsSubscription(
-  user: ResolvedCaptionsUser,
-): Promise<boolean> {
-  if (user.treatAsSubscribed) return true;
-  if (typeof user.id !== "number") return false;
-  return hasActiveMotionflowSubscription(user.id);
-}
-
-/**
- * Auth + subscription gate for captions download / transcribe.
- * Returns 401 / 403 NextResponse on failure.
- */
-export async function requireCaptionsAccess(
+/** Auth only — enough for metered AI generations (credits still required). */
+export async function requireCaptionsAuth(
   identity: CaptionsIdentityInput = {},
 ): Promise<
   | { ok: true; user: ResolvedCaptionsUser }
@@ -139,9 +136,44 @@ export async function requireCaptionsAccess(
       ),
     };
   }
+  return { ok: true, user };
+}
 
-  const subscribed = await userHasCaptionsSubscription(user);
-  if (!subscribed) {
+/**
+ * Style project download entitlement:
+ * - CEP Bearer → active Spunkram (author) subscription
+ * - Web session → active Motionflow Creator subscription
+ */
+export async function userCanDownloadCaptionProject(
+  user: ResolvedCaptionsUser,
+): Promise<boolean> {
+  if (typeof user.id !== "number") return false;
+
+  if (user.source === "cep-bearer") {
+    const cfg =
+      getCepClientConfig(user.cepClient || "spunkram-cep") ??
+      requireCepClientConfig("spunkram-cep");
+    const sub = await getActiveAuthorSubscription(user.id, cfg.authorId);
+    return sub.active;
+  }
+
+  return hasActiveMotionflowSubscription(user.id);
+}
+
+/**
+ * Auth + subscription gate for caption style downloads (mogrt/aep/definition).
+ */
+export async function requireCaptionsAccess(
+  identity: CaptionsIdentityInput = {},
+): Promise<
+  | { ok: true; user: ResolvedCaptionsUser }
+  | { ok: false; response: NextResponse }
+> {
+  const auth = await requireCaptionsAuth(identity);
+  if (!auth.ok) return auth;
+
+  const allowed = await userCanDownloadCaptionProject(auth.user);
+  if (!allowed) {
     return {
       ok: false,
       response: NextResponse.json(
@@ -154,5 +186,12 @@ export async function requireCaptionsAccess(
     };
   }
 
-  return { ok: true, user };
+  return { ok: true, user: auth.user };
+}
+
+/** @deprecated Use {@link userCanDownloadCaptionProject}. */
+export async function userHasCaptionsSubscription(
+  user: ResolvedCaptionsUser,
+): Promise<boolean> {
+  return userCanDownloadCaptionProject(user);
 }

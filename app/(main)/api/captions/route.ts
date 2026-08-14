@@ -19,7 +19,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * GET /api/captions?brand=gal|spunkram — JSON tree of categories → captions
- * (previews only, direct R2/CDN URLs). Public — no auth (CEP catalog browsing).
+ * (preview CDN URLs only). Public — no auth (CEP catalog browsing).
+ * Protected assets (mogrt/aep/definition) are never exposed as URLs.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -36,11 +37,13 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * POST /api/captions — download style file (session or CEP identity + subscription).
+ * POST /api/captions — download style file (session or CEP Bearer + real subscription).
  *
- * Body: `{ id: string, file?: "mogrt" | "aep" | "definition", brand?: "gal" | "spunkram", user?: { id, email } }`
- * - mogrt / aep → binary attachment
- * - definition → JSON body (MOGRT clientControls)
+ * Body: `{ id: string, file?: "mogrt" | "aep" | "definition", brand?: "gal" | "spunkram" }`
+ * - CEP: Spunkram author subscription required
+ * - Web session: Motionflow Creator subscription required
+ * - mogrt / aep → binary attachment (streamed from private R2)
+ * - definition → JSON body
  */
 export async function POST(req: NextRequest) {
   let body: unknown;
@@ -96,7 +99,7 @@ export async function POST(req: NextRequest) {
     const encoded = encodeURIComponent(project.filename).replaceAll("'", "%27");
 
     if (kind === "definition") {
-      const raw = await readR2ObjectBuffer(project.key);
+      const raw = await readR2ObjectBuffer(project.key, project.bucket);
       let parsed: unknown;
       try {
         parsed = JSON.parse(raw.toString("utf8"));
@@ -116,7 +119,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const stream = await createR2ObjectWebStream(project.key);
+    const stream = await createR2ObjectWebStream(project.key, project.bucket);
     const headers = new Headers({
       "Content-Type": mimeForFilename(project.filename),
       "Content-Disposition": `attachment; filename="${encoded}"; filename*=UTF-8''${encoded}`,

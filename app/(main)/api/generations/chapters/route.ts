@@ -4,7 +4,7 @@ import { LANGUAGE_NAMES } from "@/lib/generation-languages";
 import {
   bearerFromRequest,
   identityFromJsonBody,
-  requireCaptionsAccess,
+  requireCaptionsAuth,
 } from "@/lib/auth/resolve-captions-user";
 import { GENERATION_LIMIT_REACHED_CODE } from "@/lib/ai-generation-gate";
 import {
@@ -13,6 +13,13 @@ import {
   billableAccountRequiredResponse,
   isBillableCepUser,
 } from "@/lib/cep-generations";
+import {
+  durationGenerationsCost,
+  durationFromTimestampChunks,
+  parseDurationSeconds,
+  resolveMeterDuration,
+} from "@/lib/generation-cost";
+import { verifyCaptionsChaptersReceipt } from "@/lib/captions-chapters-receipt";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -266,7 +273,7 @@ export async function POST(req: NextRequest) {
     try {
         const body = await req.json().catch(() => null);
 
-        const access = await requireCaptionsAccess({
+        const access = await requireCaptionsAuth({
             ...identityFromJsonBody(body),
             bearer: bearerFromRequest(req),
         });
@@ -334,13 +341,40 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        // Captions+Chapters one-shot: free only with a signed server receipt
+        // from /api/generations/captions (client flag is ignored).
+        // Standalone "all" → ceil(min/10). Section regenerate → 1.
+        const receiptToken = (body as { chaptersReceipt?: unknown } | null)
+            ?.chaptersReceipt;
+        const receiptOk =
+            typeof user.id === "number" &&
+            verifyCaptionsChaptersReceipt(receiptToken, user.id).ok;
+        const clientDuration = parseDurationSeconds(
+            (body as { durationSeconds?: unknown } | null)?.durationSeconds,
+        );
+        const chunkDuration = durationFromTimestampChunks(chunks);
+        const meterSeconds = resolveMeterDuration({
+            clientSeconds: clientDuration,
+            fromTimestamps: chunkDuration,
+        });
+
+        let cost: number;
+        if (receiptOk && target === "all") {
+            cost = 0;
+        } else if (target === "all") {
+            cost = durationGenerationsCost(meterSeconds);
+        } else {
+            cost = 1;
+        }
+
         const preStatus = await generationsStatusForResolvedUser(user);
-        if (preStatus.total_generations_left <= 0) {
+        if (cost > 0 && preStatus.total_generations_left < cost) {
             return NextResponse.json(
                 {
                     code: GENERATION_LIMIT_REACHED_CODE,
                     error: "GENERATION_LIMIT_REACHED",
                     ...preStatus,
+                    cost,
                 },
                 { status: 402 },
             );
@@ -442,7 +476,7 @@ export async function POST(req: NextRequest) {
 
         let consumed;
         try {
-            consumed = await consumeGenerationForResolvedUser(user, "chapters");
+            consumed = await consumeGenerationForResolvedUser(user, "chapters", cost);
         } catch (consumeErr) {
             console.error("[chapters generation] consume failed:", consumeErr);
             return NextResponse.json(
@@ -459,12 +493,18 @@ export async function POST(req: NextRequest) {
                     code: GENERATION_LIMIT_REACHED_CODE,
                     error: "GENERATION_LIMIT_REACHED",
                     ...consumed.status,
+                    cost,
                 },
                 { status: 402 },
             );
         }
 
-        return NextResponse.json({ ...result, generations: consumed.status });
+        return NextResponse.json({
+            ...result,
+            generations: consumed.status,
+            cost,
+            durationSeconds: meterSeconds || undefined,
+        });
     } catch (error) {
         console.error("[chapters generation] unexpected error:", error);
         return NextResponse.json(
