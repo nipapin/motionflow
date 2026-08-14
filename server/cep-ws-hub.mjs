@@ -136,7 +136,7 @@ export function attachCepWebSocket(server) {
 
   wss.on("connection", (ws) => {
     let authed = false;
-    let alive = true;
+    ws.__alive = true;
     const authTimer = setTimeout(() => {
       if (!authed) {
         try {
@@ -148,7 +148,7 @@ export function attachCepWebSocket(server) {
     }, AUTH_TIMEOUT_MS);
 
     ws.on("pong", () => {
-      alive = true;
+      ws.__alive = true;
     });
 
     ws.on("message", async (raw) => {
@@ -241,7 +241,6 @@ export function attachCepWebSocket(server) {
   const heartbeat = setInterval(() => {
     for (const ws of wss.clients) {
       if (ws.readyState !== 1) continue;
-      // @ts-expect-error tracking
       if (ws.__alive === false) {
         try {
           ws.terminate();
@@ -251,19 +250,12 @@ export function attachCepWebSocket(server) {
         removeSocket(ws);
         continue;
       }
-      // @ts-expect-error tracking
       ws.__alive = false;
       try {
         ws.ping();
       } catch {
         /* ignore */
       }
-    }
-    for (const ws of wss.clients) {
-      ws.on("pong", () => {
-        // @ts-expect-error tracking
-        ws.__alive = true;
-      });
     }
   }, HEARTBEAT_MS);
 
