@@ -520,14 +520,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const chaptersReceipt =
-      typeof access.user.id === "number"
-        ? issueCaptionsChaptersReceipt({
-            userId: access.user.id,
-            durationSeconds: meterSeconds,
-            cost: finalCost,
-          })
-        : undefined;
+    let chaptersReceipt: string | undefined;
+    try {
+      if (typeof access.user.id === "number") {
+        chaptersReceipt = issueCaptionsChaptersReceipt({
+          userId: access.user.id,
+          durationSeconds: meterSeconds,
+          cost: finalCost,
+        });
+      }
+    } catch (receiptErr) {
+      console.error("[captions generation] chapters receipt skipped:", receiptErr);
+    }
 
     return NextResponse.json({
       ...scribe,

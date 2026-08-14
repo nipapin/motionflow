@@ -10,17 +10,14 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 const DEFAULT_TTL_SEC = 15 * 60;
 
-function receiptSecret(): string {
+function receiptSecret(): string | null {
   const s =
     process.env.CAPTIONS_CHAPTERS_RECEIPT_SECRET?.trim() ||
     process.env.CEP_AUTH_SECRET?.trim() ||
-    process.env.NEXTAUTH_SECRET?.trim();
-  if (!s) {
-    throw new Error(
-      "Missing CAPTIONS_CHAPTERS_RECEIPT_SECRET (or CEP_AUTH_SECRET / NEXTAUTH_SECRET) for chapters receipt signing",
-    );
-  }
-  return s;
+    process.env.AUTH_SECRET?.trim() ||
+    process.env.NEXTAUTH_SECRET?.trim() ||
+    process.env.APP_KEY?.trim();
+  return s || null;
 }
 
 function b64url(buf: Buffer | string): string {
@@ -52,7 +49,14 @@ export function issueCaptionsChaptersReceipt(opts: {
   durationSeconds: number;
   cost: number;
   ttlSec?: number;
-}): string {
+}): string | undefined {
+  const secret = receiptSecret();
+  if (!secret) {
+    console.error(
+      "[captions] no AUTH_SECRET / CAPTIONS_CHAPTERS_RECEIPT_SECRET — chapters receipt skipped",
+    );
+    return undefined;
+  }
   const payload: CaptionsChaptersReceiptPayload = {
     uid: opts.userId,
     dur: Math.max(0, opts.durationSeconds),
@@ -60,9 +64,7 @@ export function issueCaptionsChaptersReceipt(opts: {
     exp: Math.floor(Date.now() / 1000) + (opts.ttlSec ?? DEFAULT_TTL_SEC),
   };
   const body = b64url(JSON.stringify(payload));
-  const sig = b64url(
-    createHmac("sha256", receiptSecret()).update(body).digest(),
-  );
+  const sig = b64url(createHmac("sha256", secret).update(body).digest());
   return `${body}.${sig}`;
 }
 
@@ -74,9 +76,12 @@ export function verifyCaptionsChaptersReceipt(
   const [body, sig] = token.split(".");
   if (!body || !sig) return { ok: false };
 
+  const secret = receiptSecret();
+  if (!secret) return { ok: false };
+
   let expected: Buffer;
   try {
-    expected = createHmac("sha256", receiptSecret()).update(body).digest();
+    expected = createHmac("sha256", secret).update(body).digest();
   } catch {
     return { ok: false };
   }
