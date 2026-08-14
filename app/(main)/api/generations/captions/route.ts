@@ -19,16 +19,16 @@ import {
 import { uploadBufferToR2 } from "@/lib/r2-storage";
 
 export const runtime = "nodejs";
-/** Two Whisper runs + optional translation on longer files can take several minutes. */
+/** Scribe v2 + optional translation on longer files can take several minutes. */
 export const maxDuration = 300;
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
 });
 
-/** @see https://replicate.com/vaibhavs10/incredibly-fast-whisper */
+/** @see https://replicate.com/elevenlabs/scribe-v2 */
 const CAPTIONS_MODEL =
-  "vaibhavs10/incredibly-fast-whisper:3ab86df6c8f54c11309d4d1f930ac292bad43ace52d10c80d87eb258b3c9f79c" as const;
+  "elevenlabs/scribe-v2:5cd433d181bb49b09d24d61c770861b169253acf02e58865a39200c81e727676" as const;
 
 /** Same Claude model as chapters — used for real target-language translation. */
 const TRANSLATE_MODEL =
@@ -41,9 +41,26 @@ const MAX_TRANSLATE_CHARS = 40_000;
 const GENERIC_ERROR =
   "We couldn't generate captions right now. Please try again in a moment.";
 
-type WhisperTimestamp = "chunk" | "word";
+/** Sentence end — same rule as CEP sentencesFromWords. */
+const SENTENCE_END = /[.!?…]["'»”’)\]]*$/;
 
 type CaptionChunk = { text: string; timestamp: [number, number] };
+
+type ScribeWord = {
+  text: string;
+  start?: number | null;
+  end?: number | null;
+  type: string;
+  speaker_id?: string | null;
+};
+
+type ScribeOutput = {
+  text: string;
+  language_code?: string;
+  language_probability?: number;
+  duration_seconds?: number | null;
+  words?: ScribeWord[] | null;
+};
 
 function mapReplicateError(error: unknown): { status: number; message: string } {
   const raw = error instanceof Error ? error.message : String(error ?? "");
@@ -98,60 +115,75 @@ function isMp3File(file: File): boolean {
   return file.name.toLowerCase().endsWith(".mp3");
 }
 
-function hasTranscription(output: unknown): boolean {
-  if (!output || typeof output !== "object") {
-    return typeof output === "string" && output.trim().length > 0;
-  }
-
-  const record = output as { text?: unknown; chunks?: unknown };
-  if (typeof record.text === "string" && record.text.trim()) return true;
-  return Array.isArray(record.chunks) && record.chunks.length > 0;
+function asScribeOutput(output: unknown): ScribeOutput | null {
+  if (!output || typeof output !== "object") return null;
+  const record = output as Record<string, unknown>;
+  if (typeof record.text !== "string") return null;
+  return output as ScribeOutput;
 }
 
-function asChunks(output: unknown): CaptionChunk[] {
-  if (!output || typeof output !== "object") return [];
-  const chunks = (output as { chunks?: unknown }).chunks;
-  if (!Array.isArray(chunks)) return [];
+function hasTranscription(output: ScribeOutput): boolean {
+  if (output.text.trim()) return true;
+  const words = output.words;
+  if (!Array.isArray(words)) return false;
+  return words.some(
+    (w) =>
+      w &&
+      typeof w === "object" &&
+      w.type === "word" &&
+      typeof w.text === "string" &&
+      w.text.trim().length > 0,
+  );
+}
+
+/** Spoken words only — skip spacing / audio_event. */
+function spokenWordChunks(output: ScribeOutput): CaptionChunk[] {
+  const words = output.words;
+  if (!Array.isArray(words)) return [];
   const out: CaptionChunk[] = [];
-  for (const item of chunks) {
+  for (const item of words) {
     if (!item || typeof item !== "object") continue;
-    const text = (item as { text?: unknown }).text;
-    const timestamp = (item as { timestamp?: unknown }).timestamp;
-    if (typeof text !== "string" || !text.trim()) continue;
-    if (
-      !Array.isArray(timestamp) ||
-      timestamp.length !== 2 ||
-      typeof timestamp[0] !== "number" ||
-      typeof timestamp[1] !== "number"
-    ) {
-      continue;
-    }
+    if (item.type !== "word") continue;
+    if (typeof item.text !== "string" || !item.text.trim()) continue;
+    if (typeof item.start !== "number" || typeof item.end !== "number") continue;
     out.push({
-      text: text.trim(),
-      timestamp: [timestamp[0], timestamp[1]],
+      text: item.text.trim(),
+      timestamp: [item.start, item.end],
     });
   }
   return out;
 }
 
+function sentencesFromWords(words: CaptionChunk[]): CaptionChunk[] {
+  const out: CaptionChunk[] = [];
+  let cur: CaptionChunk[] = [];
+  const flush = () => {
+    if (!cur.length) return;
+    out.push({
+      text: cur.map((w) => w.text.trim()).join(" "),
+      timestamp: [cur[0].timestamp[0], cur[cur.length - 1].timestamp[1]],
+    });
+    cur = [];
+  };
+  for (const w of words) {
+    cur.push(w);
+    if (SENTENCE_END.test(w.text.trim())) flush();
+  }
+  flush();
+  return out;
+}
+
 async function transcribe(
   audioUrl: string,
-  timestamp: WhisperTimestamp,
   options: { language?: string },
 ): Promise<unknown> {
-  const language =
-    options.language && options.language.trim()
-      ? options.language.trim()
-      : "None";
-
   return replicate.run(CAPTIONS_MODEL, {
     input: {
       audio: audioUrl,
-      task: "transcribe",
-      language,
-      batch_size: 24,
-      timestamp,
-      diarise_audio: false,
+      language_code: options.language?.trim() || "auto",
+      timestamps_granularity: "word",
+      diarize: false,
+      tag_audio_events: false,
     },
   });
 }
@@ -204,7 +236,7 @@ function wordsFromChunks(chunks: CaptionChunk[]): CaptionChunk[] {
 
 /**
  * Translate caption chunk texts 1:1 into the target language, keeping timestamps.
- * Caller rebuilds word-level chunks via wordsFromChunks (proportional timings).
+ * Caller rebuilds word-level items via wordsFromChunks (proportional timings).
  */
 async function translateChunks(
   chunks: CaptionChunk[],
@@ -260,15 +292,19 @@ async function translateChunks(
   });
 }
 
-function withChunks(
-  base: unknown,
-  chunks: CaptionChunk[],
-): Record<string, unknown> {
-  const text = chunks.map((c) => c.text).join(" ");
-  if (base && typeof base === "object") {
-    return { ...(base as Record<string, unknown>), text, chunks };
-  }
-  return { text, chunks };
+/** Apply translateTo while keeping Scribe response shape (text + words[]). */
+function withTranslatedWords(
+  base: ScribeOutput,
+  wordChunks: CaptionChunk[],
+): ScribeOutput {
+  const text = wordChunks.map((c) => c.text).join(" ");
+  const words: ScribeWord[] = wordChunks.map((c) => ({
+    text: c.text,
+    start: c.timestamp[0],
+    end: c.timestamp[1],
+    type: "word",
+  }));
+  return { ...base, text, words };
 }
 
 export async function POST(req: NextRequest) {
@@ -358,7 +394,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Meter before the expensive Whisper calls.
+    // Meter before the expensive ASR call.
     const preStatus = await generationsStatusForResolvedUser(access.user);
     if (preStatus.total_generations_left <= 0) {
       return NextResponse.json(
@@ -383,46 +419,47 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let words: unknown;
-    let chunk: unknown;
+    let scribe: ScribeOutput;
     try {
-      [words, chunk] = await Promise.all([
-        transcribe(audioUrl, "word", { language }),
-        transcribe(audioUrl, "chunk", { language }),
-      ]);
+      const raw = await transcribe(audioUrl, { language });
+      const parsed = asScribeOutput(raw);
+      if (!parsed) {
+        console.error("[captions generation] unexpected scribe output shape");
+        return NextResponse.json({ error: GENERIC_ERROR }, { status: 502 });
+      }
+      scribe = parsed;
     } catch (err) {
       console.error("[captions generation] replicate error:", err);
       const { status, message } = mapReplicateError(err);
       return NextResponse.json({ error: message }, { status });
     }
 
-    if (!hasTranscription(words) && !hasTranscription(chunk)) {
+    if (!hasTranscription(scribe)) {
       console.error("[captions generation] empty transcription output");
       return NextResponse.json({ error: GENERIC_ERROR }, { status: 502 });
     }
 
-    // Real target-language translation (Whisper's built-in translate is English-only).
     let translated = false;
     if (translateTo) {
       const languageName = languageNameFor(translateTo)!;
       try {
-        const sourceChunks = asChunks(chunk);
-        const fallbackChunks = sourceChunks.length
-          ? sourceChunks
-          : asChunks(words);
-        if (fallbackChunks.length) {
-          const translatedChunks = await translateChunks(
-            fallbackChunks,
-            languageName,
-          );
-          chunk = withChunks(chunk, translatedChunks);
-          // Original ASR word timings no longer match translated text — rebuild
-          // word chunks with proportional timings so CEP custom/words modes work.
-          const wordChunks = wordsFromChunks(translatedChunks);
-          words = {
-            text: translatedChunks.map((c) => c.text).join(" "),
-            chunks: wordChunks,
-          };
+        const wordChunks = spokenWordChunks(scribe);
+        const sentenceChunks = wordChunks.length
+          ? sentencesFromWords(wordChunks)
+          : [];
+        const source = sentenceChunks.length
+          ? sentenceChunks
+          : wordChunks.length
+            ? wordChunks
+            : scribe.text.trim()
+              ? [{ text: scribe.text.trim(), timestamp: [0, 0] as [number, number] }]
+              : [];
+        if (source.length) {
+          const translatedChunks = await translateChunks(source, languageName);
+          // ASR word timings no longer match translated text — rebuild words
+          // with proportional timings, still in Scribe shape.
+          const rebuilt = wordsFromChunks(translatedChunks);
+          scribe = withTranslatedWords(scribe, rebuilt);
           translated = true;
         }
       } catch (err) {
@@ -448,7 +485,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ words, chunk, translated });
+    return NextResponse.json({ ...scribe, translated });
   } catch (error) {
     console.error("[captions generation] unexpected error:", error);
     return NextResponse.json({ error: GENERIC_ERROR }, { status: 500 });

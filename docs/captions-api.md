@@ -248,40 +248,45 @@ async function downloadCaption(id: string, file: "mogrt" | "aep" | "definition" 
 
 ### 4. `POST /api/generations/captions` (Transcribe)
 
+ASR: [ElevenLabs Scribe v2](https://replicate.com/elevenlabs/scribe-v2) на Replicate (`timestamps_granularity=word`). Один запрос; ответ модели отдаётся как есть (без перекладки в старый Whisper `{ words.chunks, chunk.chunks }`).
+
 `multipart/form-data`, `credentials: "include"`. Auth: session cookie **или** CEP form fields `email` / `userId` + подписка. Таймаут клиента: до **5 минут** (`maxDuration` на сервере тоже 300s).
 
 | Поле | Тип | Обязательно | Описание |
 |------|-----|-------------|----------|
 | `file` | audio/mpeg (mp3) | да | Аудио для распознавания |
-| `language` | string | нет | ISO-код; `auto` не передаём (сервер трактует как auto) |
-| `translateTo` | string | нет | ISO-код; `off` не передаём |
+| `language` | string | нет | ISO-код; `auto` не передаём (сервер шлёт `language_code: "auto"`) |
+| `translateTo` | string | нет | ISO-код; `off` не передаём — перевод через Claude, слова пересобираются пропорционально, форма ответа остаётся Scribe |
 | `userId` | string | нет | CEP identity id |
 | `email` | string | нет | CEP identity email |
 
 #### Успешный ответ `200` (JSON)
 
+Форма Scribe v2 + флаг `translated`:
+
 ```json
 {
-  "words": {
-    "chunks": [
-      { "text": "Hello", "timestamp": [1.02, 1.35] },
-      { "text": "world.", "timestamp": [1.40, 1.90] }
-    ]
-  },
-  "chunk": {
-    "chunks": [
-      { "text": "Hello world.", "timestamp": [1.02, 1.90] }
-    ]
-  }
+  "text": "Hello world.",
+  "language_code": "eng",
+  "language_probability": 0.98,
+  "duration_seconds": 1.9,
+  "words": [
+    { "text": "Hello", "start": 1.02, "end": 1.35, "type": "word" },
+    { "text": " ", "start": 1.35, "end": 1.4, "type": "spacing" },
+    { "text": "world.", "start": 1.4, "end": 1.9, "type": "word" }
+  ],
+  "translated": false
 }
 ```
 
 | Поле | Обязательно | Описание |
 |------|-------------|----------|
-| `words.chunks` | да | Пословная нарезка (основной источник для сегментов) |
-| `chunk.chunks` | желательно | По предложениям / фразам (панель может пересобрать из `words`) |
-| `chunks[].text` | да | Текст слова / фразы |
-| `chunks[].timestamp` | да | `[start, end]` — **секунды float** относительно **начала переданного MP3** |
+| `text` | да | Полный транскрипт |
+| `words` | да | Массив токенов Scribe (`word` / `spacing` / …) |
+| `words[].text` | да | Текст токена |
+| `words[].start` / `end` | для `type: "word"` | **секунды float** относительно **начала переданного MP3** |
+| `words[].type` | да | Обычно `word` или `spacing` (`tag_audio_events` на сервере выключен) |
+| `translated` | да | `true` если сработал `translateTo` |
 
 #### Критично для синка с голосом (таймлайн AE / Premiere)
 
@@ -289,6 +294,7 @@ async function downloadCaption(id: string, file: "mogrt" | "aep" | "definition" 
 2. Время **относительно начала файла**, включая тишину в начале, если она есть в MP3.
 3. Первое слово **не сбрасывается в `0`**, если речь начинается позже — иначе captions поедут относительно голоса.
 4. Панель сама добавляет `offset` только для сценария «транскрипт с выделения» (inPoint слоя / клипа).
+5. Для сегментов captions обычно берут только `words` с `type === "word"`.
 
 #### Ошибки
 
@@ -325,7 +331,7 @@ CEP читает `code` с любого `!res.ok` — статус `403` обя�
 3. **Выбор стиля / вкладка Styles** → `POST /api/captions` с `file: "definition"`  
    (нужны auth + подписка; ответ — JSON `clientControls` для Styles UI).  
    Если в каталоге `files.definition !== true`, панель definition не запросит → Styles пустой.
-4. **Transcribe** → render MP3 из AE/PPro → `POST /api/generations/captions` → сегменты из таймкодов `words.chunks`; параллельно при необходимости `file: "aep"` (AE) или `"mogrt"` (PPro).
+4. **Transcribe** → render MP3 из AE/PPro → `POST /api/generations/captions` → ответ Scribe (`words[]` с `start`/`end`, брать `type === "word"`); параллельно при необходимости `file: "aep"` (AE) или `"mogrt"` (PPro).
 5. Ошибки только на защищённых шагах (3–4):
    - `401` + `UNAUTHORIZED` → sign-in;
    - `403` + `SUBSCRIPTION_REQUIRED` → pricing.
