@@ -23,8 +23,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { PROFILE_PAGE_CLASS } from "@/lib/profile-layout";
+import { profilePageClassForPath } from "@/lib/profile-layout";
 import { cn } from "@/lib/utils";
+import { usePathname } from "next/navigation";
 
 const PACKAGES_ADMIN_EMAILS = new Set(["basepackagehelp@gmail.com"]);
 
@@ -38,6 +39,7 @@ const ACCOUNT_LINKS = [
 ] as const;
 
 export function ProfileHeader() {
+  const pathname = usePathname();
   const { user, signOut } = useAuth();
   const [signInOpen, setSignInOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<"signin" | "signup">("signin");
@@ -71,7 +73,7 @@ export function ProfileHeader() {
   return (
     <>
       <header className="fixed top-0 right-0 left-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
-        <div className={cn(PROFILE_PAGE_CLASS, "flex h-16 items-center justify-between gap-4")}>
+        <div className={cn(profilePageClassForPath(pathname), "flex h-16 items-center justify-between gap-4")}>
           <Link href="/" className="group flex min-w-0 items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center smooth group-hover:scale-105">
               <Image

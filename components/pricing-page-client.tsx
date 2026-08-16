@@ -205,7 +205,7 @@ export function PricingPageClient({ currentUser, currentSubscription }: PricingP
   const yearlyPrice = monthlyPrice * 12 * 0.8;
   const yearlyMonthlyPrice = yearlyPrice / 12;
 
-  const ultimateMonthly = 36;
+  const ultimateMonthly = 29;
   const ultimateYearly = ultimateMonthly * 12 * 0.8;
   const ultimateYearlyMonthly = ultimateYearly / 12;
 
