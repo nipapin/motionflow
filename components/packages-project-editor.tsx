@@ -201,8 +201,8 @@ export function PackagesProjectEditor({
           min_extension_version: minExt || null,
           min_host_version: minHost || null,
           details_url: detailsUrl || null,
-          // Empty Marketplace Item → try Package page URL; still empty clears the link.
-          marketplace_item_id: marketRaw || parseMarketplaceItemIdInput(detailsUrl),
+          // Empty field must stay empty — do not re-parse id from Package page URL.
+          marketplace_item_id: marketRaw || null,
           visible,
           admin_only: adminOnly,
           price: parsedPrice,
@@ -443,7 +443,8 @@ export function PackagesProjectEditor({
             <p className="text-[12px] text-muted-foreground">
               Links this CEP pack to a purchased{" "}
               <code className="text-[11px]">marketplace_items</code> row. Paste an
-              id or a Package Page URL (last path segment is the id).
+              id or a Package Page URL (last path segment is the id). Clear the
+              field and save to unlink.
             </p>
           </div>
 
