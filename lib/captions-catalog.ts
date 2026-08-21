@@ -25,6 +25,7 @@ function privateBucket(): string {
 export const CAPTION_PREVIEW_FILES = new Set([
   "thumb.png",
   "preview.mp4",
+  "controls.json",
 ]);
 
 /** Downloadable files — only via authenticated POST /api/captions. */
@@ -46,6 +47,7 @@ export type CaptionTreeCaption = {
   slug: string;
   previewImageUrl: string | null;
   previewVideoUrl: string | null;
+  controlsUrl: string | null;
   files: {
     mogrt: boolean;
     aep: boolean;
@@ -210,6 +212,7 @@ type CaptionFlags = {
   mogrt: boolean;
   aep: boolean;
   definition: boolean;
+  controls: boolean;
 };
 
 type CachedTree = { tree: CaptionTree; expiresAt: number };
@@ -244,6 +247,7 @@ export async function buildCaptionsTree(
         mogrt: false,
         aep: false,
         definition: false,
+        controls: false,
       });
     }
     const flags = captions.get(caption)!;
@@ -252,6 +256,7 @@ export async function buildCaptionsTree(
     else if (file === CAPTION_DOWNLOAD_FILES.mogrt) flags.mogrt = true;
     else if (file === CAPTION_DOWNLOAD_FILES.aep) flags.aep = true;
     else if (file === CAPTION_DOWNLOAD_FILES.definition) flags.definition = true;
+    else if (file === "controls.json") flags.controls = true;
   }
 
   categoryOrder.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
@@ -267,8 +272,14 @@ export async function buildCaptionsTree(
     for (const captionName of captionNames) {
       const flags = captionsMap.get(captionName)!;
 
-      // Skip empty / incomplete folders with no recognizable assets
-      if (!flags.thumb && !flags.preview && !flags.mogrt && !flags.aep && !flags.definition) {
+      if (
+        !flags.thumb &&
+        !flags.preview &&
+        !flags.mogrt &&
+        !flags.aep &&
+        !flags.definition &&
+        !flags.controls
+      ) {
         continue;
       }
 
@@ -281,6 +292,9 @@ export async function buildCaptionsTree(
           : null,
         previewVideoUrl: flags.preview
           ? previewMediaUrl(brand, categoryName, captionName, "preview.mp4")
+          : null,
+        controlsUrl: flags.controls
+          ? previewMediaUrl(brand, categoryName, captionName, "controls.json")
           : null,
         files: {
           mogrt: flags.mogrt,

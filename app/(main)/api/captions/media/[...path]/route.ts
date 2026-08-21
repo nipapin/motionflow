@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { parseCaptionsBrand, resolvePreviewMediaUrl } from "@/lib/captions-catalog";
+import {
+  captionsBrandPrefix,
+  parseCaptionsBrand,
+  readR2ObjectBuffer,
+  resolvePreviewMediaUrl,
+} from "@/lib/captions-catalog";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -7,11 +12,8 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/captions/media/[...path]?brand=gal|spunkram
  *
- * Legacy proxy URL kept for backward compatibility — redirects to the public
- * R2/CDN URL for the requested preview asset. `GET /api/captions` now returns
- * ready-to-use CDN URLs directly, so new clients shouldn't need this route.
- *
- * Public preview assets only: `thumb.png`, `preview.mp4`.
+ * Public assets: `thumb.png` / `preview.mp4` → 302 to CDN.
+ * `controls.json` → JSON body (CEP fetch; CDN CORS may block the panel).
  * Path: Category/CaptionFolder/filename
  */
 export async function GET(
@@ -23,7 +25,6 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Decode each segment (Next may already decode; safe to decodeURIComponent)
   let relative: string;
   try {
     relative = segments.map((s) => decodeURIComponent(s)).join("/");
@@ -32,6 +33,19 @@ export async function GET(
   }
 
   const brand = parseCaptionsBrand(req.nextUrl.searchParams.get("brand"));
+  const parts = relative.split("/").filter(Boolean);
+  if (parts.length === 3 && parts[2] === "controls.json") {
+    const key = [captionsBrandPrefix(brand), parts[0], parts[1], "controls.json"].join("/");
+    try {
+      const raw = await readR2ObjectBuffer(key);
+      return NextResponse.json(JSON.parse(raw.toString("utf8")), {
+        headers: { "Cache-Control": "public, max-age=60" },
+      });
+    } catch {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+  }
+
   const url = resolvePreviewMediaUrl(brand, relative);
   if (!url) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });

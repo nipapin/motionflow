@@ -57,7 +57,7 @@ const CONTENT_TYPES = {
   ".aep": "application/octet-stream",
 };
 
-const PUBLIC_PREVIEW_FILES = new Set(["thumb.png", "preview.mp4"]);
+const PUBLIC_PREVIEW_FILES = new Set(["thumb.png", "preview.mp4", "controls.json"]);
 const PROTECTED_FILES = new Set([
   "project.mogrt",
   "project.aep",
