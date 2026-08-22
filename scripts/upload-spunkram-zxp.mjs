@@ -17,7 +17,6 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import Redis from "ioredis";
 
 function parseArgs(argv) {
   const opts = {
@@ -161,40 +160,60 @@ async function main() {
   );
   console.log(`  ✓ ${publicUrl(pointerKey)}`);
 
-  // Wake connected CEP panels (custom server.mjs Redis → WSS).
+  await notifyCepPanels(manifest);
+
+  console.log("[upload-zxp] done");
+}
+
+/** CEP Bearer of a signed-in user (`mfcep_…`). Redis stays on the server. */
+function bearerToken() {
+  const raw =
+    readEnvOptional("CEP_RELEASE_TOKEN") || readEnvOptional("CEP_BEARER_TOKEN") || "";
+  return raw.replace(/^Bearer\s+/i, "");
+}
+
+async function notifyCepPanels(manifest) {
+  const token = bearerToken();
+  if (!token) {
+    console.warn(
+      "[upload-zxp] WSS notify skipped: set CEP_RELEASE_TOKEN to a signed-in CEP Bearer (mfcep_…)",
+    );
+    return;
+  }
+
+  const url =
+    readEnvOptional("CEP_UPDATE_NOTIFY_URL") ||
+    "https://motionflow.pro/api/cep/update/notify";
+
   try {
-    const password = process.env.REDIS_PASSWORD;
-    const redis = new Redis({
-      host: process.env.REDIS_HOST || "127.0.0.1",
-      port: Number(process.env.REDIS_PORT) || 6379,
-      password: !password || password === "null" ? undefined : password,
-      db: Number(process.env.REDIS_DB) || 0,
-      maxRetriesPerRequest: 1,
-      lazyConnect: true,
-    });
-    await redis.connect();
-    const n = await redis.publish(
-      "cep:extension",
-      JSON.stringify({
-        type: "extension.update",
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
         version: manifest.version,
-        zxp_url: manifest.zxpUrl,
+        zxpUrl: manifest.zxpUrl,
         changelog: manifest.changelog || "",
         channel: manifest.channel,
-        published_at: manifest.publishedAt,
-        ts: Date.now(),
+        publishedAt: manifest.publishedAt,
       }),
-    );
-    await redis.quit().catch(() => redis.disconnect());
-    console.log(`  ✓ WSS notify cep:extension (subscribers≈${n})`);
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.warn(
+        `[upload-zxp] WSS notify skipped: HTTP ${res.status}${text ? ` ${text.slice(0, 200)}` : ""}`,
+      );
+      return;
+    }
+    console.log(`  ✓ WSS notify ${url}`);
   } catch (err) {
     console.warn(
       "[upload-zxp] WSS notify skipped:",
       err instanceof Error ? err.message : err,
     );
   }
-
-  console.log("[upload-zxp] done");
 }
 
 main().catch((err) => {

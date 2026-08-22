@@ -23,7 +23,7 @@ Payload: `{ type, id, name, pack_name, host, version?, image_url?, visible?, ts,
 
 ## Extension releases (Redis `cep:extension`)
 
-Published by `scripts/upload-spunkram-zxp.mjs` after R2 upload. Hub broadcasts to **all** authenticated CEP sockets.
+Published after R2 upload via `POST /api/cep/update/notify` (CEP Bearer of a signed-in user) or in-process from `publishSpunkramZxp` (GitHub webhook). Hub broadcasts to **authenticated** CEP sockets only.
 
 ```json
 {
@@ -37,7 +37,7 @@ Published by `scripts/upload-spunkram-zxp.mjs` after R2 upload. Hub broadcasts t
 }
 ```
 
-Panel re-checks `GET /api/cep/update` (Bearer → beta gate) before showing the Update banner.
+Panel re-checks `GET /api/cep/update` (Bearer required; beta allowlist → `beta.json`) before showing the Update banner.
 ## Session
 
 All CEP HTTP + WS use the same opaque Bearer `mfcep_…` (DB-hashed, revocable). Stock search/download require auth + rate limit.

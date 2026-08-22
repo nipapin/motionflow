@@ -50,10 +50,10 @@ export async function publishCepPackEvent(
   }
 }
 
-/** Notify all open CEP panels that a new ZXP is on the CDN. */
+/** Notify all open CEP panels that a new ZXP is on the CDN. Returns false if Redis is down. */
 export async function publishCepExtensionUpdate(
   event: Omit<CepExtensionUpdatePayload, "type" | "ts"> & { ts?: number },
-): Promise<void> {
+): Promise<boolean> {
   try {
     const redis = getRedis();
     await redis.connect().catch(() => {});
@@ -67,8 +67,10 @@ export async function publishCepExtensionUpdate(
       ts: event.ts ?? Date.now(),
     };
     await redis.publish(CEP_EXTENSION_CHANNEL, JSON.stringify(payload));
+    return true;
   } catch (err) {
     console.warn("[cep-events] extension publish failed", err);
+    return false;
   }
 }
 

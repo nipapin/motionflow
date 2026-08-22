@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   bearerFromRequest,
-  resolveCaptionsUser,
+  requireCaptionsAuth,
 } from "@/lib/auth/resolve-captions-user";
 import { isSpunkramBetaTester } from "@/lib/spunkram-beta";
 import {
@@ -54,11 +54,14 @@ function emptyManifest(ffmpeg: SpunkramLatestManifest["ffmpeg"]) {
 }
 
 /**
- * GET /api/cep/update — Spunkram extension update manifest.
- * Stable: R2 `latest.json` (public).
- * Beta: R2 `beta.json` only when Bearer resolves to a beta-tester email.
+ * GET /api/cep/update — Spunkram extension update manifest (signed-in CEP only).
+ * Stable: R2 `latest.json`.
+ * Beta: R2 `beta.json` when the user is on the beta-tester allowlist.
  */
 export async function GET(req: NextRequest) {
+  const auth = await requireCaptionsAuth({ bearer: bearerFromRequest(req) });
+  if (!auth.ok) return auth.response;
+
   let ffmpeg: SpunkramLatestManifest["ffmpeg"];
   try {
     ffmpeg = defaultFfmpegUrls();
@@ -78,16 +81,8 @@ export async function GET(req: NextRequest) {
     const stable = await readLatestManifestFromR2();
     let beta: SpunkramLatestManifest | null = null;
 
-    const bearer = bearerFromRequest(req);
-    if (bearer) {
-      try {
-        const user = await resolveCaptionsUser({ bearer });
-        if (user && isSpunkramBetaTester(user.email)) {
-          beta = await readBetaManifestFromR2();
-        }
-      } catch {
-        /* ignore auth errors — still return stable */
-      }
+    if (isSpunkramBetaTester(auth.user.email)) {
+      beta = await readBetaManifestFromR2();
     }
 
     let chosen: SpunkramLatestManifest | null = stable;
@@ -113,6 +108,6 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json(emptyManifest(ffmpeg), {
     status: 200,
-    headers: { "Cache-Control": "public, max-age=30" },
+    headers: { "Cache-Control": "private, max-age=30" },
   });
 }

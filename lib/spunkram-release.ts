@@ -1,6 +1,7 @@
 import "server-only";
 
 import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand } from "@aws-sdk/client-s3";
+import { publishCepExtensionUpdate } from "@/lib/cep-events";
 import {
   getR2Bucket,
   getR2Client,
@@ -119,6 +120,14 @@ export async function publishSpunkramZxp(opts: {
       CacheControl: "public, max-age=60",
     }),
   );
+
+  await publishCepExtensionUpdate({
+    version: manifest.version,
+    zxp_url: manifest.zxpUrl,
+    changelog: manifest.changelog,
+    channel: manifest.channel ?? channel,
+    published_at: manifest.publishedAt,
+  });
 
   return manifest;
 }
