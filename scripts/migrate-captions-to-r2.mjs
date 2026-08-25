@@ -7,7 +7,8 @@
  *
  * Key layout (both buckets):
  *   `{Brand Prefix}/master.aep|master.mogrt`
- *   `{Brand Prefix}/{Caption}/{file}` (flat) or `{Category}/{Caption}/{file}`
+ *   `{Brand Prefix}/Base/{Caption}/{file}` (flat export → category Base)
+ *   `{Brand Prefix}/{Category}/{Caption}/{file}` (nested)
  * Default prefixes: `Gal Captions`, `Spunkram Captions`.
  *
  * Env (same as lib/r2-storage.ts):
@@ -424,7 +425,8 @@ async function main() {
       if (f.root || (!f.category && !f.caption)) {
         key = `${destPrefix}/${f.file}`;
       } else if (!f.category) {
-        key = `${destPrefix}/${f.caption}/${f.file}`;
+        // Flat local export → `{Brand}/Base/{Caption}/{file}`
+        key = `${destPrefix}/Base/${f.caption}/${f.file}`;
       } else {
         key = `${destPrefix}/${f.category}/${f.caption}/${f.file}`;
       }

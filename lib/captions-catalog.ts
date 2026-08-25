@@ -41,7 +41,7 @@ export const CAPTION_PROJECT_FILES = CAPTION_DOWNLOAD_FILES;
 /** Shared template id for POST /api/captions `{ id: "master", file: "aep"|"mogrt" }`. */
 export const MASTER_CAPTION_ID = "master";
 
-/** Flat layout (no category folder) groups presets under this catalog category. */
+/** Flat layout (no category folder on disk) is catalogued / stored under `Base`. */
 export const FLAT_CAPTIONS_CATEGORY = "Base";
 
 /** Skip AE project footage folders when listing. */
@@ -143,10 +143,7 @@ function previewMediaUrl(
   caption: string,
   file: string,
 ): string {
-  // Flat layout stores files under `{Brand}/{Caption}/file` (category is virtual).
-  if (category === FLAT_CAPTIONS_CATEGORY) {
-    return r2PublicUrlForKey([captionsBrandPrefix(brand), caption, file].join("/"));
-  }
+  // Always include category: `{Brand}/Base/Base Caption 14/thumb.png`
   return r2PublicUrlForKey(objectKey(brand, category, caption, file));
 }
 
@@ -391,10 +388,12 @@ export async function resolveProjectFile(
   if (!split) return null;
 
   const fileName = CAPTION_DOWNLOAD_FILES.definition;
-  const keys =
-    split.category === FLAT_CAPTIONS_CATEGORY
-      ? [[captionsBrandPrefix(brand), split.caption, fileName].join("/")]
-      : [objectKey(brand, split.category, split.caption, fileName)];
+  // Prefer nested `{Brand}/{Category}/{Caption}/definition.json`;
+  // fall back to legacy flat `{Brand}/{Caption}/definition.json`.
+  const keys = [
+    objectKey(brand, split.category, split.caption, fileName),
+    [captionsBrandPrefix(brand), split.caption, fileName].join("/"),
+  ];
 
   for (const key of keys) {
     for (const bucket of buckets) {
