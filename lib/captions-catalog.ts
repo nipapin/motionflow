@@ -30,13 +30,22 @@ export const CAPTION_PREVIEW_FILES = new Set([
 
 /** Downloadable files — only via authenticated POST /api/captions. */
 export const CAPTION_DOWNLOAD_FILES = {
-  mogrt: "project.mogrt",
-  aep: "project.aep",
+  mogrt: "master.mogrt",
+  aep: "master.aep",
   definition: "definition.json",
 } as const;
 
 /** @deprecated alias — use CAPTION_DOWNLOAD_FILES */
 export const CAPTION_PROJECT_FILES = CAPTION_DOWNLOAD_FILES;
+
+/** Shared template id for POST /api/captions `{ id: "master", file: "aep"|"mogrt" }`. */
+export const MASTER_CAPTION_ID = "master";
+
+/** Flat layout (no category folder) groups presets under this catalog category. */
+export const FLAT_CAPTIONS_CATEGORY = "Base";
+
+/** Skip AE project footage folders when listing. */
+const SKIP_CAPTION_FOLDERS = new Set(["(Footage)", "Footage"]);
 
 export type CaptionProjectFileKind = keyof typeof CAPTION_DOWNLOAD_FILES;
 
@@ -123,12 +132,21 @@ function objectKey(
   return [captionsBrandPrefix(brand), category, caption, file].join("/");
 }
 
+/** Brand-root key for the shared master template: `{Brand}/master.aep`. */
+function masterObjectKey(brand: CaptionsBrand, file: string): string {
+  return [captionsBrandPrefix(brand), file].join("/");
+}
+
 function previewMediaUrl(
   brand: CaptionsBrand,
   category: string,
   caption: string,
   file: string,
 ): string {
+  // Flat layout stores files under `{Brand}/{Caption}/file` (category is virtual).
+  if (category === FLAT_CAPTIONS_CATEGORY) {
+    return r2PublicUrlForKey([captionsBrandPrefix(brand), caption, file].join("/"));
+  }
   return r2PublicUrlForKey(objectKey(brand, category, caption, file));
 }
 
@@ -140,15 +158,17 @@ function isNotFoundError(e: unknown): boolean {
 }
 
 type CaptionEntry = { category: string; caption: string; file: string };
+type MasterFlags = { mogrt: boolean; aep: boolean };
 
 async function listCaptionObjectsInBucket(
   bucket: string,
   brand: CaptionsBrand,
-): Promise<CaptionEntry[]> {
+): Promise<{ entries: CaptionEntry[]; master: MasterFlags }> {
   const client = getR2Client();
   const prefix = `${captionsBrandPrefix(brand)}/`;
 
   const entries: CaptionEntry[] = [];
+  const master: MasterFlags = { mogrt: false, aep: false };
   let continuationToken: string | undefined;
 
   do {
@@ -165,17 +185,33 @@ async function listCaptionObjectsInBucket(
       const key = obj.Key;
       if (!key) continue;
       const rel = key.slice(prefix.length);
-      const parts = rel.split("/");
-      if (parts.length !== 3) continue; // expect Category/Caption/file
-      const [category, caption, file] = parts;
-      if (!category || !caption || !file) continue;
-      entries.push({ category, caption, file });
+      const parts = rel.split("/").filter(Boolean);
+      if (parts.length === 1) {
+        // Brand-root: master.aep / master.mogrt
+        if (parts[0] === CAPTION_DOWNLOAD_FILES.mogrt) master.mogrt = true;
+        else if (parts[0] === CAPTION_DOWNLOAD_FILES.aep) master.aep = true;
+        continue;
+      }
+      if (parts.length === 2) {
+        // Flat: {Caption}/{file}
+        const [caption, file] = parts;
+        if (!caption || !file || SKIP_CAPTION_FOLDERS.has(caption)) continue;
+        entries.push({ category: FLAT_CAPTIONS_CATEGORY, caption, file });
+        continue;
+      }
+      if (parts.length === 3) {
+        // Nested: {Category}/{Caption}/{file}
+        const [category, caption, file] = parts;
+        if (!category || !caption || !file) continue;
+        if (SKIP_CAPTION_FOLDERS.has(category) || SKIP_CAPTION_FOLDERS.has(caption)) continue;
+        entries.push({ category, caption, file });
+      }
     }
 
     continuationToken = res.IsTruncated ? res.NextContinuationToken : undefined;
   } while (continuationToken);
 
-  return entries;
+  return { entries, master };
 }
 
 /**
@@ -183,27 +219,34 @@ async function listCaptionObjectsInBucket(
  * During migration, protected files may still exist only on public — include
  * those flags so the catalog stays accurate until public copies are deleted.
  */
-async function listCaptionObjects(brand: CaptionsBrand): Promise<CaptionEntry[]> {
+async function listCaptionObjects(
+  brand: CaptionsBrand,
+): Promise<{ entries: CaptionEntry[]; master: MasterFlags }> {
   const pub = publicBucket();
   const priv = privateBucket();
 
-  const [publicEntries, privateEntries] = await Promise.all([
+  const [publicList, privateList] = await Promise.all([
     listCaptionObjectsInBucket(pub, brand),
     pub === priv
-      ? Promise.resolve([] as CaptionEntry[])
+      ? Promise.resolve({ entries: [] as CaptionEntry[], master: { mogrt: false, aep: false } })
       : listCaptionObjectsInBucket(priv, brand),
   ]);
 
   const byKey = new Map<string, CaptionEntry>();
-  for (const e of publicEntries) {
-    // Prefer private for protected filenames when both exist; still accept
-    // public protected during cutover so catalog flags stay true.
+  for (const e of publicList.entries) {
     byKey.set(`${e.category}/${e.caption}/${e.file}`, e);
   }
-  for (const e of privateEntries) {
+  for (const e of privateList.entries) {
     byKey.set(`${e.category}/${e.caption}/${e.file}`, e);
   }
-  return Array.from(byKey.values());
+
+  return {
+    entries: Array.from(byKey.values()),
+    master: {
+      mogrt: publicList.master.mogrt || privateList.master.mogrt,
+      aep: publicList.master.aep || privateList.master.aep,
+    },
+  };
 }
 
 type CaptionFlags = {
@@ -229,7 +272,7 @@ export async function buildCaptionsTree(
     if (cached && cached.expiresAt > Date.now()) return cached.tree;
   }
 
-  const entries = await listCaptionObjects(brand);
+  const { entries, master } = await listCaptionObjects(brand);
 
   const categoryOrder: string[] = [];
   const categoryMap = new Map<string, Map<string, CaptionFlags>>();
@@ -253,10 +296,11 @@ export async function buildCaptionsTree(
     const flags = captions.get(caption)!;
     if (file === "thumb.png") flags.thumb = true;
     else if (file === "preview.mp4") flags.preview = true;
-    else if (file === CAPTION_DOWNLOAD_FILES.mogrt) flags.mogrt = true;
-    else if (file === CAPTION_DOWNLOAD_FILES.aep) flags.aep = true;
-    else if (file === CAPTION_DOWNLOAD_FILES.definition) flags.definition = true;
     else if (file === "controls.json") flags.controls = true;
+    else if (file === "definition.json" || file === CAPTION_DOWNLOAD_FILES.definition) {
+      flags.definition = true;
+    }
+    // Per-style project.* ignored — shared master sets mogrt/aep below.
   }
 
   categoryOrder.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
@@ -272,16 +316,8 @@ export async function buildCaptionsTree(
     for (const captionName of captionNames) {
       const flags = captionsMap.get(captionName)!;
 
-      if (
-        !flags.thumb &&
-        !flags.preview &&
-        !flags.mogrt &&
-        !flags.aep &&
-        !flags.definition &&
-        !flags.controls
-      ) {
-        continue;
-      }
+      // Presets are folders with controls.json (and optional thumb/preview).
+      if (!flags.controls && !flags.thumb && !flags.preview) continue;
 
       captions.push({
         id: `${categoryName}/${captionName}`,
@@ -297,8 +333,9 @@ export async function buildCaptionsTree(
           ? previewMediaUrl(brand, categoryName, captionName, "controls.json")
           : null,
         files: {
-          mogrt: flags.mogrt,
-          aep: flags.aep,
+          // Shared master template — same for every preset.
+          mogrt: master.mogrt,
+          aep: master.aep,
           definition: flags.definition,
         },
       });
@@ -318,32 +355,56 @@ export async function buildCaptionsTree(
   return tree;
 }
 
-/** Resolve `{id, kind}` → R2 object key, verifying the object exists (private first). */
+/**
+ * Resolve `{id, kind}` → R2 object key.
+ * For mogrt/aep: always the shared brand-root `master.aep` / `master.mogrt`
+ * (id may be `"master"` or any catalog caption id).
+ * For definition: per-caption `definition.json` if present.
+ */
 export async function resolveProjectFile(
   brand: CaptionsBrand,
   id: string,
   kind: CaptionProjectFileKind,
 ): Promise<{ key: string; filename: string; bucket: string } | null> {
-  const split = splitCaptionId(id);
-  if (!split) return null;
-
-  const fileName = CAPTION_DOWNLOAD_FILES[kind];
-  const key = objectKey(brand, split.category, split.caption, fileName);
-
   const client = getR2Client();
   const buckets = [privateBucket(), publicBucket()].filter(
     (b, i, arr) => arr.indexOf(b) === i,
   );
 
-  for (const bucket of buckets) {
-    try {
-      await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
-      const ext = extname(fileName);
-      const filename = kind === "definition" ? "definition.json" : `${split.caption}${ext}`;
-      return { key, filename, bucket };
-    } catch (e) {
-      if (isNotFoundError(e)) continue;
-      throw e;
+  if (kind === "mogrt" || kind === "aep") {
+    const fileName = CAPTION_DOWNLOAD_FILES[kind];
+    const key = masterObjectKey(brand, fileName);
+    for (const bucket of buckets) {
+      try {
+        await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+        return { key, filename: fileName, bucket };
+      } catch (e) {
+        if (isNotFoundError(e)) continue;
+        throw e;
+      }
+    }
+    return null;
+  }
+
+  // definition — per caption folder
+  const split = splitCaptionId(id);
+  if (!split) return null;
+
+  const fileName = CAPTION_DOWNLOAD_FILES.definition;
+  const keys =
+    split.category === FLAT_CAPTIONS_CATEGORY
+      ? [[captionsBrandPrefix(brand), split.caption, fileName].join("/")]
+      : [objectKey(brand, split.category, split.caption, fileName)];
+
+  for (const key of keys) {
+    for (const bucket of buckets) {
+      try {
+        await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+        return { key, filename: "definition.json", bucket };
+      } catch (e) {
+        if (isNotFoundError(e)) continue;
+        throw e;
+      }
     }
   }
 
@@ -368,8 +429,8 @@ export function mimeForFilename(fileName: string): string {
 
 /**
  * Resolve the public CDN URL for a known preview asset (`thumb.png` /
- * `preview.mp4`) at `Category/Caption/file`. Returns `null` for anything
- * else (protected files never get a direct public URL).
+ * `preview.mp4` / `controls.json`) at `Category/Caption/file` or flat
+ * `Caption/file`. Returns `null` for anything else.
  */
 export function resolvePreviewMediaUrl(
   brand: CaptionsBrand,
@@ -377,6 +438,11 @@ export function resolvePreviewMediaUrl(
 ): string | null {
   const raw = relativePath.replace(/\\/g, "/");
   const parts = raw.split("/").filter((p) => p.length > 0 && p !== "." && p !== "..");
+  if (parts.length === 2) {
+    const [caption, file] = parts;
+    if (!CAPTION_PREVIEW_FILES.has(file)) return null;
+    return previewMediaUrl(brand, FLAT_CAPTIONS_CATEGORY, caption, file);
+  }
   if (parts.length !== 3) return null;
 
   const [category, caption, file] = parts;

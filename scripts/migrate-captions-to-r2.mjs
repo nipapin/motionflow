@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 /**
  * Upload the local captions library into R2:
- *   - thumb.png / preview.mp4 → R2_PUBLIC_BUCKET (CDN)
- *   - project.mogrt / project.aep / definition.json → R2_BUCKET (private;
+ *   - thumb.png / preview.mp4 / controls.json → R2_PUBLIC_BUCKET (CDN)
+ *   - master.mogrt / master.aep → R2_BUCKET (private;
  *     served only via authenticated POST /api/captions)
  *
- * Key layout (both buckets): `{Brand Prefix}/{Category}/{Caption}/{file}`
+ * Key layout (both buckets):
+ *   `{Brand Prefix}/master.aep|master.mogrt`
+ *   `{Brand Prefix}/{Caption}/{file}` (flat) or `{Category}/{Caption}/{file}`
  * Default prefixes: `Gal Captions`, `Spunkram Captions`.
  *
  * Env (same as lib/r2-storage.ts):
@@ -59,10 +61,13 @@ const CONTENT_TYPES = {
 
 const PUBLIC_PREVIEW_FILES = new Set(["thumb.png", "preview.mp4", "controls.json"]);
 const PROTECTED_FILES = new Set([
+  "master.mogrt",
+  "master.aep",
   "project.mogrt",
   "project.aep",
   "definition.json",
 ]);
+const SKIP_DIRS = new Set(["(Footage)", "Footage"]);
 
 function parseArgs(argv) {
   const opts = {
@@ -163,15 +168,56 @@ async function listDirs(dir) {
   }
 }
 
-/** Discover `{Category}/{Caption}/{file}` triples under the local source root. */
+/** Discover files under the local source root.
+ * Supports:
+ * - brand-root `master.aep` / `master.mogrt`
+ * - flat `{Caption}/{file}` (export layout)
+ * - nested `{Category}/{Caption}/{file}`
+ */
 async function discoverFiles(sourceRoot) {
   const files = [];
-  const categories = await listDirs(sourceRoot);
-  for (const category of categories) {
-    const categoryDir = path.join(sourceRoot, category);
-    const captions = await listDirs(categoryDir);
+
+  // Brand-root protected templates
+  for (const file of ["master.aep", "master.mogrt"]) {
+    const absolutePath = path.join(sourceRoot, file);
+    try {
+      const st = await stat(absolutePath);
+      if (st.isFile()) {
+        files.push({ category: "", caption: "", file, absolutePath, size: st.size, root: true });
+      }
+    } catch {
+      /* missing */
+    }
+  }
+
+  const topDirs = await listDirs(sourceRoot);
+  for (const top of topDirs) {
+    if (SKIP_DIRS.has(top)) continue;
+    const topDir = path.join(sourceRoot, top);
+    let topEntries;
+    try {
+      topEntries = await readdir(topDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    const hasControls = topEntries.some((e) => e.isFile() && e.name === "controls.json");
+    if (hasControls) {
+      // Flat: {Caption}/{file}
+      for (const entry of topEntries) {
+        if (!entry.isFile()) continue;
+        const absolutePath = path.join(topDir, entry.name);
+        const { size } = await stat(absolutePath);
+        files.push({ category: "", caption: top, file: entry.name, absolutePath, size });
+      }
+      continue;
+    }
+
+    // Nested: {Category}/{Caption}/{file}
+    const captions = topEntries.filter((e) => e.isDirectory()).map((e) => e.name);
     for (const caption of captions) {
-      const captionDir = path.join(categoryDir, caption);
+      if (SKIP_DIRS.has(caption)) continue;
+      const captionDir = path.join(topDir, caption);
       let entries;
       try {
         entries = await readdir(captionDir, { withFileTypes: true });
@@ -182,7 +228,7 @@ async function discoverFiles(sourceRoot) {
         if (!entry.isFile()) continue;
         const absolutePath = path.join(captionDir, entry.name);
         const { size } = await stat(absolutePath);
-        files.push({ category, caption, file: entry.name, absolutePath, size });
+        files.push({ category: top, caption, file: entry.name, absolutePath, size });
       }
     }
   }
@@ -374,7 +420,14 @@ async function main() {
   const uploads = [];
   for (const f of files) {
     for (const destPrefix of opts.dest) {
-      const key = `${destPrefix}/${f.category}/${f.caption}/${f.file}`;
+      let key;
+      if (f.root || (!f.category && !f.caption)) {
+        key = `${destPrefix}/${f.file}`;
+      } else if (!f.category) {
+        key = `${destPrefix}/${f.caption}/${f.file}`;
+      } else {
+        key = `${destPrefix}/${f.category}/${f.caption}/${f.file}`;
+      }
       const bucket = bucketForFile(f.file, publicBucket, privateBucket);
       uploads.push({ ...f, key, bucket });
     }
