@@ -423,7 +423,8 @@ async function main() {
     for (const destPrefix of opts.dest) {
       let key;
       if (f.root || (!f.category && !f.caption)) {
-        key = `${destPrefix}/${f.file}`;
+        // Shared master → `{Brand}/Base/master.aep` (same category folder as presets)
+        key = `${destPrefix}/Base/${f.file}`;
       } else if (!f.category) {
         // Flat local export → `{Brand}/Base/{Caption}/{file}`
         key = `${destPrefix}/Base/${f.caption}/${f.file}`;

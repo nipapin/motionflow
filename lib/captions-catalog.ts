@@ -132,9 +132,17 @@ function objectKey(
   return [captionsBrandPrefix(brand), category, caption, file].join("/");
 }
 
-/** Brand-root key for the shared master template: `{Brand}/master.aep`. */
-function masterObjectKey(brand: CaptionsBrand, file: string): string {
-  return [captionsBrandPrefix(brand), file].join("/");
+/** Brand-root or category-root key for shared master: `{Brand}/master.aep` or `{Brand}/Base/master.aep`. */
+function masterObjectKeys(brand: CaptionsBrand, file: string): string[] {
+  const prefix = captionsBrandPrefix(brand);
+  return [
+    [prefix, file].join("/"),
+    [prefix, FLAT_CAPTIONS_CATEGORY, file].join("/"),
+  ];
+}
+
+function isMasterProjectFile(file: string): boolean {
+  return file === CAPTION_DOWNLOAD_FILES.mogrt || file === CAPTION_DOWNLOAD_FILES.aep;
 }
 
 function previewMediaUrl(
@@ -190,10 +198,19 @@ async function listCaptionObjectsInBucket(
         continue;
       }
       if (parts.length === 2) {
+        const [first, file] = parts;
+        if (!first || !file || SKIP_CAPTION_FOLDERS.has(first)) continue;
+        // `{Category}/master.mogrt` (e.g. Base/master.mogrt)
+        if (file === CAPTION_DOWNLOAD_FILES.mogrt) {
+          master.mogrt = true;
+          continue;
+        }
+        if (file === CAPTION_DOWNLOAD_FILES.aep) {
+          master.aep = true;
+          continue;
+        }
         // Flat: {Caption}/{file}
-        const [caption, file] = parts;
-        if (!caption || !file || SKIP_CAPTION_FOLDERS.has(caption)) continue;
-        entries.push({ category: FLAT_CAPTIONS_CATEGORY, caption, file });
+        entries.push({ category: FLAT_CAPTIONS_CATEGORY, caption: first, file });
         continue;
       }
       if (parts.length === 3) {
@@ -201,6 +218,11 @@ async function listCaptionObjectsInBucket(
         const [category, caption, file] = parts;
         if (!category || !caption || !file) continue;
         if (SKIP_CAPTION_FOLDERS.has(category) || SKIP_CAPTION_FOLDERS.has(caption)) continue;
+        if (isMasterProjectFile(file)) {
+          if (file === CAPTION_DOWNLOAD_FILES.mogrt) master.mogrt = true;
+          if (file === CAPTION_DOWNLOAD_FILES.aep) master.aep = true;
+          continue;
+        }
         entries.push({ category, caption, file });
       }
     }
@@ -370,14 +392,16 @@ export async function resolveProjectFile(
 
   if (kind === "mogrt" || kind === "aep") {
     const fileName = CAPTION_DOWNLOAD_FILES[kind];
-    const key = masterObjectKey(brand, fileName);
-    for (const bucket of buckets) {
-      try {
-        await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
-        return { key, filename: fileName, bucket };
-      } catch (e) {
-        if (isNotFoundError(e)) continue;
-        throw e;
+    const keys = masterObjectKeys(brand, fileName);
+    for (const key of keys) {
+      for (const bucket of buckets) {
+        try {
+          await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+          return { key, filename: fileName, bucket };
+        } catch (e) {
+          if (isNotFoundError(e)) continue;
+          throw e;
+        }
       }
     }
     return null;
