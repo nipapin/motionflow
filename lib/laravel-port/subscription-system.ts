@@ -36,6 +36,7 @@ export interface SubscriptionRow extends RowDataPacket {
     system: string | null;
     ends_at: Date | string | null;
     trial_ends_at: Date | string | null;
+    paddle_billing_period_ends_at?: Date | string | null;
     created_at: Date | string | null;
     updated_at: Date | string | null;
     /* Joined buyer columns. */
@@ -92,6 +93,7 @@ export function subscriptionStatusLabel(
         case 0:
             return "cancelled";
         case -1:
+            // Caller may override to "active" while paid period remains.
             return "expired";
         default:
             return "on-hold";
@@ -137,18 +139,33 @@ function buildResponseData(row: SubscriptionRow): SubscriptionCheckResponse {
     const subscription = rowToSerializableSubscription(row);
 
     const now = new Date();
-    const isLifetime = row.plan === "lifetime" || !row.ends_at;
     const endsAt = toDateOrNull(row.ends_at);
+    const billingPeriodEndsAt = toDateOrNull(row.paddle_billing_period_ends_at ?? null);
+    // Later of the two — recovers access when ends_at was wrongly shortened on cancel.
+    let periodEnd = endsAt;
+    if (billingPeriodEndsAt && (!periodEnd || billingPeriodEndsAt.getTime() > periodEnd.getTime())) {
+        periodEnd = billingPeriodEndsAt;
+    }
+    const isLifetime = row.plan === "lifetime" || (!row.ends_at && !row.paddle_billing_period_ends_at);
     const trialEndsAt = toDateOrNull(row.trial_ends_at);
 
     const isExpiredByEndDate =
-        !isLifetime && endsAt != null && endsAt.getTime() <= now.getTime();
+        !isLifetime && periodEnd != null && periodEnd.getTime() <= now.getTime();
     const isExpiredByTrialDate =
         !isLifetime && trialEndsAt != null && trialEndsAt.getTime() <= now.getTime();
     const expiredWhileActive =
         Number(row.status) === 1 && (isExpiredByEndDate || isExpiredByTrialDate);
 
-    const statusLabel = subscriptionStatusLabel(Number(row.status), expiredWhileActive);
+    // Cancelled in DB (status=-1) but paid period still open → keep plugin access
+    // as "active" until period end (same grace as marketplace downloads).
+    const cancelledButPaidPeriodLeft =
+        Number(row.status) === -1 &&
+        periodEnd != null &&
+        periodEnd.getTime() > now.getTime();
+
+    const statusLabel = cancelledButPaidPeriodLeft
+        ? "active"
+        : subscriptionStatusLabel(Number(row.status), expiredWhileActive);
     subscription.status = statusLabel;
 
     const billingFirstName = (row.buyer_first_name ?? "").trim();

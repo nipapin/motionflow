@@ -325,6 +325,29 @@ function pickEndsAt(sub: PaddleSubscription): string | null {
   return raw ? toMysqlDateTime(raw) : null;
 }
 
+/**
+ * SQL expression that never shortens `ends_at` when applying an optional
+ * incoming Paddle date. Also takes the later of existing `ends_at` and
+ * `paddle_billing_period_ends_at` so a previously truncated cancel cannot
+ * leave the row without a paid period end.
+ *
+ * Sentinel `1000-01-01` is only used inside GREATEST for null-safe max;
+ * NULLIF restores null when no real date exists.
+ */
+const ENDS_AT_NEVER_SHORTEN_SQL = `\`ends_at\` = NULLIF(
+  GREATEST(
+    COALESCE(?, '1000-01-01'),
+    COALESCE(\`ends_at\`, '1000-01-01'),
+    COALESCE(\`paddle_billing_period_ends_at\`, '1000-01-01')
+  ),
+  '1000-01-01'
+)`;
+
+/** Bind params for {@link ENDS_AT_NEVER_SHORTEN_SQL} (incoming MySQL datetime or null). */
+function endsAtNeverShortenParams(incoming: string | null): [string | null] {
+  return [incoming];
+}
+
 /** Converts a nullable billing-period object to MySQL-formatted start/end pair. */
 function pickBillingPeriod(
   p: { starts_at?: string | null; ends_at?: string | null } | null | undefined,
@@ -1262,13 +1285,16 @@ export async function refreshSubscription(sub: PaddleSubscription): Promise<{
   // MySQL doesn't accept booleans as bind params — pass as tinyint.
   const clear = clearScheduledChange ? 1 : 0;
 
+  // Never shorten ends_at: subscription.updated with status=canceled (or a
+  // truncated period) must not revoke paid access before period end. Renewals
+  // still extend via GREATEST when the incoming date is later.
   const pool = getPool();
   const [result] = await pool.execute<ResultSetHeader>(
     `UPDATE \`${SUBSCRIPTIONS_TABLE}\`
         SET \`status\`        = ?,
             \`plan\`          = ?,
             \`trial_ends_at\` = ?,
-            \`ends_at\`       = COALESCE(?, \`ends_at\`),
+            ${ENDS_AT_NEVER_SHORTEN_SQL},
             \`paddle_product_id\` = COALESCE(?, \`paddle_product_id\`),
             \`paddle_price_id\`   = COALESCE(?, \`paddle_price_id\`),
             \`paddle_product_name\` = COALESCE(?, \`paddle_product_name\`),
@@ -1286,7 +1312,7 @@ export async function refreshSubscription(sub: PaddleSubscription): Promise<{
       status,
       plan,
       trialEndsAt,
-      endsAt,
+      ...endsAtNeverShortenParams(endsAt),
       paddleProductId,
       paddlePriceId,
       paddleProductName,
@@ -1311,6 +1337,11 @@ export async function refreshSubscription(sub: PaddleSubscription): Promise<{
 /**
  * Marks a subscription as canceled (status = -1) in the DB if we already track it.
  *
+ * Access continues until `ends_at` (paid period end). We never shorten that
+ * date from the cancel payload — Paddle sets `current_billing_period` to null
+ * on canceled subs, and any truncated date must not revoke paid access early.
+ * If `ends_at` is missing, backfill from `paddle_billing_period_ends_at`.
+ *
  * IMPORTANT: This intentionally does NOT insert a new row when no existing row
  * is found. Paddle fires `subscription.canceled` for subscriptions that were
  * created but never paid for (abandoned checkouts) — we don't care about those
@@ -1327,10 +1358,10 @@ export async function markSubscriptionCanceled(
   const [result] = await pool.execute<ResultSetHeader>(
     `UPDATE \`${SUBSCRIPTIONS_TABLE}\`
         SET \`status\`     = -1,
-            \`ends_at\`    = COALESCE(?, \`ends_at\`),
+            ${ENDS_AT_NEVER_SHORTEN_SQL},
             \`updated_at\` = NOW()
       WHERE \`subscription_id\` = ?`,
-    [endsAt, sub.id],
+    [...endsAtNeverShortenParams(endsAt), sub.id],
   );
 
   if (result.affectedRows === 0) {

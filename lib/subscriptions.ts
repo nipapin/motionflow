@@ -221,7 +221,8 @@ function formatDateDMY(raw: string | null): string | null {
 const TABLE = "subscription_systems";
 
 const LIST_SUBSCRIPTION_SQL = `SELECT id, author_id, status, subscription_id, plan, ends_at, created_at,
-            paddle_product_id, paddle_price_id, paddle_product_name
+            paddle_product_id, paddle_price_id, paddle_product_name,
+            paddle_billing_period_ends_at
      FROM \`${TABLE}\`
      WHERE buyer_id = ?
      ORDER BY id DESC`;
@@ -232,17 +233,28 @@ function endsAtStillValid(endsAt: string | null): boolean {
   return new Date(endsAt) > new Date();
 }
 
+/** Paid period end for access checks: later of `ends_at` and billing period end. */
+function rowPeriodEnd(r: SubRow): string | null {
+  const a = r.ends_at;
+  const b = r.paddle_billing_period_ends_at;
+  if (!a) return b ?? null;
+  if (!b) return a;
+  return new Date(a) >= new Date(b) ? a : b;
+}
+
 function computeRowActiveState(r: SubRow): { active: boolean; cancelled: boolean } {
   let active = false;
   let cancelled = false;
+  const periodEnd = rowPeriodEnd(r);
 
-  if (r.ends_at && r.status === -1) {
+  if (r.status === -1) {
     cancelled = true;
-    if (endsAtStillValid(r.ends_at)) {
+    // Need a known future period end — cancelled + null must not grant forever access.
+    if (periodEnd && endsAtStillValid(periodEnd)) {
       active = true;
     }
   } else if (r.status === 1) {
-    active = endsAtStillValid(r.ends_at);
+    active = endsAtStillValid(periodEnd);
   }
 
   return { active, cancelled };
@@ -258,7 +270,8 @@ export async function getSubscriptionsForUser(
     const pres = resolveSubscriptionPresentation(r);
 
     const { active, cancelled } = computeRowActiveState(r);
-    const endDate: string | null = formatDateDMY(r.ends_at);
+    const periodEnd = rowPeriodEnd(r);
+    const endDate: string | null = formatDateDMY(periodEnd);
 
     return {
       subscriptionSystemsRowId: Number(r.id),
@@ -271,7 +284,7 @@ export async function getSubscriptionsForUser(
       active,
       cancelled,
       endDate,
-      endsAt: r.ends_at ?? null,
+      endsAt: periodEnd,
     };
   });
 }

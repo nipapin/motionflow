@@ -43,6 +43,7 @@ type SubRow = RowDataPacket & {
   status: number;
   plan: string | null;
   ends_at: string | null;
+  paddle_billing_period_ends_at: string | null;
   paddle_product_name: string | null;
   paddle_price_id: string | null;
 };
@@ -52,11 +53,20 @@ function endsAtStillValid(endsAt: string | null): boolean {
   return new Date(endsAt) > new Date();
 }
 
+function rowPeriodEnd(r: SubRow): string | null {
+  const a = r.ends_at;
+  const b = r.paddle_billing_period_ends_at;
+  if (!a) return b ?? null;
+  if (!b) return a;
+  return new Date(a) >= new Date(b) ? a : b;
+}
+
 function rowIsActive(r: SubRow): boolean {
-  if (r.ends_at && r.status === -1) {
-    return endsAtStillValid(r.ends_at);
+  const periodEnd = rowPeriodEnd(r);
+  if (r.status === -1) {
+    return Boolean(periodEnd) && endsAtStillValid(periodEnd);
   }
-  if (r.status === 1) return endsAtStillValid(r.ends_at);
+  if (r.status === 1) return endsAtStillValid(periodEnd);
   return false;
 }
 
@@ -79,7 +89,8 @@ export async function getActiveAuthorSubscription(
 ): Promise<CepAuthorSubscription> {
   const pool = getPool();
   const [rows] = await pool.execute<SubRow[]>(
-    `SELECT id, author_id, status, plan, ends_at, paddle_product_name, paddle_price_id
+    `SELECT id, author_id, status, plan, ends_at, paddle_billing_period_ends_at,
+            paddle_product_name, paddle_price_id
      FROM \`${SUB_TABLE}\`
      WHERE buyer_id = ? AND author_id = ?
      ORDER BY id DESC`,
@@ -110,7 +121,7 @@ export async function getActiveAuthorSubscription(
     active: true,
     plan: planLabel,
     status: cancelled ? "cancelled" : "active",
-    renews_at: toIsoDate(active.ends_at),
+    renews_at: toIsoDate(rowPeriodEnd(active)),
     tierId,
   };
 }
