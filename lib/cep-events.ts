@@ -74,6 +74,35 @@ export async function publishCepExtensionUpdate(
   }
 }
 
+/** Fan-out immediate device revoke so open WS sockets are kicked. */
+export const CEP_DEVICE_CHANNEL = "cep:device";
+
+export type CepDeviceRevokedPayload = {
+  type: "device.revoked";
+  user_id: number;
+  device_id: number;
+  ts: number;
+};
+
+export async function publishCepDeviceRevoked(opts: {
+  userId: number;
+  deviceId: number;
+}): Promise<void> {
+  try {
+    const redis = getRedis();
+    await redis.connect().catch(() => {});
+    const payload: CepDeviceRevokedPayload = {
+      type: "device.revoked",
+      user_id: opts.userId,
+      device_id: opts.deviceId,
+      ts: Date.now(),
+    };
+    await redis.publish(CEP_DEVICE_CHANNEL, JSON.stringify(payload));
+  } catch (err) {
+    console.warn("[cep-events] device revoked publish failed", err);
+  }
+}
+
 export function packSlug(name: string): string {
   return name
     .trim()

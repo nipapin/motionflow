@@ -54,6 +54,51 @@ When complete:
 }
 ```
 
+When the account is already at the **device limit** (default **3**, override with `CEP_DEVICE_LIMIT`):
+
+```json
+{
+  "status": "device_limit",
+  "device_limit": 3,
+  "message": "Device limit reached. Revoke another device to continue signing in.",
+  "devices": [
+    {
+      "id": "dev_123",
+      "name": "optional label",
+      "ip": "1.2.3.4",
+      "user_fingerprint": "{…}",
+      "last_seen_at": "2026-08-29T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+Browser confirm (`POST /api/cep/auth/confirm` approve) may return `{ "ok": true, "status": "device_limit" }` — the panel keeps polling and shows a picker; it does not receive a token yet.
+
+### 1.2b Replace a device (finish login at limit)
+
+`POST /api/cep/auth/replace-device`
+
+```json
+{
+  "code": "ABCD-EFGH",
+  "device_code": "<secret>",
+  "revoke_device_id": "dev_123"
+}
+```
+
+Revokes the chosen device (must belong to the pending session’s user), creates this panel’s device + Bearer, publishes `device.revoked` over Redis so the kicked socket is closed immediately, and returns the same shape as a successful token poll:
+
+```json
+{
+  "status": "complete",
+  "token": "mfcep_…",
+  "user": { "id": "user_123", "email": "…", "name": "…" }
+}
+```
+
+Same-MAC re-login still rotates the existing device token and does **not** consume an extra slot.
+
 Store `token` securely. Use it as Bearer on every subsequent CEP call.
 
 ### 1.3 Session check (optional)
@@ -286,6 +331,57 @@ Server dedupes identical user+device+host+os+extension within ~12 hours.
 
 See CEP `docs/BACKEND_CEP_API.md` §6.0 and migration `db/migrations/2026_08_11_cep_client_sessions.sql`.
 
+### Installed packs snapshot
+
+`POST /api/cep/telemetry/installs` — full snapshot of packs currently on disk for this device. Bearer required.
+
+Preferred body (with on-disk versions):
+
+```json
+{
+  "packs": [
+    { "pack_id": 12, "version": "1.2.0" },
+    { "pack_id": 45, "version": "2.0.1" }
+  ]
+}
+```
+
+Legacy body still accepted: `{ "pack_ids": [12, 45, 90] }`.
+
+- Replaces the previous snapshot for that `cep_devices` row (`cep_device_installs`, optional `version` column).
+- Only pack ids belonging to the device client’s author (and not soft-deleted) are stored; others are rejected.
+- Cap: 200 entries per request.
+- Used by admin **Extensions Users** Packs modal → **Installed on disk**.
+
+Migration: `db/migrations/2026_08_29_cep_device_installs.sql`.
+
+### Active packs (in use)
+
+`POST /api/cep/telemetry/active-packs` — packs currently open / focused in the host app. Bearer required.
+
+```json
+{ "pack_ids": [12] }
+```
+
+- Full snapshot per device (`cep_device_active_packs`); send `[]` when nothing is active.
+- Cap: 50 ids. Same author-scoped allowlist as installs.
+- Used by admin Packs modal → **Active now**.
+
+Migration: `db/migrations/2026_08_29_cep_device_active_packs.sql`.
+
+### Error reports
+
+`POST /api/cep/support/report` — CEP error observer.
+
+- Accepts registered CEP clients (e.g. `spunkram-cep`, `motionflow-davinci`).
+- When `Authorization: Bearer mfcep_…` is present, the report is persisted to `cep_error_reports` (linked to `user_id` + `device_id`) for the Extensions Users admin list.
+- Without Bearer: still accepted; Telegram for `severity: "error"` only; no DB row.
+- `severity: "warning" | "info"`: accepted (and persisted if authenticated); Telegram is skipped.
+
+Migration: `db/migrations/2026_08_29_cep_error_reports.sql`.
+
+Admin UI: `/profile/extensions` (packages-admin emails) — users grouped by account; **Devices** modal (Revoke); **Packs** modal (purchased/entitled, installed, active).
+
 ---
 
 ## 5. Admin → CEP visibility (how packs appear)
@@ -350,9 +446,12 @@ These website APIs also accept the same `Authorization: Bearer mfcep_…` token:
 |------|--------|------|
 | Start login | `POST` | `/api/cep/auth/device` |
 | Claim token | `POST` | `/api/cep/auth/token` |
+| Replace device (at limit) | `POST` | `/api/cep/auth/replace-device` |
 | Profile / entitlements | `GET` | `/api/cep/me` |
 | List packs | `GET` | `/api/cep/market?host=AE\|PR` |
 | Download zip | `GET` | `/api/cep/market/download?pack_id=` |
 | Pack file diff | `POST` | `/api/cep/market/diff` |
+| Telemetry installs | `POST` | `/api/cep/telemetry/installs` |
+| Telemetry active packs | `POST` | `/api/cep/telemetry/active-packs` |
 
 All market + download calls require **`Authorization: Bearer`**.

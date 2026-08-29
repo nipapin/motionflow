@@ -54,10 +54,17 @@ const nextConfig = {
         permanent: true,
       },
       {
-        // Catch-all for obsolete profile slugs. Keep real routes in the negative lookahead
-        // (including `packages`) or they 308 → /profile and look "unclickable".
+        // Catch-all for obsolete Laravel profile slugs → /profile.
+        //
+        // IMPORTANT: every real first segment under /profile/<slug> MUST appear in the
+        // negative lookahead below. Missing a slug (e.g. forgot `extensions`) makes the
+        // page look broken: nav links 308 redirect straight back to /profile.
+        // See .cursor/rules/profile-route-allowlist.mdc
+        //
+        // Allowlist: downloads|purchases|subscriptions|favorites|generations|
+        //            dashboard|upload|items|earnings|payouts|packages|extensions
         source:
-          '/profile/:slug((?!downloads|purchases|subscriptions|favorites|generations|dashboard|upload|items|earnings|payouts|packages)[^/]+)',
+          '/profile/:slug((?!downloads|purchases|subscriptions|favorites|generations|dashboard|upload|items|earnings|payouts|packages|extensions)[^/]+)',
         destination: '/profile',
         permanent: false,
       },

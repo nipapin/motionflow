@@ -11,6 +11,12 @@
 
 Invalid/revoked token → close `4401`.
 
+## Presence (Online / Offline)
+
+On successful `auth.ok`, the hub sets Redis `cep:presence:dev:{deviceId}` with TTL **90s** and refreshes it on client `ping` / hub heartbeat. On socket close the key is deleted.
+
+Admin Extensions Users reads these keys → `online` / `online_count` on device DTOs.
+
 ## Events (Redis `cep:events:{authorId}`)
 
 | type | When |
@@ -38,6 +44,30 @@ Published after R2 upload via `POST /api/cep/update/notify` (CEP Bearer of a sig
 ```
 
 Panel re-checks `GET /api/cep/update` (Bearer required; beta allowlist → `beta.json`) before showing the Update banner.
+
+## Device revoke (Redis `cep:device`)
+
+Published from `revokeDevice`, admin revoke, and `POST /api/cep/auth/replace-device`:
+
+```json
+{
+  "type": "device.revoked",
+  "user_id": 6,
+  "device_id": 123,
+  "ts": 1710000000000
+}
+```
+
+Hub matches open sockets for that `device_id`, sends:
+
+```json
+{ "type": "device.revoked", "device_id": "dev_123", "ts": … }
+```
+
+then closes with code **`4401`** / reason **`REVOKED`**. Panel must clear the session vault entry and show login immediately (do not wait for the next `/me`).
+
 ## Session
 
 All CEP HTTP + WS use the same opaque Bearer `mfcep_…` (DB-hashed, revocable). Stock search/download require auth + rate limit.
+
+Device limit default is **3** (`CEP_DEVICE_LIMIT`). At limit, token poll returns `device_limit` + devices; panel calls `POST /api/cep/auth/replace-device`.

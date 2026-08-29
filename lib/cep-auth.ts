@@ -25,7 +25,7 @@ export const DEVICE_CODE_POLL_INTERVAL_SECONDS = 3;
 /** Max simultaneously signed-in CEP devices per user. */
 export function cepDeviceLimit(): number {
   const n = Number(process.env.CEP_DEVICE_LIMIT);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 5;
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 3;
 }
 
 let schemaEnsured = false;
@@ -245,7 +245,7 @@ export async function createAuthSession(input: {
 export type AuthSessionInfo = {
   id: number;
   code: string;
-  status: "pending" | "complete" | "denied" | "expired";
+  status: "pending" | "complete" | "denied" | "expired" | "device_limit";
   device: CepDeviceFingerprint | null;
   client: string;
   userId: number | null;
@@ -263,15 +263,19 @@ async function fetchSessionByCode(code: string): Promise<SessionRow | null> {
 }
 
 function effectiveStatus(row: SessionRow): AuthSessionInfo["status"] {
-  if (row.status === "pending" && Number(row.is_expired) === 1) {
+  if (
+    (row.status === "pending" || row.status === "device_limit") &&
+    Number(row.is_expired) === 1
+  ) {
     return "expired";
   }
   if (
     row.status === "complete" ||
     row.status === "denied" ||
-    row.status === "expired"
+    row.status === "expired" ||
+    row.status === "device_limit"
   ) {
-    return row.status;
+    return row.status as AuthSessionInfo["status"];
   }
   return "pending";
 }
@@ -304,13 +308,15 @@ export async function getAuthSessionInfo(
 }
 
 export type ApproveResult =
-  | { ok: true }
-  | { ok: false; error: "INVALID_CODE" | "CODE_EXPIRED" | "DEVICE_LIMIT" };
+  | { ok: true; status: "complete" | "device_limit" }
+  | { ok: false; error: "INVALID_CODE" | "CODE_EXPIRED" };
 
 /**
  * Approve a pending login session as the signed-in web user: create (or
  * refresh) the CEP device, generate its Bearer token and stash it on the
  * session row for the panel's next poll.
+ * When the device limit is reached, marks the session `device_limit` so the
+ * panel can pick a device to revoke via replace-device.
  */
 export async function approveAuthSession(
   code: string,
@@ -330,6 +336,22 @@ export async function approveAuthSession(
   // the existing device row instead of burning a device slot.
   const existing = await findActiveDeviceByMac(userId, fingerprint?.mac);
 
+  if (!existing) {
+    const activeCount = await countActiveDevices(userId);
+    if (activeCount >= cepDeviceLimit()) {
+      const [upd] = await pool.execute<ResultSetHeader>(
+        `UPDATE \`${SESSIONS_TABLE}\`
+         SET status = 'device_limit', user_id = ?
+         WHERE id = ? AND status = 'pending' AND expires_at >= NOW()`,
+        [userId, row.id],
+      );
+      if (upd.affectedRows === 0) {
+        return { ok: false, error: "CODE_EXPIRED" };
+      }
+      return { ok: true, status: "device_limit" };
+    }
+  }
+
   const { token, hash } = generateToken();
   let deviceId: number;
 
@@ -348,10 +370,6 @@ export async function approveAuthSession(
     );
     deviceId = existing.id;
   } else {
-    const activeCount = await countActiveDevices(userId);
-    if (activeCount >= cepDeviceLimit()) {
-      return { ok: false, error: "DEVICE_LIMIT" };
-    }
     const [res] = await pool.execute<ResultSetHeader>(
       `INSERT INTO \`${DEVICES_TABLE}\`
          (user_id, token_hash, user_fingerprint, name, ip, client, last_seen_at)
@@ -382,27 +400,48 @@ export async function approveAuthSession(
     );
     return { ok: false, error: "CODE_EXPIRED" };
   }
-  return { ok: true };
+  return { ok: true, status: "complete" };
 }
 
 export async function denyAuthSession(code: string): Promise<boolean> {
   const pool = getPool();
   await ensureSchema();
   const [res] = await pool.execute<ResultSetHeader>(
-    `UPDATE \`${SESSIONS_TABLE}\` SET status = 'denied' WHERE code = ? AND status = 'pending'`,
+    `UPDATE \`${SESSIONS_TABLE}\` SET status = 'denied'
+     WHERE code = ? AND status IN ('pending', 'device_limit')`,
     [code],
   );
   return res.affectedRows > 0;
 }
 
+export type DeviceLimitListItem = {
+  id: string;
+  ip: string;
+  user_fingerprint: string;
+  name?: string;
+  last_seen_at: string | null;
+};
+
 export type ClaimResult =
   | { status: "pending" }
   | { status: "expired" | "denied"; message: string }
+  | {
+      status: "device_limit";
+      devices: DeviceLimitListItem[];
+      device_limit: number;
+      message: string;
+    }
   | {
       status: "complete";
       token: string;
       user: { id: number; email: string; name: string };
     };
+
+function toIsoDate(v: string | Date | null | undefined): string | null {
+  if (v == null) return null;
+  if (v instanceof Date) return v.toISOString();
+  return String(v);
+}
 
 /** Poll handler for POST /api/cep/auth/token. Requires the panel-only device_code. */
 export async function claimAuthToken(
@@ -420,6 +459,20 @@ export async function claimAuthToken(
   if (status === "pending") return { status: "pending" };
   if (status === "denied") return { status: "denied", message: "User denied" };
   if (status === "expired") return { status: "expired", message: "Code expired" };
+
+  if (status === "device_limit") {
+    if (!row.user_id) {
+      return { status: "expired", message: "Code expired" };
+    }
+    const devices = await listDevicesForLimitPicker(row.user_id);
+    return {
+      status: "device_limit",
+      devices,
+      device_limit: cepDeviceLimit(),
+      message:
+        "Device limit reached. Revoke another device to continue signing in.",
+    };
+  }
 
   // complete
   if (!row.token_plain || !row.user_id) {
@@ -440,6 +493,162 @@ export async function claimAuthToken(
   const user = await loadUserBasic(row.user_id);
   if (!user) return { status: "expired", message: "User not found" };
   return { status: "complete", token: row.token_plain, user };
+}
+
+async function listDevicesForLimitPicker(
+  userId: number,
+): Promise<DeviceLimitListItem[]> {
+  await ensureSchema();
+  const pool = getPool();
+  const [rows] = await pool.execute<DeviceRow[]>(
+    `SELECT * FROM \`${DEVICES_TABLE}\`
+     WHERE user_id = ? AND revoked_at IS NULL
+     ORDER BY COALESCE(last_seen_at, created_at) DESC, id DESC`,
+    [userId],
+  );
+  return rows.map((r) => ({
+    id: `dev_${r.id}`,
+    ip: r.ip ?? "",
+    user_fingerprint: r.user_fingerprint ?? "",
+    name: r.name ?? undefined,
+    last_seen_at: toIsoDate(r.last_seen_at),
+  }));
+}
+
+export type ReplaceDeviceResult =
+  | {
+      ok: true;
+      token: string;
+      user: { id: number; email: string; name: string };
+    }
+  | {
+      ok: false;
+      error:
+        | "INVALID_CODE"
+        | "CODE_EXPIRED"
+        | "INVALID_DEVICE"
+        | "NOT_DEVICE_LIMIT";
+      message: string;
+    };
+
+/**
+ * Complete a device_limit login by revoking one existing device and creating
+ * a slot for the pending panel.
+ */
+export async function replaceDeviceForAuthSession(opts: {
+  code: string;
+  deviceCode: string;
+  revokeDeviceId: number;
+}): Promise<ReplaceDeviceResult> {
+  const row = await fetchSessionByCode(opts.code);
+  if (!row) {
+    return {
+      ok: false,
+      error: "INVALID_CODE",
+      message: "Invalid code",
+    };
+  }
+  if (
+    !row.device_code_hash ||
+    !hashesEqual(row.device_code_hash, hashToken(opts.deviceCode))
+  ) {
+    return {
+      ok: false,
+      error: "INVALID_CODE",
+      message: "Invalid device code",
+    };
+  }
+
+  const status = effectiveStatus(row);
+  if (status === "expired") {
+    return {
+      ok: false,
+      error: "CODE_EXPIRED",
+      message: "Code expired",
+    };
+  }
+  if (status !== "device_limit" || !row.user_id) {
+    return {
+      ok: false,
+      error: "NOT_DEVICE_LIMIT",
+      message: "This sign-in is not waiting for a device revoke",
+    };
+  }
+
+  const userId = Number(row.user_id);
+  const revoked = await revokeDevice(userId, opts.revokeDeviceId);
+  if (!revoked) {
+    return {
+      ok: false,
+      error: "INVALID_DEVICE",
+      message: "Device not found or already revoked",
+    };
+  }
+
+  // Re-check slot (race: another login may have filled it)
+  const activeCount = await countActiveDevices(userId);
+  if (activeCount >= cepDeviceLimit()) {
+    return {
+      ok: false,
+      error: "INVALID_DEVICE",
+      message: "Still at device limit — pick another device",
+    };
+  }
+
+  const fingerprint = parseFingerprint(row.device_json);
+  const { token, hash } = generateToken();
+  const pool = getPool();
+  const [res] = await pool.execute<ResultSetHeader>(
+    `INSERT INTO \`${DEVICES_TABLE}\`
+       (user_id, token_hash, user_fingerprint, name, ip, client, last_seen_at)
+     VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+    [
+      userId,
+      hash,
+      row.device_json,
+      fingerprint?.user?.slice(0, 191) ?? null,
+      row.ip,
+      row.client,
+    ],
+  );
+  const deviceId = res.insertId;
+
+  const [upd] = await pool.execute<ResultSetHeader>(
+    `UPDATE \`${SESSIONS_TABLE}\`
+     SET status = 'complete', device_id = ?, token_plain = ?
+     WHERE id = ? AND status = 'device_limit' AND expires_at >= NOW()`,
+    [deviceId, token, row.id],
+  );
+  if (upd.affectedRows === 0) {
+    await pool.execute(
+      `UPDATE \`${DEVICES_TABLE}\` SET revoked_at = NOW() WHERE id = ? AND token_hash = ?`,
+      [deviceId, hash],
+    );
+    return {
+      ok: false,
+      error: "CODE_EXPIRED",
+      message: "Code expired",
+    };
+  }
+
+  // Claim immediately so a concurrent poll cannot steal the token
+  await pool.execute(
+    `UPDATE \`${SESSIONS_TABLE}\`
+     SET token_plain = NULL, claimed_at = NOW()
+     WHERE id = ?`,
+    [row.id],
+  );
+
+  const user = await loadUserBasic(userId);
+  if (!user) {
+    return {
+      ok: false,
+      error: "CODE_EXPIRED",
+      message: "User not found",
+    };
+  }
+
+  return { ok: true, token, user };
 }
 
 // ---------------------------------------------------------------------------
@@ -615,5 +824,10 @@ export async function revokeDevice(
      WHERE id = ? AND user_id = ? AND revoked_at IS NULL`,
     [deviceId, userId],
   );
-  return res.affectedRows > 0;
+  if (res.affectedRows > 0) {
+    const { publishCepDeviceRevoked } = await import("@/lib/cep-events");
+    void publishCepDeviceRevoked({ userId, deviceId });
+    return true;
+  }
+  return false;
 }

@@ -95,6 +95,20 @@ export function getCepClientConfig(client: string): CepClientConfig | null {
   return REGISTRY[client] ?? null;
 }
 
+/** Resolve CEP client config by marketplace author id (first match). */
+export function getCepClientByAuthorId(
+  authorId: number,
+): CepClientConfig | null {
+  for (const cfg of Object.values(REGISTRY)) {
+    if (cfg.authorId === authorId) return cfg;
+  }
+  return null;
+}
+
+export function listCepClientConfigs(): CepClientConfig[] {
+  return Object.values(REGISTRY);
+}
+
 export function requireCepClientConfig(client: string): CepClientConfig {
   const cfg = getCepClientConfig(client);
   if (!cfg) {

@@ -132,6 +132,32 @@ function objectKey(
   return [captionsBrandPrefix(brand), category, caption, file].join("/");
 }
 
+function packIdFromDownloadId(id: string): string | null {
+  if (!id || id === MASTER_CAPTION_ID) return null;
+  const parts = id
+    .replace(/\\/g, "/")
+    .split("/")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0 && p !== "." && p !== "..");
+  return parts[0] || null;
+}
+
+function packProjectFileName(packId: string, kind: "mogrt" | "aep"): string {
+  return `${packId}.${kind}`;
+}
+
+function isPackProjectFile(packId: string, file: string): "mogrt" | "aep" | null {
+  if (file === packProjectFileName(packId, "mogrt")) return "mogrt";
+  if (file === packProjectFileName(packId, "aep")) return "aep";
+  return null;
+}
+
+/** `{Brand}/{Pack}/{Pack}.aep|mogrt` */
+function packObjectKeys(brand: CaptionsBrand, packId: string, kind: "mogrt" | "aep"): string[] {
+  const prefix = captionsBrandPrefix(brand);
+  return [[prefix, packId, packProjectFileName(packId, kind)].join("/")];
+}
+
 /** Brand-root or category-root key for shared master: `{Brand}/master.aep` or `{Brand}/Base/master.aep`. */
 function masterObjectKeys(brand: CaptionsBrand, file: string): string[] {
   const prefix = captionsBrandPrefix(brand);
@@ -143,6 +169,20 @@ function masterObjectKeys(brand: CaptionsBrand, file: string): string[] {
 
 function isMasterProjectFile(file: string): boolean {
   return file === CAPTION_DOWNLOAD_FILES.mogrt || file === CAPTION_DOWNLOAD_FILES.aep;
+}
+
+function emptyPackFlags(): MasterFlags {
+  return { mogrt: false, aep: false };
+}
+
+function mergePackFlags(
+  into: Map<string, MasterFlags>,
+  packId: string,
+  kind: "mogrt" | "aep",
+): void {
+  const cur = into.get(packId) ?? emptyPackFlags();
+  cur[kind] = true;
+  into.set(packId, cur);
 }
 
 function previewMediaUrl(
@@ -168,12 +208,13 @@ type MasterFlags = { mogrt: boolean; aep: boolean };
 async function listCaptionObjectsInBucket(
   bucket: string,
   brand: CaptionsBrand,
-): Promise<{ entries: CaptionEntry[]; master: MasterFlags }> {
+): Promise<{ entries: CaptionEntry[]; master: MasterFlags; packs: Map<string, MasterFlags> }> {
   const client = getR2Client();
   const prefix = `${captionsBrandPrefix(brand)}/`;
 
   const entries: CaptionEntry[] = [];
-  const master: MasterFlags = { mogrt: false, aep: false };
+  const master: MasterFlags = emptyPackFlags();
+  const packs = new Map<string, MasterFlags>();
   let continuationToken: string | undefined;
 
   do {
@@ -200,6 +241,11 @@ async function listCaptionObjectsInBucket(
       if (parts.length === 2) {
         const [first, file] = parts;
         if (!first || !file || SKIP_CAPTION_FOLDERS.has(first)) continue;
+        const packKind = isPackProjectFile(first, file);
+        if (packKind) {
+          mergePackFlags(packs, first, packKind);
+          continue;
+        }
         // `{Category}/master.mogrt` (e.g. Base/master.mogrt)
         if (file === CAPTION_DOWNLOAD_FILES.mogrt) {
           master.mogrt = true;
@@ -230,7 +276,7 @@ async function listCaptionObjectsInBucket(
     continuationToken = res.IsTruncated ? res.NextContinuationToken : undefined;
   } while (continuationToken);
 
-  return { entries, master };
+  return { entries, master, packs };
 }
 
 /**
@@ -240,14 +286,18 @@ async function listCaptionObjectsInBucket(
  */
 async function listCaptionObjects(
   brand: CaptionsBrand,
-): Promise<{ entries: CaptionEntry[]; master: MasterFlags }> {
+): Promise<{ entries: CaptionEntry[]; master: MasterFlags; packs: Map<string, MasterFlags> }> {
   const pub = publicBucket();
   const priv = privateBucket();
 
   const [publicList, privateList] = await Promise.all([
     listCaptionObjectsInBucket(pub, brand),
     pub === priv
-      ? Promise.resolve({ entries: [] as CaptionEntry[], master: { mogrt: false, aep: false } })
+      ? Promise.resolve({
+          entries: [] as CaptionEntry[],
+          master: emptyPackFlags(),
+          packs: new Map<string, MasterFlags>(),
+        })
       : listCaptionObjectsInBucket(priv, brand),
   ]);
 
@@ -259,12 +309,21 @@ async function listCaptionObjects(
     byKey.set(`${e.category}/${e.caption}/${e.file}`, e);
   }
 
+  const packs = new Map<string, MasterFlags>();
+  for (const src of [publicList.packs, privateList.packs]) {
+    for (const [packId, flags] of src) {
+      const cur = packs.get(packId) ?? emptyPackFlags();
+      packs.set(packId, { mogrt: cur.mogrt || flags.mogrt, aep: cur.aep || flags.aep });
+    }
+  }
+
   return {
     entries: Array.from(byKey.values()),
     master: {
       mogrt: publicList.master.mogrt || privateList.master.mogrt,
       aep: publicList.master.aep || privateList.master.aep,
     },
+    packs,
   };
 }
 
@@ -291,7 +350,7 @@ export async function buildCaptionsTree(
     if (cached && cached.expiresAt > Date.now()) return cached.tree;
   }
 
-  const { entries, master } = await listCaptionObjects(brand);
+  const { entries, master, packs } = await listCaptionObjects(brand);
 
   const categoryOrder: string[] = [];
   const categoryMap = new Map<string, Map<string, CaptionFlags>>();
@@ -352,9 +411,8 @@ export async function buildCaptionsTree(
           ? previewMediaUrl(brand, categoryName, captionName, "controls.json")
           : null,
         files: {
-          // Shared master template — same for every preset.
-          mogrt: master.mogrt,
-          aep: master.aep,
+          mogrt: packs.get(categoryName)?.mogrt || master.mogrt,
+          aep: packs.get(categoryName)?.aep || master.aep,
           definition: flags.definition,
         },
       });
@@ -376,8 +434,8 @@ export async function buildCaptionsTree(
 
 /**
  * Resolve `{id, kind}` → R2 object key.
- * For mogrt/aep: always the shared brand-root `master.aep` / `master.mogrt`
- * (id may be `"master"` or any catalog caption id).
+ * For mogrt/aep: `{Pack}/{Pack}.aep|mogrt`, then legacy `master.aep|mogrt`.
+ * `id` may be a pack name (`Base`), a catalog caption id, or `"master"`.
  * For definition: per-caption `definition.json` if present.
  */
 export async function resolveProjectFile(
@@ -391,13 +449,23 @@ export async function resolveProjectFile(
   );
 
   if (kind === "mogrt" || kind === "aep") {
-    const fileName = CAPTION_DOWNLOAD_FILES[kind];
-    const keys = masterObjectKeys(brand, fileName);
-    for (const key of keys) {
+    const keys: { key: string; filename: string }[] = [];
+    const packId = packIdFromDownloadId(id);
+    if (packId) {
+      for (const key of packObjectKeys(brand, packId, kind)) {
+        keys.push({ key, filename: packProjectFileName(packId, kind) });
+      }
+    }
+    const legacyName = CAPTION_DOWNLOAD_FILES[kind];
+    for (const key of masterObjectKeys(brand, legacyName)) {
+      keys.push({ key, filename: legacyName });
+    }
+
+    for (const candidate of keys) {
       for (const bucket of buckets) {
         try {
-          await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
-          return { key, filename: fileName, bucket };
+          await client.send(new HeadObjectCommand({ Bucket: bucket, Key: candidate.key }));
+          return { key: candidate.key, filename: candidate.filename, bucket };
         } catch (e) {
           if (isNotFoundError(e)) continue;
           throw e;

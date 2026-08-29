@@ -2,7 +2,7 @@
  * CEP WebSocket hub — plain Node ESM (used by server.mjs).
  * Auth: first JSON message `{ type: "auth", token: "mfcep_…" }`
  * Subscribe: `{ type: "hello", host: "AE"|"PR" }`
- * Events arrive via Redis `cep:events:{authorId}`.
+ * Events arrive via Redis `cep:events:{authorId}`, `cep:extension`, `cep:device`.
  */
 import { createHash } from "crypto";
 import { createPool } from "mysql2/promise";
@@ -12,6 +12,7 @@ import { WebSocketServer } from "ws";
 const AUTH_TIMEOUT_MS = 5000;
 const HEARTBEAT_MS = 25000;
 const MAX_SOCKETS_PER_USER = 4;
+const PRESENCE_TTL_SEC = 90;
 
 function stripEnvQuotes(value) {
   if (value == null) return undefined;
@@ -24,6 +25,10 @@ function stripEnvQuotes(value) {
 
 function hashToken(token) {
   return createHash("sha256").update(token).digest("hex");
+}
+
+function presenceKey(deviceId) {
+  return `cep:presence:dev:${deviceId}`;
 }
 
 function makePool() {
@@ -62,6 +67,7 @@ export function attachCepWebSocket(server) {
   const wss = new WebSocketServer({ noServer: true });
   const pool = makePool();
   const sub = makeRedis();
+  const cmd = makeRedis();
 
   /** @type {Map<string, Set<import('ws').WebSocket>>} */
   const rooms = new Map(); // key = `${authorId}:${host}`
@@ -69,6 +75,8 @@ export function attachCepWebSocket(server) {
   const meta = new WeakMap();
   /** @type {Map<number, Set<import('ws').WebSocket>>} */
   const byUser = new Map();
+  /** @type {Map<number, Set<import('ws').WebSocket>>} */
+  const byDevice = new Map();
 
   function roomKey(authorId, host) {
     return `${authorId}:${host}`;
@@ -84,6 +92,26 @@ export function attachCepWebSocket(server) {
     set.add(ws);
   }
 
+  async function markOnline(deviceId) {
+    if (!deviceId) return;
+    try {
+      await cmd.connect().catch(() => {});
+      await cmd.set(presenceKey(deviceId), "1", "EX", PRESENCE_TTL_SEC);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function clearOnline(deviceId) {
+    if (!deviceId) return;
+    try {
+      await cmd.connect().catch(() => {});
+      await cmd.del(presenceKey(deviceId));
+    } catch {
+      /* ignore */
+    }
+  }
+
   function removeSocket(ws) {
     const m = meta.get(ws);
     if (m) {
@@ -91,6 +119,12 @@ export function attachCepWebSocket(server) {
       set?.delete(ws);
       const userSet = byUser.get(m.userId);
       userSet?.delete(ws);
+      const deviceSet = byDevice.get(m.deviceId);
+      deviceSet?.delete(ws);
+      if (deviceSet && deviceSet.size === 0) {
+        byDevice.delete(m.deviceId);
+        void clearOnline(m.deviceId);
+      }
       meta.delete(ws);
     }
   }
@@ -117,6 +151,29 @@ export function attachCepWebSocket(server) {
       deviceId: Number(row.device_id),
       client: String(row.client || "spunkram-cep"),
     };
+  }
+
+  function kickDevice(deviceId) {
+    const set = byDevice.get(deviceId);
+    if (!set || set.size === 0) return;
+    const frame = JSON.stringify({
+      type: "device.revoked",
+      device_id: `dev_${deviceId}`,
+      ts: Date.now(),
+    });
+    for (const ws of [...set]) {
+      try {
+        if (ws.readyState === 1) ws.send(frame);
+      } catch {
+        /* ignore */
+      }
+      try {
+        ws.close(4401, "REVOKED");
+      } catch {
+        /* ignore */
+      }
+      removeSocket(ws);
+    }
   }
 
   server.on("upgrade", (req, socket, head) => {
@@ -149,6 +206,8 @@ export function attachCepWebSocket(server) {
 
     ws.on("pong", () => {
       ws.__alive = true;
+      const m = meta.get(ws);
+      if (m?.deviceId) void markOnline(m.deviceId);
     });
 
     ws.on("message", async (raw) => {
@@ -193,6 +252,14 @@ export function attachCepWebSocket(server) {
             removeSocket(oldest);
           }
           userSet.add(ws);
+
+          let deviceSet = byDevice.get(user.deviceId);
+          if (!deviceSet) {
+            deviceSet = new Set();
+            byDevice.set(user.deviceId, deviceSet);
+          }
+          deviceSet.add(ws);
+
           meta.set(ws, {
             userId: user.id,
             authorId,
@@ -201,6 +268,7 @@ export function attachCepWebSocket(server) {
           });
           authed = true;
           clearTimeout(authTimer);
+          void markOnline(user.deviceId);
           ws.send(JSON.stringify({ type: "auth.ok", client: user.client }));
         } catch (err) {
           console.error("[cep-ws] auth failed", err?.message || err);
@@ -219,11 +287,14 @@ export function attachCepWebSocket(server) {
         }
         m.host = host;
         addToRoom(ws, m.authorId, host);
+        void markOnline(m.deviceId);
         ws.send(JSON.stringify({ type: "hello.ok", host }));
         return;
       }
 
       if (msg.type === "ping") {
+        const m = meta.get(ws);
+        if (m?.deviceId) void markOnline(m.deviceId);
         ws.send(JSON.stringify({ type: "pong", ts: Date.now() }));
       }
     });
@@ -259,17 +330,18 @@ export function attachCepWebSocket(server) {
     }
   }, HEARTBEAT_MS);
 
-  // Redis fan-in — pack rooms + global extension releases
+  // Redis fan-in — pack rooms + global extension releases + device revoke
   void (async () => {
     try {
       await sub.connect();
+      await cmd.connect().catch(() => {});
       await sub.psubscribe("cep:events:*");
       await sub.subscribe("cep:extension");
+      await sub.subscribe("cep:device");
 
       const broadcastAll = (frame) => {
         for (const ws of wss.clients) {
           if (ws.readyState !== 1) continue;
-          // Only authed sockets that finished hello (in a room) — or any with meta
           if (!meta.get(ws)) continue;
           try {
             ws.send(frame);
@@ -302,17 +374,30 @@ export function attachCepWebSocket(server) {
       });
 
       sub.on("message", (channel, message) => {
-        if (channel !== "cep:extension") return;
-        try {
-          const event = JSON.parse(message);
-          if (event?.type !== "extension.update" || !event?.version) return;
-          broadcastAll(JSON.stringify(event));
-        } catch (err) {
-          console.warn("[cep-ws] bad extension message", err?.message || err);
+        if (channel === "cep:extension") {
+          try {
+            const event = JSON.parse(message);
+            if (event?.type !== "extension.update" || !event?.version) return;
+            broadcastAll(JSON.stringify(event));
+          } catch (err) {
+            console.warn("[cep-ws] bad extension message", err?.message || err);
+          }
+          return;
+        }
+        if (channel === "cep:device") {
+          try {
+            const event = JSON.parse(message);
+            if (event?.type !== "device.revoked") return;
+            const deviceId = Number(event.device_id);
+            if (!Number.isFinite(deviceId) || deviceId <= 0) return;
+            kickDevice(deviceId);
+          } catch (err) {
+            console.warn("[cep-ws] bad device message", err?.message || err);
+          }
         }
       });
 
-      console.log("[cep-ws] subscribed to cep:events:* and cep:extension");
+      console.log("[cep-ws] subscribed to cep:events:*, cep:extension, cep:device");
     } catch (err) {
       console.error("[cep-ws] redis subscribe failed", err?.message || err);
     }
@@ -322,6 +407,11 @@ export function attachCepWebSocket(server) {
     clearInterval(heartbeat);
     try {
       sub.disconnect();
+    } catch {
+      /* ignore */
+    }
+    try {
+      cmd.disconnect();
     } catch {
       /* ignore */
     }

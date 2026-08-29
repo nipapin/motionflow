@@ -9,6 +9,7 @@ import {
   Download,
   LogOut,
   Package,
+  Puzzle,
   ShoppingBag,
   Sparkles,
   User,
@@ -134,7 +135,14 @@ export function ProfileHeader() {
                   {[
                     ...ACCOUNT_LINKS,
                     ...(user?.email && PACKAGES_ADMIN_EMAILS.has(user.email.trim().toLowerCase())
-                      ? ([{ icon: Package, label: "Packages", href: "/profile/packages" }] as const)
+                      ? ([
+                          { icon: Package, label: "Packages", href: "/profile/packages" },
+                          {
+                            icon: Puzzle,
+                            label: "Extensions Users",
+                            href: "/profile/extensions",
+                          },
+                        ] as const)
                       : []),
                   ].map(({ icon: Icon, label, href }) => (
                     <DropdownMenuItem

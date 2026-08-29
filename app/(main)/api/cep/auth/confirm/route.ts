@@ -14,6 +14,7 @@ export const runtime = "nodejs";
  * POST /api/cep/auth/confirm — the /cep/login web page (session cookie auth)
  * approves or denies a pending device-code login.
  * Body: { code: string, action: "approve" | "deny" }
+ * Approve may return status "device_limit" — panel must revoke a slot.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -53,17 +54,14 @@ export async function POST(req: NextRequest) {
       const messages: Record<string, string> = {
         INVALID_CODE: "This code is invalid or was already used.",
         CODE_EXPIRED: "This code has expired. Restart sign-in in the panel.",
-        DEVICE_LIMIT:
-          "Device limit reached. Remove another device in the panel's Account tab and try again.",
       };
-      const status = result.error === "DEVICE_LIMIT" ? 403 : 400;
       return NextResponse.json(
         { error: result.error, message: messages[result.error] },
-        { status },
+        { status: 400 },
       );
     }
 
-    return NextResponse.json({ ok: true, status: "complete" });
+    return NextResponse.json({ ok: true, status: result.status });
   } catch (err) {
     console.error("[cep/auth/confirm]", err);
     return NextResponse.json(
@@ -89,7 +87,7 @@ export async function GET(req: NextRequest) {
     const info = await getAuthSessionInfo(code);
     if (!info) {
       return NextResponse.json(
-        { error: "INVALID_CODE", message: "Unknown code" },
+        { error: "INVALID_CODE", message: "Code not found" },
         { status: 404 },
       );
     }
@@ -102,7 +100,7 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     console.error("[cep/auth/confirm GET]", err);
     return NextResponse.json(
-      { error: "SERVER_ERROR", message: "Could not load code status" },
+      { error: "SERVER_ERROR", message: "Could not load code" },
       { status: 500 },
     );
   }

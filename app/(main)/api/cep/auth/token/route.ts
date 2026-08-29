@@ -61,6 +61,14 @@ export async function POST(req: NextRequest) {
         },
       });
     }
+    if (result.status === "device_limit") {
+      return NextResponse.json({
+        status: "device_limit",
+        devices: result.devices,
+        device_limit: result.device_limit,
+        message: result.message,
+      });
+    }
     return NextResponse.json(result);
   } catch (err) {
     console.error("[cep/auth/token]", err);

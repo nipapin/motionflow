@@ -14,6 +14,7 @@ import {
   Package,
   ChevronDown,
   Users,
+  Puzzle,
 } from "lucide-react";
 import { PACKAGES_AUTHORS, packagesAuthorLogoUrl } from "@/lib/packages-admin-client";
 import { cn } from "@/lib/utils";
@@ -46,16 +47,129 @@ interface AccountSidebarProps {
   showPackages?: boolean;
 }
 
+function AuthorSubmenu({
+  basePath,
+  label,
+  icon: Icon,
+  authors,
+  normalized,
+  open,
+  onToggle,
+}: {
+  basePath: "/profile/packages" | "/profile/extensions";
+  label: string;
+  icon: typeof Package;
+  authors: SidebarAuthor[];
+  normalized: string;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const onSection = normalized.startsWith(basePath);
+
+  return (
+    <li>
+      <div
+        className={cn(
+          "flex items-center rounded-lg text-sm font-medium smooth",
+          onSection
+            ? "bg-linear-to-r from-blue-600 to-blue-500 text-white shadow-md shadow-blue-500/20"
+            : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+        )}
+      >
+        <Link
+          href={basePath}
+          className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5"
+        >
+          <Icon
+            className={cn(
+              "h-5 w-5 shrink-0",
+              onSection ? "text-white" : "text-blue-400",
+            )}
+          />
+          <span className="truncate">{label}</span>
+        </Link>
+        <button
+          type="button"
+          aria-label={open ? `Collapse ${label}` : `Expand ${label}`}
+          className={cn(
+            "shrink-0 rounded-r-lg px-2.5 py-2.5",
+            onSection ? "text-white/80 hover:text-white" : "hover:text-foreground",
+          )}
+          onClick={(e) => {
+            e.preventDefault();
+            if (onSection) return;
+            onToggle();
+          }}
+        >
+          <ChevronDown
+            className={cn("h-4 w-4 transition", open && "rotate-180")}
+          />
+        </button>
+      </div>
+      {open ? (
+        <ul className="mt-0.5 flex flex-col gap-0.5 pl-2">
+          <li>
+            <Link
+              href={basePath}
+              className={cn(
+                navItemBase,
+                normalized === basePath
+                  ? "bg-foreground/10 text-foreground"
+                  : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+              )}
+            >
+              <Users className="h-5 w-5 shrink-0 text-muted-foreground" />
+              All authors
+            </Link>
+          </li>
+          {authors.map((a) => {
+            const href = `${basePath}/${a.id}`;
+            const active =
+              normalized === href || normalized.startsWith(`${href}/`);
+            return (
+              <li key={a.id}>
+                <Link
+                  href={href}
+                  className={cn(
+                    navItemBase,
+                    active
+                      ? "bg-foreground/10 text-foreground"
+                      : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+                  )}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={packagesAuthorLogoUrl(a.slug || a.id)}
+                    alt=""
+                    className="h-5 w-5 shrink-0 rounded object-contain"
+                  />
+                  <span className="truncate">{a.label}</span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
+
 export function AccountSidebar({ access, showPackages }: AccountSidebarProps) {
   const pathname = usePathname();
   const normalized = pathname.replace(/\/$/, "") || "/";
   const onPackages = normalized.startsWith("/profile/packages");
-  const [manualOpen, setManualOpen] = useState(onPackages);
+  const onExtensions = normalized.startsWith("/profile/extensions");
+  const [packagesManualOpen, setPackagesManualOpen] = useState(onPackages);
+  const [extensionsManualOpen, setExtensionsManualOpen] = useState(onExtensions);
   const [authors, setAuthors] = useState<SidebarAuthor[]>(PACKAGES_AUTHORS);
 
   useEffect(() => {
-    if (onPackages) setManualOpen(true);
+    if (onPackages) setPackagesManualOpen(true);
   }, [onPackages]);
+
+  useEffect(() => {
+    if (onExtensions) setExtensionsManualOpen(true);
+  }, [onExtensions]);
 
   useEffect(() => {
     if (!showPackages) return;
@@ -75,7 +189,8 @@ export function AccountSidebar({ access, showPackages }: AccountSidebarProps) {
     };
   }, [showPackages]);
 
-  const packagesOpen = onPackages || manualOpen;
+  const packagesOpen = onPackages || packagesManualOpen;
+  const extensionsOpen = onExtensions || extensionsManualOpen;
 
   return (
     <nav className="flex flex-col gap-4">
@@ -109,90 +224,26 @@ export function AccountSidebar({ access, showPackages }: AccountSidebarProps) {
             );
           })}
           {showPackages ? (
-            <li>
-              <div
-                className={cn(
-                  "flex items-center rounded-lg text-sm font-medium smooth",
-                  onPackages
-                    ? "bg-linear-to-r from-blue-600 to-blue-500 text-white shadow-md shadow-blue-500/20"
-                    : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-                )}
-              >
-                <Link
-                  href="/profile/packages"
-                  className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5"
-                >
-                  <Package
-                    className={cn(
-                      "h-5 w-5 shrink-0",
-                      onPackages ? "text-white" : "text-blue-400",
-                    )}
-                  />
-                  <span className="truncate">Packages</span>
-                </Link>
-                <button
-                  type="button"
-                  aria-label={packagesOpen ? "Collapse Packages" : "Expand Packages"}
-                  className={cn(
-                    "shrink-0 rounded-r-lg px-2.5 py-2.5",
-                    onPackages ? "text-white/80 hover:text-white" : "hover:text-foreground",
-                  )}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    if (onPackages) return;
-                    setManualOpen((v) => !v);
-                  }}
-                >
-                  <ChevronDown
-                    className={cn("h-4 w-4 transition", packagesOpen && "rotate-180")}
-                  />
-                </button>
-              </div>
-              {packagesOpen ? (
-                <ul className="mt-0.5 flex flex-col gap-0.5 pl-2">
-                  <li>
-                    <Link
-                      href="/profile/packages"
-                      className={cn(
-                        navItemBase,
-                        normalized === "/profile/packages"
-                          ? "bg-foreground/10 text-foreground"
-                          : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-                      )}
-                    >
-                      <Users className="h-5 w-5 shrink-0 text-muted-foreground" />
-                      All authors
-                    </Link>
-                  </li>
-                  {authors.map((a) => {
-                    const href = `/profile/packages/${a.id}`;
-                    const active =
-                      normalized === href || normalized.startsWith(`${href}/`);
-                    return (
-                      <li key={a.id}>
-                        <Link
-                          href={href}
-                          className={cn(
-                            navItemBase,
-                            active
-                              ? "bg-foreground/10 text-foreground"
-                              : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-                          )}
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={packagesAuthorLogoUrl(a.slug || a.id)}
-                            alt=""
-                            className="h-5 w-5 shrink-0 rounded object-contain"
-                          />
-                          <span className="truncate">{a.label}</span>
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : null}
-            </li>
+            <>
+              <AuthorSubmenu
+                basePath="/profile/packages"
+                label="Packages"
+                icon={Package}
+                authors={authors}
+                normalized={normalized}
+                open={packagesOpen}
+                onToggle={() => setPackagesManualOpen((v) => !v)}
+              />
+              <AuthorSubmenu
+                basePath="/profile/extensions"
+                label="Extensions Users"
+                icon={Puzzle}
+                authors={authors}
+                normalized={normalized}
+                open={extensionsOpen}
+                onToggle={() => setExtensionsManualOpen((v) => !v)}
+              />
+            </>
           ) : null}
         </ul>
       </div>

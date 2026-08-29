@@ -33,9 +33,24 @@ function isTransientDbError(err: unknown): boolean {
   return (
     code === "PROTOCOL_CONNECTION_LOST" ||
     code === "ECONNRESET" ||
+    code === "EPIPE" ||
     code === "PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR" ||
-    code === "ETIMEDOUT"
+    code === "ETIMEDOUT" ||
+    code === "ECONNREFUSED"
   );
+}
+
+/** Drop the cached pool so the next getPool() opens fresh sockets. */
+async function resetPool(): Promise<void> {
+  const pool = globalPool.__mysqlPool;
+  globalPool.__mysqlPool = undefined;
+  globalPool.__mysqlPoolKey = undefined;
+  if (!pool) return;
+  try {
+    await pool.end();
+  } catch {
+    /* already closed */
+  }
 }
 
 export function getPool(): mysql.Pool {
@@ -65,9 +80,9 @@ export function getPool(): mysql.Pool {
       connectionLimit: 10,
       // Drop idle sockets before MySQL wait_timeout kills them server-side.
       maxIdle: 5,
-      idleTimeout: 60_000,
+      idleTimeout: 30_000,
       enableKeepAlive: true,
-      keepAliveInitialDelay: 0,
+      keepAliveInitialDelay: 10_000,
     });
     pool.on("connection", (conn) => {
       conn.on("error", (err) => {
@@ -84,13 +99,20 @@ export function getPool(): mysql.Pool {
   return globalPool.__mysqlPool;
 }
 
-/** One retry for stale pooled connections after idle / server close. */
+/**
+ * Retry once after idle / server-closed sockets.
+ * Resets the pool between attempts so we do not reuse dead connections.
+ */
 export async function withDbRetry<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
   } catch (err) {
     if (!isTransientDbError(err)) throw err;
-    console.warn("[mysql] transient error, retrying once", (err as { code?: string }).code);
+    console.warn(
+      "[mysql] transient error, resetting pool and retrying",
+      (err as { code?: string }).code,
+    );
+    await resetPool();
     return await fn();
   }
 }

@@ -118,13 +118,14 @@ export function CepLoginClient({
         const data = (await r.json().catch(() => ({}))) as {
           error?: string;
           message?: string;
+          status?: string;
         };
         if (r.ok) {
+          if (action === "approve" && data.status === "device_limit") {
+            setPhase("device_limit");
+            return;
+          }
           setPhase(action === "approve" ? "approved" : "denied");
-          return;
-        }
-        if (data.error === "DEVICE_LIMIT") {
-          setPhase("device_limit");
           return;
         }
         if (data.error === "CODE_EXPIRED") {
@@ -188,7 +189,7 @@ export function CepLoginClient({
             <StatusBlock
               icon={<ShieldAlert className="size-8 text-amber-500" />}
               title="Device limit reached"
-              text="Your account is signed in on too many devices. Remove one in the Account tab, then try again."
+              text="Return to the extension — it will ask which device to disconnect, then finish signing in."
             />
           ) : phase === "error" ? (
             <StatusBlock

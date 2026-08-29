@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
  * Body: `{ id: string, file?: "mogrt" | "aep" | "definition", brand?: "gal" | "spunkram" }`
  * - CEP: Spunkram author subscription required
  * - Web session: Motionflow Creator subscription required
- * - mogrt / aep → shared `master.mogrt` / `master.aep` (id may be `"master"` or any caption id)
+ * - mogrt / aep → `{Pack}/{Pack}.mogrt|aep` (id = pack name or caption id); falls back to master.*
  * - definition → per-caption JSON body (legacy)
  */
 export async function POST(req: NextRequest) {
