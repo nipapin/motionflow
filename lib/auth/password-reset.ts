@@ -10,6 +10,9 @@ const TABLE = "password_reset_tokens";
 /** Laravel-style default: reset links expire after 60 minutes. */
 export const PASSWORD_RESET_EXPIRE_MINUTES = 60;
 
+/** Admin “set password” invites (author access grant) expire after 7 days. */
+export const PASSWORD_INVITE_EXPIRE_MINUTES = 7 * 24 * 60;
+
 let ensured = false;
 
 export async function ensurePasswordResetTokensTable(): Promise<void> {
@@ -68,6 +71,7 @@ type TokenRow = RowDataPacket & {
 export async function verifyPasswordResetToken(
   email: string,
   plainToken: string,
+  opts?: { expireMinutes?: number },
 ): Promise<{ ok: true } | { ok: false; reason: "invalid" | "expired" }> {
   await ensurePasswordResetTokensTable();
   const pool = getPool();
@@ -86,8 +90,9 @@ export async function verifyPasswordResetToken(
   if (!Number.isFinite(created.getTime())) {
     return { ok: false, reason: "invalid" };
   }
+  const expireMinutes = opts?.expireMinutes ?? PASSWORD_RESET_EXPIRE_MINUTES;
   const ageMs = Date.now() - created.getTime();
-  if (ageMs > PASSWORD_RESET_EXPIRE_MINUTES * 60_000) {
+  if (ageMs > expireMinutes * 60_000) {
     return { ok: false, reason: "expired" };
   }
 

@@ -5,6 +5,8 @@ import { getPool } from "@/lib/db";
 import { oauthPasswordOnlyFromGoogleId } from "@/lib/auth/users-table";
 import {
   deletePasswordResetToken,
+  PASSWORD_INVITE_EXPIRE_MINUTES,
+  PASSWORD_RESET_EXPIRE_MINUTES,
   verifyPasswordResetToken,
 } from "@/lib/auth/password-reset";
 import { resetPasswordSchema } from "@/lib/validations/auth";
@@ -53,9 +55,18 @@ export async function POST(req: NextRequest) {
 
   const { email, token, password } = parsed.data;
   const normalizedEmail = email.trim().toLowerCase();
+  const invite =
+    typeof body === "object" &&
+    body != null &&
+    "source" in body &&
+    (body as { source?: unknown }).source === "invite";
 
   try {
-    const verified = await verifyPasswordResetToken(normalizedEmail, token);
+    const verified = await verifyPasswordResetToken(normalizedEmail, token, {
+      expireMinutes: invite
+        ? PASSWORD_INVITE_EXPIRE_MINUTES
+        : PASSWORD_RESET_EXPIRE_MINUTES,
+    });
     if (!verified.ok) {
       const message =
         verified.reason === "expired"

@@ -11,10 +11,8 @@ import {
   Bookmark,
   Sparkles,
   LayoutDashboard,
-  Package,
   ChevronDown,
   Users,
-  Puzzle,
 } from "lucide-react";
 import { PACKAGES_AUTHORS, packagesAuthorLogoUrl } from "@/lib/packages-admin-client";
 import { cn } from "@/lib/utils";
@@ -48,23 +46,25 @@ interface AccountSidebarProps {
 }
 
 function AuthorSubmenu({
-  basePath,
-  label,
-  icon: Icon,
   authors,
   normalized,
   open,
   onToggle,
 }: {
-  basePath: "/profile/packages" | "/profile/extensions";
-  label: string;
-  icon: typeof Package;
   authors: SidebarAuthor[];
   normalized: string;
   open: boolean;
   onToggle: () => void;
 }) {
-  const onSection = normalized.startsWith(basePath);
+  const onSection =
+    normalized.startsWith("/profile/packages") ||
+    normalized.startsWith("/profile/extensions");
+  const activeAuthorId = (() => {
+    const m = normalized.match(
+      /^\/profile\/(?:packages|extensions)\/(\d+)/,
+    );
+    return m ? Number(m[1]) : null;
+  })();
 
   return (
     <li>
@@ -77,20 +77,20 @@ function AuthorSubmenu({
         )}
       >
         <Link
-          href={basePath}
+          href="/profile/packages"
           className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5"
         >
-          <Icon
+          <Users
             className={cn(
               "h-5 w-5 shrink-0",
               onSection ? "text-white" : "text-blue-400",
             )}
           />
-          <span className="truncate">{label}</span>
+          <span className="truncate">Authors</span>
         </Link>
         <button
           type="button"
-          aria-label={open ? `Collapse ${label}` : `Expand ${label}`}
+          aria-label={open ? "Collapse Authors" : "Expand Authors"}
           className={cn(
             "shrink-0 rounded-r-lg px-2.5 py-2.5",
             onSection ? "text-white/80 hover:text-white" : "hover:text-foreground",
@@ -108,24 +108,9 @@ function AuthorSubmenu({
       </div>
       {open ? (
         <ul className="mt-0.5 flex flex-col gap-0.5 pl-2">
-          <li>
-            <Link
-              href={basePath}
-              className={cn(
-                navItemBase,
-                normalized === basePath
-                  ? "bg-foreground/10 text-foreground"
-                  : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-              )}
-            >
-              <Users className="h-5 w-5 shrink-0 text-muted-foreground" />
-              All authors
-            </Link>
-          </li>
           {authors.map((a) => {
-            const href = `${basePath}/${a.id}`;
-            const active =
-              normalized === href || normalized.startsWith(`${href}/`);
+            const href = `/profile/packages/${a.id}`;
+            const active = activeAuthorId === a.id;
             return (
               <li key={a.id}>
                 <Link
@@ -157,19 +142,15 @@ function AuthorSubmenu({
 export function AccountSidebar({ access, showPackages }: AccountSidebarProps) {
   const pathname = usePathname();
   const normalized = pathname.replace(/\/$/, "") || "/";
-  const onPackages = normalized.startsWith("/profile/packages");
-  const onExtensions = normalized.startsWith("/profile/extensions");
+  const onPackages =
+    normalized.startsWith("/profile/packages") ||
+    normalized.startsWith("/profile/extensions");
   const [packagesManualOpen, setPackagesManualOpen] = useState(onPackages);
-  const [extensionsManualOpen, setExtensionsManualOpen] = useState(onExtensions);
   const [authors, setAuthors] = useState<SidebarAuthor[]>(PACKAGES_AUTHORS);
 
   useEffect(() => {
     if (onPackages) setPackagesManualOpen(true);
   }, [onPackages]);
-
-  useEffect(() => {
-    if (onExtensions) setExtensionsManualOpen(true);
-  }, [onExtensions]);
 
   useEffect(() => {
     if (!showPackages) return;
@@ -190,7 +171,6 @@ export function AccountSidebar({ access, showPackages }: AccountSidebarProps) {
   }, [showPackages]);
 
   const packagesOpen = onPackages || packagesManualOpen;
-  const extensionsOpen = onExtensions || extensionsManualOpen;
 
   return (
     <nav className="flex flex-col gap-4">
@@ -224,26 +204,12 @@ export function AccountSidebar({ access, showPackages }: AccountSidebarProps) {
             );
           })}
           {showPackages ? (
-            <>
-              <AuthorSubmenu
-                basePath="/profile/packages"
-                label="Packages"
-                icon={Package}
-                authors={authors}
-                normalized={normalized}
-                open={packagesOpen}
-                onToggle={() => setPackagesManualOpen((v) => !v)}
-              />
-              <AuthorSubmenu
-                basePath="/profile/extensions"
-                label="Extensions Users"
-                icon={Puzzle}
-                authors={authors}
-                normalized={normalized}
-                open={extensionsOpen}
-                onToggle={() => setExtensionsManualOpen((v) => !v)}
-              />
-            </>
+            <AuthorSubmenu
+              authors={authors}
+              normalized={normalized}
+              open={packagesOpen}
+              onToggle={() => setPackagesManualOpen((v) => !v)}
+            />
           ) : null}
         </ul>
       </div>

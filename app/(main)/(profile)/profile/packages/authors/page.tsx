@@ -4,7 +4,7 @@ import { getSessionUser } from "@/lib/auth/get-session-user";
 import { isPackagesAdmin } from "@/lib/packages-admin";
 
 export const metadata: Metadata = {
-  title: "Packages — Authors",
+  title: "Authors",
   robots: { index: false, follow: false },
 };
 

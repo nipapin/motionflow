@@ -27,6 +27,10 @@ export function ResetPasswordForm() {
     () => (searchParams.get("token") ?? "").trim(),
     [searchParams],
   );
+  const invite = useMemo(
+    () => searchParams.get("source") === "invite",
+    [searchParams],
+  );
 
   const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
@@ -54,6 +58,7 @@ export function ResetPasswordForm() {
           token,
           password,
           password_confirmation: passwordConfirmation,
+          ...(invite ? { source: "invite" } : {}),
         }),
       });
       const data = (await res.json()) as ResetJson;

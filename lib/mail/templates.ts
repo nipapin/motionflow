@@ -161,6 +161,32 @@ export function googlePasswordHintEmail(opts: {
   };
 }
 
+export function authorAccessInviteEmail(opts: {
+  name?: string | null;
+  authorLabel: string;
+  resetUrl: string;
+  expiresDays: number;
+}): BrandedEmailContent {
+  const author = opts.authorLabel.trim() || "Motion Flow";
+  const rendered = renderMotionflowEmail({
+    preheader: `You have been given access to ${author}. Set your password to get started.`,
+    heading: `Access to ${author}`,
+    greetingName: opts.name,
+    paragraphs: [
+      `An admin opened ${author} access on your Motion Flow account.`,
+      "Set a password with the button below, then sign in to download packs or use the extension.",
+      `This link expires in ${opts.expiresDays} days.`,
+    ],
+    ctaLabel: "Set password",
+    ctaUrl: opts.resetUrl,
+    footer: "If you were not expecting this, you can ignore this email.",
+  });
+  return {
+    subject: `Set your password — ${author} access`,
+    ...rendered,
+  };
+}
+
 export function verifyEmailContent(opts: {
   name?: string | null;
   email: string;

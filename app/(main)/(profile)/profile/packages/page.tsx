@@ -5,7 +5,7 @@ import { isPackagesAdmin } from "@/lib/packages-admin";
 import { PackagesAuthorsHome } from "@/components/packages-authors-home";
 
 export const metadata: Metadata = {
-  title: "Packages",
+  title: "Authors",
   robots: { index: false, follow: false },
 };
 

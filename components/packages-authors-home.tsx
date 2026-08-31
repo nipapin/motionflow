@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Package } from "lucide-react";
+import { ArrowRight, Users } from "lucide-react";
 import { packagesAuthorLogoUrl } from "@/lib/packages-admin-client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -43,10 +43,10 @@ export function PackagesAuthorsHome() {
       <header className="space-y-2">
         <p className="text-[13px] text-muted-foreground">Admin</p>
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-          Packages
+          Authors
         </h1>
         <p className="max-w-xl text-[15px] leading-relaxed text-muted-foreground">
-          Pick an author to manage CEP packs — previews, versions, storage, and downloads.
+          Pick an author to manage CEP packs and see who is using their extension.
         </p>
       </header>
 
@@ -74,7 +74,7 @@ export function PackagesAuthorsHome() {
       ) : authors.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/70 px-6 py-16 text-center">
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-            <Package className="h-5 w-5 text-muted-foreground" />
+            <Users className="h-5 w-5 text-muted-foreground" />
           </div>
           <p className="text-sm font-medium text-foreground">No authors yet</p>
           <p className="mt-1 max-w-sm text-sm text-muted-foreground">

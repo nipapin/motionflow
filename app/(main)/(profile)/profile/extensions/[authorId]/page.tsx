@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { redirect, notFound } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getPackagesAuthorById, isPackagesAdmin } from "@/lib/packages-admin";
-import { ExtensionsUsersList } from "@/components/extensions-users-list";
 
 export const metadata: Metadata = {
   title: "Extensions Users — Author",
@@ -11,6 +10,7 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
+/** Users live as a tab on the author packages page. */
 export default async function ExtensionsAuthorPage({
   params,
 }: {
@@ -23,5 +23,5 @@ export default async function ExtensionsAuthorPage({
   const authorId = Number((await params).authorId);
   if (!(await getPackagesAuthorById(authorId))) notFound();
 
-  return <ExtensionsUsersList authorId={authorId} />;
+  redirect(`/profile/packages/${authorId}?tab=users`);
 }

@@ -1,15 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import {
-  ArrowLeft,
   ChevronDown,
   Loader2,
   Puzzle,
   RefreshCw,
   Search,
   ShieldOff,
+  UserPlus,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -38,7 +37,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getPackagesAuthorPublicById } from "@/lib/packages-admin-client";
+import { ExtensionsGiveAccessDialog } from "@/components/extensions-give-access-dialog";
 import { cn } from "@/lib/utils";
 
 type PackChip = {
@@ -85,11 +84,15 @@ type ExtensionUserGroup = {
   device_count: number;
   online_count?: number;
   devices: ExtensionDevice[];
+  acquired_count?: number;
+  subscription_active?: boolean;
+  subscription_label?: string | null;
+  subscription_source?: "admin" | "paddle" | "none";
 };
 
 type ListResponse = {
-  client?: string;
-  extension_name?: string;
+  client?: string | null;
+  extension_name?: string | null;
   users: ExtensionUserGroup[];
   page: number;
   page_size: number;
@@ -178,22 +181,8 @@ function hostLabel(device: ExtensionDevice): string {
     .join(" ");
 }
 
-function uniquePackCount(devices: ExtensionDevice[]): number {
-  const ids = new Set<number>();
-  for (const d of devices) {
-    for (const p of d.packs) ids.add(p.pack_id);
-  }
-  return ids.size;
-}
-
 function totalErrors(devices: ExtensionDevice[]): number {
   return devices.reduce((sum, d) => sum + d.error_count, 0);
-}
-
-function accessLabel(access: "purchase" | "subscription" | "free"): string {
-  if (access === "purchase") return "Purchased";
-  if (access === "subscription") return "Subscription";
-  return "Free";
 }
 
 function PackRowMeta({
@@ -216,12 +205,143 @@ function PackRowMeta({
   );
 }
 
+function PacksModalBody({ data }: { data: PacksResponse }) {
+  const purchasedOnly = data.purchased.filter((p) => p.access === "purchase");
+  const bySubscription = data.purchased.filter(
+    (p) => p.access === "subscription",
+  );
+  const freePacks = data.purchased.filter((p) => p.access === "free");
+  const hasAny =
+    purchasedOnly.length > 0 ||
+    bySubscription.length > 0 ||
+    freePacks.length > 0 ||
+    data.installed.length > 0 ||
+    data.active.length > 0;
+
+  if (!hasAny) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        No acquired, installed, or active packs for this user.
+      </p>
+    );
+  }
+
+  return (
+    <>
+      {purchasedOnly.length > 0 ? (
+        <section className="space-y-2">
+          <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Purchased ({purchasedOnly.length})
+          </h3>
+          <ul className="divide-y divide-border/40 overflow-hidden rounded-xl border border-border/50">
+            {purchasedOnly.map((p) => (
+              <li key={`buy-${p.pack_id}`} className="px-4 py-3">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {p.name}
+                </p>
+                <PackRowMeta host={p.host} catalogVersion={p.catalog_version} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {bySubscription.length > 0 ? (
+        <section className="space-y-2">
+          <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Available by subscription ({bySubscription.length})
+          </h3>
+          <ul className="divide-y divide-border/40 overflow-hidden rounded-xl border border-border/50">
+            {bySubscription.map((p) => (
+              <li key={`sub-${p.pack_id}`} className="px-4 py-3">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {p.name}
+                </p>
+                <PackRowMeta host={p.host} catalogVersion={p.catalog_version} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {freePacks.length > 0 ? (
+        <section className="space-y-2">
+          <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Free ({freePacks.length})
+          </h3>
+          <ul className="divide-y divide-border/40 overflow-hidden rounded-xl border border-border/50">
+            {freePacks.map((p) => (
+              <li key={`free-${p.pack_id}`} className="px-4 py-3">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {p.name}
+                </p>
+                <PackRowMeta host={p.host} catalogVersion={p.catalog_version} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {data.installed.length > 0 ? (
+        <section className="space-y-2">
+          <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Installed on disk ({data.installed.length})
+          </h3>
+          <ul className="divide-y divide-border/40 overflow-hidden rounded-xl border border-border/50">
+            {data.installed.map((p) => (
+              <li key={`inst-${p.pack_id}`} className="px-4 py-3">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {p.name}
+                </p>
+                <PackRowMeta
+                  host={p.host}
+                  catalogVersion={p.catalog_version}
+                  installedVersion={p.installed_version}
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground/80">
+                  {p.devices
+                    .map((d) => {
+                      const label = d.device_name || d.device_id;
+                      return d.installed_version
+                        ? `${label} (${d.installed_version})`
+                        : label;
+                    })
+                    .join(", ")}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {data.active.length > 0 ? (
+        <section className="space-y-2">
+          <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Active now ({data.active.length})
+          </h3>
+          <ul className="divide-y divide-border/40 overflow-hidden rounded-xl border border-border/50">
+            {data.active.map((p) => (
+              <li key={`act-${p.pack_id}`} className="px-4 py-3">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {p.name}
+                </p>
+                <PackRowMeta host={p.host} catalogVersion={p.catalog_version} />
+                <p className="mt-1 text-[11px] text-muted-foreground/80">
+                  {p.devices.map((d) => d.device_name || d.device_id).join(", ")}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </>
+  );
+}
+
 export function ExtensionsUsersList({ authorId }: { authorId: number }) {
-  const author = getPackagesAuthorPublicById(authorId);
   const [groups, setGroups] = useState<ExtensionUserGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [noClient, setNoClient] = useState(false);
   const [extensionName, setExtensionName] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [qDraft, setQDraft] = useState("");
@@ -239,6 +359,8 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
   const [expandedErrors, setExpandedErrors] = useState<Set<string>>(new Set());
   const [revokeTarget, setRevokeTarget] = useState<RevokeTarget | null>(null);
   const [revoking, setRevoking] = useState(false);
+  const [giveAccessOpen, setGiveAccessOpen] = useState(false);
+  const [manageEmail, setManageEmail] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -254,15 +376,6 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
       if (!res.ok) {
         throw new Error(data.message || data.error || "Failed to load");
       }
-      if (data.error === "NO_CEP_CLIENT") {
-        setNoClient(true);
-        setGroups([]);
-        setTotal(0);
-        setDeviceTotal(0);
-        setExtensionName(null);
-        return;
-      }
-      setNoClient(false);
       setGroups(data.users || []);
       setTotal(data.total ?? 0);
       setDeviceTotal(data.device_total ?? 0);
@@ -281,12 +394,11 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
 
   // Soft-refresh presence while the page is open
   useEffect(() => {
-    if (noClient) return;
     const id = setInterval(() => {
       void load();
     }, 30_000);
     return () => clearInterval(id);
-  }, [load, noClient]);
+  }, [load]);
 
   const openDevicesUser = useMemo(() => {
     if (!devicesUser) return null;
@@ -376,40 +488,6 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
 
   return (
     <div className="w-full space-y-8">
-      <header className="space-y-4">
-        <Link
-          href="/profile/extensions"
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          All authors
-        </Link>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-1">
-            <p className="text-[13px] text-muted-foreground">Extensions Users</p>
-            <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-              {author?.label ?? `Author ${authorId}`}
-            </h1>
-            <p className="max-w-2xl text-[15px] leading-relaxed text-muted-foreground">
-              {extensionName
-                ? `Users signed into ${extensionName}. Open Devices or Packs for details.`
-                : "Users with active CEP devices for this author."}
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="gap-2"
-            onClick={() => void load()}
-            disabled={loading}
-          >
-            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-            Refresh
-          </Button>
-        </div>
-      </header>
-
       <div className="flex flex-wrap items-center gap-3">
         <form
           className="relative flex min-w-60 max-w-sm flex-1"
@@ -446,7 +524,31 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
           {deviceTotal > 0
             ? ` · ${deviceTotal} device${deviceTotal === 1 ? "" : "s"} on this page`
             : null}
+          {extensionName ? ` · ${extensionName}` : null}
         </p>
+        <Button
+          type="button"
+          size="sm"
+          className="ml-auto gap-2"
+          onClick={() => {
+            setManageEmail(null);
+            setGiveAccessOpen(true);
+          }}
+        >
+          <UserPlus className="h-4 w-4" />
+          Give access
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          onClick={() => void load()}
+          disabled={loading}
+        >
+          <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+          Refresh
+        </Button>
       </div>
 
       {error ? (
@@ -458,19 +560,7 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
         </div>
       ) : null}
 
-      {noClient ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/70 px-6 py-16 text-center">
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-            <Puzzle className="h-5 w-5 text-muted-foreground" />
-          </div>
-          <p className="text-sm font-medium text-foreground">
-            No CEP extension for this author
-          </p>
-          <p className="mt-1 max-w-md text-sm text-muted-foreground">
-            Register a client in the server CEP registry to track users here.
-          </p>
-        </div>
-      ) : loading && groups.length === 0 ? (
+      {loading && groups.length === 0 ? (
         <div className="space-y-2 rounded-xl border border-border/50 p-4">
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-12 w-full" />
@@ -481,10 +571,22 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
             <Puzzle className="h-5 w-5 text-muted-foreground" />
           </div>
-          <p className="text-sm font-medium text-foreground">No active users</p>
+          <p className="text-sm font-medium text-foreground">No users yet</p>
           <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-            Users who sign in to the extension will appear here.
+            Give access by email, or wait for someone to launch the extension.
           </p>
+          <Button
+            type="button"
+            size="sm"
+            className="mt-5 gap-2"
+            onClick={() => {
+              setManageEmail(null);
+              setGiveAccessOpen(true);
+            }}
+          >
+            <UserPlus className="h-4 w-4" />
+            Give access
+          </Button>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border/50">
@@ -492,15 +594,19 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-55">User</TableHead>
+                <TableHead className="w-32">Subscription</TableHead>
                 <TableHead className="w-28">Devices</TableHead>
                 <TableHead className="w-28">Packs</TableHead>
                 <TableHead className="w-28">Errors</TableHead>
                 <TableHead className="w-40">Last seen</TableHead>
+                <TableHead className="w-28">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {groups.map((group) => {
-                const packCount = uniquePackCount(group.devices);
+                const packCount = group.acquired_count ?? 0;
                 const errors = totalErrors(group.devices);
                 return (
                   <TableRow key={group.user_id}>
@@ -518,28 +624,50 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-blue-400 hover:bg-blue-500/10 hover:text-blue-300"
-                        onClick={() => {
-                          setExpandedErrors(new Set());
-                          setDevicesUser(group);
-                        }}
-                      >
-                        {group.device_count}
-                        <span className="text-xs font-normal text-muted-foreground">
-                          {group.device_count === 1 ? "device" : "devices"}
+                      {group.subscription_active && group.subscription_label ? (
+                        <span className="inline-flex items-center rounded-md bg-blue-500/15 px-2 py-0.5 text-xs font-medium text-blue-300">
+                          {group.subscription_label}
+                          {group.subscription_source === "admin" ? (
+                            <span className="ml-1 text-[10px] text-blue-300/70">
+                              admin
+                            </span>
+                          ) : null}
                         </span>
-                        {(group.online_count ?? 0) > 0 ? (
-                          <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
-                            {group.online_count} online
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          None
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {group.device_count === 0 ? (
+                        <span className="text-xs text-muted-foreground">
+                          Not launched yet
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-blue-400 hover:bg-blue-500/10 hover:text-blue-300"
+                          onClick={() => {
+                            setExpandedErrors(new Set());
+                            setDevicesUser(group);
+                          }}
+                        >
+                          {group.device_count}
+                          <span className="text-xs font-normal text-muted-foreground">
+                            {group.device_count === 1 ? "device" : "devices"}
                           </span>
-                        ) : (
-                          <span className="rounded bg-foreground/5 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                            offline
-                          </span>
-                        )}
-                      </button>
+                          {(group.online_count ?? 0) > 0 ? (
+                            <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+                              {group.online_count} online
+                            </span>
+                          ) : (
+                            <span className="rounded bg-foreground/5 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                              offline
+                            </span>
+                          )}
+                        </button>
+                      )}
                     </TableCell>
                     <TableCell>
                       <button
@@ -549,7 +677,7 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
                       >
                         {packCount}
                         <span className="text-xs font-normal text-muted-foreground">
-                          installed
+                          acquired
                         </span>
                       </button>
                     </TableCell>
@@ -565,7 +693,23 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
                       )}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                      {formatWhen(group.last_seen_at)}
+                      {group.last_seen_at
+                        ? formatWhen(group.last_seen_at)
+                        : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 text-xs"
+                        onClick={() => {
+                          setManageEmail(group.email);
+                          setGiveAccessOpen(true);
+                        }}
+                      >
+                        Manage
+                      </Button>
                     </TableCell>
                   </TableRow>
                 );
@@ -780,113 +924,7 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
                     {packsError}
                   </div>
                 ) : packsData ? (
-                  <>
-                    <section className="space-y-2">
-                      <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                        Purchased &amp; entitled ({packsData.purchased.length})
-                      </h3>
-                      {packsData.purchased.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">None</p>
-                      ) : (
-                        <ul className="divide-y divide-border/40 overflow-hidden rounded-xl border border-border/50">
-                          {packsData.purchased.map((p) => (
-                            <li
-                              key={`owned-${p.pack_id}`}
-                              className="flex items-start justify-between gap-3 px-4 py-3"
-                            >
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-medium text-foreground">
-                                  {p.name}
-                                </p>
-                                <PackRowMeta
-                                  host={p.host}
-                                  catalogVersion={p.catalog_version}
-                                />
-                              </div>
-                              <span className="shrink-0 rounded-md bg-foreground/5 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                                {accessLabel(p.access)}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </section>
-
-                    <section className="space-y-2">
-                      <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                        Installed on disk ({packsData.installed.length})
-                      </h3>
-                      {packsData.installed.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">
-                          No installs reported yet (panel must call
-                          telemetry/installs).
-                        </p>
-                      ) : (
-                        <ul className="divide-y divide-border/40 overflow-hidden rounded-xl border border-border/50">
-                          {packsData.installed.map((p) => (
-                            <li
-                              key={`inst-${p.pack_id}`}
-                              className="px-4 py-3"
-                            >
-                              <p className="truncate text-sm font-medium text-foreground">
-                                {p.name}
-                              </p>
-                              <PackRowMeta
-                                host={p.host}
-                                catalogVersion={p.catalog_version}
-                                installedVersion={p.installed_version}
-                              />
-                              <p className="mt-1 text-[11px] text-muted-foreground/80">
-                                {p.devices
-                                  .map((d) => {
-                                    const label =
-                                      d.device_name || d.device_id;
-                                    return d.installed_version
-                                      ? `${label} (${d.installed_version})`
-                                      : label;
-                                  })
-                                  .join(", ")}
-                              </p>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </section>
-
-                    <section className="space-y-2">
-                      <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                        Active now ({packsData.active.length})
-                      </h3>
-                      {packsData.active.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">
-                          No active packs reported (panel must call
-                          telemetry/active-packs).
-                        </p>
-                      ) : (
-                        <ul className="divide-y divide-border/40 overflow-hidden rounded-xl border border-border/50">
-                          {packsData.active.map((p) => (
-                            <li
-                              key={`act-${p.pack_id}`}
-                              className="px-4 py-3"
-                            >
-                              <p className="truncate text-sm font-medium text-foreground">
-                                {p.name}
-                              </p>
-                              <PackRowMeta
-                                host={p.host}
-                                catalogVersion={p.catalog_version}
-                              />
-                              <p className="mt-1 text-[11px] text-muted-foreground/80">
-                                {p.devices
-                                  .map((d) => d.device_name || d.device_id)
-                                  .join(", ")}
-                              </p>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </section>
-                  </>
+                  <PacksModalBody data={packsData} />
                 ) : null}
               </div>
             </>
@@ -929,6 +967,19 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ExtensionsGiveAccessDialog
+        authorId={authorId}
+        open={giveAccessOpen}
+        initialEmail={manageEmail}
+        onOpenChange={(open) => {
+          setGiveAccessOpen(open);
+          if (!open) setManageEmail(null);
+        }}
+        onGranted={() => {
+          void load();
+        }}
+      />
     </div>
   );
 }

@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowLeft,
   Check,
   Copy,
   Loader2,
@@ -382,55 +381,6 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
 
   return (
     <div className="w-full space-y-8">
-      <header className="space-y-5">
-        <nav className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
-          <Link
-            href="/profile/packages"
-            className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Packages
-          </Link>
-          <span className="text-muted-foreground/40" aria-hidden>
-            /
-          </span>
-          <span className="text-foreground/80">{displayLabel || author.label}</span>
-        </nav>
-
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="flex items-start gap-3.5">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={author.logoUrl}
-              alt=""
-              className="mt-0.5 h-11 w-11 rounded-lg bg-muted/60 object-contain p-1.5"
-            />
-            <div>
-              <h1 className="text-3xl font-semibold tracking-tight">
-                {displayLabel || author.label}
-              </h1>
-              <p className="mt-1 text-[15px] text-muted-foreground">
-                CEP packages for this author
-              </p>
-            </div>
-          </div>
-          <Button
-            type="button"
-            size="sm"
-            className="h-9 gap-1.5"
-            onClick={() => void createProject()}
-            disabled={creating}
-          >
-            {creating ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Plus className="h-3.5 w-3.5" />
-            )}
-            New package
-          </Button>
-        </div>
-      </header>
-
       <section className="rounded-xl border border-border/50 px-4 py-4 sm:px-5">
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
           <div>
@@ -533,12 +483,26 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
           Refresh
         </Button>
         {!loading && projects.length > 0 ? (
-          <span className="ml-auto text-[13px] text-muted-foreground">
+          <span className="text-[13px] text-muted-foreground">
             {filtered.length === projects.length
               ? `${projects.length} package${projects.length === 1 ? "" : "s"}`
               : `${filtered.length} of ${projects.length}`}
           </span>
         ) : null}
+        <Button
+          type="button"
+          size="sm"
+          className="ml-auto h-9 gap-1.5"
+          onClick={() => void createProject()}
+          disabled={creating}
+        >
+          {creating ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Plus className="h-3.5 w-3.5" />
+          )}
+          New package
+        </Button>
       </div>
 
       {error ? (

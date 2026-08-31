@@ -34,19 +34,6 @@ export async function GET(
 
   try {
     const result = await listExtensionUsersForAuthor({ authorId, q, page });
-    if (!result) {
-      return NextResponse.json(
-        {
-          error: "NO_CEP_CLIENT",
-          message: "This author has no registered CEP extension client",
-          users: [],
-          total: 0,
-          page: 1,
-          page_size: 50,
-        },
-        { status: 200 },
-      );
-    }
     return NextResponse.json(result);
   } catch (err) {
     console.error("[extensions/users GET]", err);

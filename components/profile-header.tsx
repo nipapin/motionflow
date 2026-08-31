@@ -8,11 +8,10 @@ import {
   CreditCard,
   Download,
   LogOut,
-  Package,
-  Puzzle,
   ShoppingBag,
   Sparkles,
   User,
+  Users,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { SignInModal } from "@/components/sign-in-modal";
@@ -135,14 +134,7 @@ export function ProfileHeader() {
                   {[
                     ...ACCOUNT_LINKS,
                     ...(user?.email && PACKAGES_ADMIN_EMAILS.has(user.email.trim().toLowerCase())
-                      ? ([
-                          { icon: Package, label: "Packages", href: "/profile/packages" },
-                          {
-                            icon: Puzzle,
-                            label: "Extensions Users",
-                            href: "/profile/extensions",
-                          },
-                        ] as const)
+                      ? ([{ icon: Users, label: "Authors", href: "/profile/packages" }] as const)
                       : []),
                   ].map(({ icon: Icon, label, href }) => (
                     <DropdownMenuItem
