@@ -428,7 +428,7 @@ export async function grantAdminAuthorSubscription(opts: {
   type Existing = RowDataPacket & { id: number; subscription_id: string };
   const [existing] = await pool.execute<Existing[]>(
     `SELECT id, subscription_id FROM \`${SUB_TABLE}\`
-     WHERE buyer_id = ? AND author_id = ? AND system = ?
+     WHERE buyer_id = ? AND author_id = ? AND \`system\` = ?
        AND status IN (1, -1)
      ORDER BY id DESC LIMIT 1`,
     [userId, authorId, ADMIN_SYSTEM],
@@ -494,7 +494,7 @@ export async function revokeAdminAuthorSubscription(opts: {
   const [result] = await pool.execute<ResultSetHeader>(
     `UPDATE \`${SUB_TABLE}\`
         SET status = 0, updated_at = NOW()
-      WHERE buyer_id = ? AND author_id = ? AND system = ? AND status IN (1, -1)`,
+      WHERE buyer_id = ? AND author_id = ? AND \`system\` = ? AND status IN (1, -1)`,
     [opts.userId, opts.authorId, ADMIN_SYSTEM],
   );
   return { revoked: (result.affectedRows ?? 0) > 0 };
@@ -590,7 +590,7 @@ export async function revokeAdminAuthorPacks(opts: {
     const [result] = await pool.execute<ResultSetHeader>(
       `UPDATE \`${SOLD_TABLE}\`
           SET status = 0, updated_at = NOW()
-        WHERE buyer_id = ? AND author_id = ? AND system = ? AND status = 1
+        WHERE buyer_id = ? AND author_id = ? AND \`system\` = ? AND status = 1
           AND item_id IN (${itemIds.map(() => "?").join(",")})`,
       [opts.userId, opts.authorId, ADMIN_SYSTEM, ...itemIds],
     );
