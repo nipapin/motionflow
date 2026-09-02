@@ -403,8 +403,12 @@ Hidden / soft-deleted packs are omitted from the market and return `NOT_FOUND` o
 | `client` | Author | Extension label |
 |----------|--------|-----------------|
 | `spunkram-cep` | Spunkram (server registry) | Spunkram |
+| `gal-cep` | Premiere Gal / Gal Toolkit MAX (`4141`) | Gal Toolkit MAX |
+| `motionflow-davinci` | Motion Flow marketplace (`6`) | Motion Flow DaVinci |
 
 Unknown `client` → `400 UNKNOWN_CLIENT` on device login.
+
+Gal device login opens `https://premieregal.motionflow.pro/?code=…&client=gal-cep` (Allow / Deny on the storefront). Apex `/cep/login?client=gal-cep` redirects to `/premiere-gal`.
 
 ---
 

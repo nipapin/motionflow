@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveCepBearerUser } from "@/lib/cep-auth";
+import { getCepClientConfig } from "@/lib/cep-client-registry";
 import { recordCepClientSession } from "@/lib/cep-client-sessions";
 
 export const runtime = "nodejs";
@@ -66,7 +67,7 @@ function parseBody(raw: unknown): SessionBody | null {
   const host = parseHost(o.host);
 
   if (!client || !extension_version || !os || !host) return null;
-  if (client !== "spunkram-cep") return null;
+  if (!getCepClientConfig(client)) return null;
 
   return {
     client,

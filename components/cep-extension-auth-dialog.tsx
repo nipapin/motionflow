@@ -43,6 +43,11 @@ const CLIENT_COPY: Record<string, { title: string; description: string }> = {
     description:
       "The Spunkram extension in Premiere Pro / After Effects is asking to use your account.",
   },
+  "gal-cep": {
+    title: "Sign in to Gal Toolkit MAX",
+    description:
+      "Gal Toolkit MAX in Premiere Pro / After Effects is asking to use your account.",
+  },
   "motionflow-davinci": {
     title: "Sign in to the Motion Flow DaVinci script",
     description:
@@ -56,7 +61,7 @@ function formatCodeDisplay(code: string): string {
 }
 
 /**
- * CEP device-code gate on the Spunkram marketing site.
+ * CEP device-code gate on the author marketing site.
  * Visual match of the former /cep/login Card on Motionflow.
  */
 export function CepExtensionAuthDialog({

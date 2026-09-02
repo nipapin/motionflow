@@ -1,4 +1,6 @@
 import "server-only";
+import { PREMIERE_GAL_AUTHOR_ID } from "@/lib/premiere-gal-paddle-config";
+import { PREMIEREGAL_SUBDOMAIN_HOST } from "@/lib/premiere-gal-paths";
 import { SPUNKRAM_AUTHOR_ID } from "@/lib/spunkram-paddle-config";
 
 /**
@@ -20,10 +22,16 @@ export type CepClientConfig = {
   loginTitle: string;
   loginDescription: string;
   /**
-   * Path on motionflow.pro opened for Allow/Deny
-   * (e.g. `/spunkram` or `/cep/login`).
+   * Path on the apex site opened for Allow/Deny
+   * (e.g. `/spunkram`, `/premiere-gal`, or `/cep/login`).
    */
   verificationPath: string;
+  /**
+   * Storefront host for the confirm page (no scheme).
+   * Production `verification_url` uses `https://{host}/` (subdomain rewrite to
+   * `verificationPath`). Localhost keeps the apex path.
+   */
+  storefrontHost?: string;
   /**
    * When true, `/api/cep/me` reports Motion Flow Creator / Creator+AI
    * (platform subscription), not an author pack subscription.
@@ -60,6 +68,24 @@ const REGISTRY: Record<string, CepClientConfig> = {
     pricingPath: "/pricing?client=spunkram-cep",
     manageSubscriptionPath: "/profile/subscriptions?client=spunkram-cep",
   },
+  "gal-cep": {
+    client: "gal-cep",
+    authorId: PREMIERE_GAL_AUTHOR_ID,
+    extensionName: "Gal Toolkit MAX",
+    loginTitle: "Sign in to Gal Toolkit MAX",
+    loginDescription:
+      "Gal Toolkit MAX in Premiere Pro / After Effects is asking to use your account.",
+    verificationPath: "/premiere-gal",
+    storefrontHost: PREMIEREGAL_SUBDOMAIN_HOST,
+    platformSubscription: false,
+    freeGenerationsLimit: 0,
+    editorGenerationsLimit: 0,
+    editorAiGenerationsLimit: 0,
+    subscribedGenerationsLimit: 0,
+    freePackSlots: 0,
+    pricingPath: "/",
+    manageSubscriptionPath: "/profile/subscriptions?client=gal-cep",
+  },
   "motionflow-davinci": {
     client: "motionflow-davinci",
     authorId: MOTIONFLOW_MARKETPLACE_AUTHOR_ID,
@@ -83,7 +109,35 @@ const REGISTRY: Record<string, CepClientConfig> = {
 
 export const DEFAULT_CEP_CLIENT = "spunkram-cep";
 
+export const GAL_CEP_CLIENT = "gal-cep";
+
 export const MOTIONFLOW_DAVINCI_CLIENT = "motionflow-davinci";
+
+function isLocalOrigin(origin: string): boolean {
+  try {
+    const host = new URL(origin).hostname;
+    return /^(localhost|127\.0\.0\.1)$/i.test(host);
+  } catch {
+    return false;
+  }
+}
+
+/** Origin + path for the browser Allow/Deny page for this CEP client. */
+export function cepDeviceVerificationTarget(
+  cfg: CepClientConfig,
+  requestOrigin: string,
+): { origin: string; path: string } {
+  const apexPath = cfg.verificationPath.startsWith("/")
+    ? cfg.verificationPath
+    : `/${cfg.verificationPath}`;
+  if (!cfg.storefrontHost) {
+    return { origin: requestOrigin, path: apexPath };
+  }
+  if (isLocalOrigin(requestOrigin)) {
+    return { origin: requestOrigin, path: apexPath };
+  }
+  return { origin: `https://${cfg.storefrontHost}`, path: "/" };
+}
 
 export function normalizeCepClient(raw: unknown): string {
   if (typeof raw !== "string") return DEFAULT_CEP_CLIENT;

@@ -208,6 +208,9 @@ export function cepEntitlementsForTier(
 }
 
 export function cepSubscribeUrl(cfg: CepClientConfig): string {
+  if (cfg.storefrontHost) {
+    return `https://${cfg.storefrontHost}/`;
+  }
   return motionflowMainSiteUrl(cfg.pricingPath);
 }
 

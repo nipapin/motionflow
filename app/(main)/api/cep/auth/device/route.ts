@@ -7,6 +7,7 @@ import {
 import { checkCepAuthDeviceRateLimit } from "@/lib/cep-auth-rate-limit";
 import {
   CepUnknownClientError,
+  cepDeviceVerificationTarget,
   normalizeCepClient,
   requireCepClientConfig,
 } from "@/lib/cep-client-registry";
@@ -75,10 +76,10 @@ export async function POST(req: NextRequest) {
       ip,
     });
 
-    const origin = verificationOrigin(req);
-    const path = cfg.verificationPath.startsWith("/")
-      ? cfg.verificationPath
-      : `/${cfg.verificationPath}`;
+    const { origin, path } = cepDeviceVerificationTarget(
+      cfg,
+      verificationOrigin(req),
+    );
     const verificationUrl = new URL(`${origin}${path}`);
     verificationUrl.searchParams.set("code", code);
     verificationUrl.searchParams.set("client", cfg.client);

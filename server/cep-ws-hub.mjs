@@ -58,6 +58,7 @@ function makeRedis() {
 /** client → authorId (must stay in sync with lib/cep-client-registry.ts) */
 const CLIENT_AUTHOR = {
   "spunkram-cep": Number(process.env.SPUNKRAM_AUTHOR_ID) || 1691,
+  "gal-cep": Number(process.env.PREMIERE_GAL_AUTHOR_ID) || 4141,
 };
 
 /**
