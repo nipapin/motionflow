@@ -178,7 +178,7 @@ export function CepExtensionAuthDialog({
         className={cn(
           "gap-0 overflow-hidden p-0 sm:max-w-md",
           // Match Motionflow /cep/login Card chrome (works on Spunkram tokens too).
-          "rounded-xl border border-line bg-surface text-foreground shadow-lg",
+          "rounded-xl border border-line bg-background text-foreground shadow-lg",
         )}
       >
         <div className="flex flex-col gap-6 px-6 py-6">
