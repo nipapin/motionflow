@@ -302,12 +302,112 @@ Panel: extract over the installed pack folder, delete stale paths, keep the new 
 
 ---
 
+## 3c. Pack structure / categories (R2)
+
+Browse the pack category tree **before** full install. Same R2 `{stem}/` layout as §3b.
+
+### Endpoint
+
+`GET /api/cep/market/structure?pack_id=<id>`
+
+**Headers**
+
+```
+Authorization: Bearer mfcep_…
+If-None-Match: "<etag>"   # optional — 304 when unchanged
+```
+
+**Visibility:** signed-in + pack visible for the device `client` (catalog scope). **Not** download-gate — sidebar works before Install.
+
+### Algorithm
+
+1. Resolve pack (author from `client`, visible / not admin-only unless admin).
+2. Read `{stem}/manifest.json` (`stem` = basename of `download_key` without `.zip`).
+3. Find first `*.spunkram` / `*.motionflow` path in the manifest.
+4. `GetObject` that key; parse plaintext JSON (`settings` + `content`; legacy `structure` / `contents` normalized to `content`).
+
+### Success `200`
+
+```json
+{
+  "pack_id": "12",
+  "pack_name": "gal-toolkit-max",
+  "version": "1.4.0",
+  "etag": "\"a1b2…\"",
+  "settings": { "main": { "name": "…", "version": "…" } },
+  "content": { "Transitions": { "Bokeh": { "preview": {} } } }
+}
+```
+
+Headers: `ETag`, `Cache-Control: private, max-age=60`.
+
+`304` when `If-None-Match` matches current etag (empty body).
+
+### Errors (JSON)
+
+| Status | `error` | When |
+|--------|---------|------|
+| 401 | `UNAUTHORIZED` | Missing / invalid token |
+| 400 | `MISSING_PARAMS` | `pack_id` missing |
+| 404 | `NOT_FOUND` | Unknown / wrong author / not visible |
+| 404 | `NO_DOWNLOAD_KEY` / `NO_BUCKET` | No zip key or author bucket |
+| 409 | `NO_STRUCTURE` | No `{stem}/manifest.json` or pack JSON on R2 |
+
+Panel: `buildPackTree(content)` for sidebar / search; apply + previews still need local install (`Assets/` / `Previews/`).
+
+---
+
+## 3d. Gal Toolkit effects catalog (dedicated bucket)
+
+Gal CEP browses Effects from private R2 bucket **`gal-toolkit-max`** (override with `R2_GAL_TOOLKIT_BUCKET`):
+
+| Host | JSON key | Assets prefix |
+|------|----------|---------------|
+| `PR` (default) | `premiere-pro/Premiere Pro.json` | `premiere-pro/Assets/` |
+| `AE` | `after-effects/After Effects.json` | `after-effects/Assets/` |
+
+### Catalog
+
+`GET /api/cep/gal/effects?host=PR|AE`
+
+**Headers:** `Authorization: Bearer mfcep_…` (required). Optional `If-None-Match`.
+
+**200**
+
+```json
+{
+  "host": "PR",
+  "pack_name": "Gal Toolkit MAX",
+  "version": "1.4.0",
+  "etag": "\"a1b2…\"",
+  "settings": { "main": { "name": "…", "version": "…" } },
+  "content": { "Transitions": { "…": { "preview": {} } } },
+  "assets_base_url": "https://motionflow.pro/api/cep/gal/effects/media"
+}
+```
+
+Panel: `buildPackTree(content)`; preview URLs = `{assets_base_url}/{segments}.{ext}` (see media route).
+
+### Media proxy (private bucket)
+
+`GET /api/cep/gal/effects/media/{…relative under Assets/}?host=PR|AE`
+
+- **No Bearer** — `<img>` / `<video>` cannot send Authorization (same as showcase-media).
+- Supports `Range` for video seek.
+- Scoped to `{host}/Assets/` only; pack JSON stays gated.
+
+Public CDN bucket is **not** required while this proxy is used.
+
+---
+
 ## 4. Recommended panel flow
 
 ```
 1. Ensure Bearer token (device login if missing)
 2. GET /api/cep/market?host=PR|AE
 3. Render Packages[]
+3b. Gal Effects: GET /api/cep/gal/effects?host=PR → sidebar + grid (Assets via media proxy)
+3c. Optionally GET /api/cep/market/structure?pack_id=… → sidebar categories before install
 4. On Install / Get free:
      - Check min_extension_version / min_host_version locally
      - GET install_url with Bearer, follow redirects, save zip
