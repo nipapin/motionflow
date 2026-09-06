@@ -1,9 +1,13 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getR2Client } from "@/lib/r2-storage";
 import { motionflowSiteOrigin } from "@/lib/motionflow-urls";
+
+/** Presigned GET TTL for Gal Toolkit project / _Assets files. */
+export const GAL_EFFECTS_FILE_PRESIGN_TTL_SECONDS = 10 * 60;
 
 /** Private R2 bucket holding Gal Toolkit Max pack tree (JSON + Assets). */
 export function galToolkitBucket(): string {
@@ -33,6 +37,11 @@ export function galEffectsJsonKey(host: GalEffectsHost = "PR"): string {
 
 export function galEffectsAssetsPrefix(host: GalEffectsHost = "PR"): string {
   return `${HOST_PREFIX[host]}/Assets/`;
+}
+
+/** Host-root file list: `premiere-pro/manifest.json` / `after-effects/manifest.json`. */
+export function galEffectsManifestKey(host: GalEffectsHost = "PR"): string {
+  return `${HOST_PREFIX[host]}/manifest.json`;
 }
 
 const MIME_BY_EXT: Record<string, string> = {
@@ -262,4 +271,175 @@ export async function loadGalEffectsCatalog(
 export function parseGalEffectsHost(raw: string | null): GalEffectsHost {
   const v = (raw || "PR").trim().toUpperCase();
   return v === "AE" ? "AE" : "PR";
+}
+
+export type GalEffectsAssetsManifest = {
+  host: GalEffectsHost;
+  etag: string;
+  /** Parsed JSON from `{hostPrefix}/manifest.json` (array or `{ files: … }`). */
+  manifest: unknown;
+};
+
+type CachedManifest = { data: GalEffectsAssetsManifest; expiresAt: number };
+const manifestCache = new Map<string, CachedManifest>();
+const MANIFEST_TTL_MS = 60_000;
+
+export type LoadGalEffectsManifestResult =
+  | { ok: true; data: GalEffectsAssetsManifest }
+  | { ok: false; error: "NO_MANIFEST" | "BAD_MANIFEST" };
+
+/**
+ * Load `{premiere-pro|after-effects}/manifest.json` from the Gal Toolkit bucket.
+ */
+export async function loadGalEffectsAssetsManifest(
+  host: GalEffectsHost = "PR",
+  opts: { fresh?: boolean } = {},
+): Promise<LoadGalEffectsManifestResult> {
+  const cacheKey = host;
+  if (!opts.fresh) {
+    const hit = manifestCache.get(cacheKey);
+    if (hit && hit.expiresAt > Date.now()) return { ok: true, data: hit.data };
+  }
+
+  const raw = await getR2ObjectText(galToolkitBucket(), galEffectsManifestKey(host));
+  if (!raw) return { ok: false, error: "NO_MANIFEST" };
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ok: false, error: "BAD_MANIFEST" };
+  }
+  if (parsed == null || (typeof parsed !== "object" && !Array.isArray(parsed))) {
+    return { ok: false, error: "BAD_MANIFEST" };
+  }
+
+  const etag = `"${createHash("sha256").update(raw).digest("hex").slice(0, 32)}"`;
+  const data: GalEffectsAssetsManifest = {
+    host,
+    etag,
+    manifest: parsed,
+  };
+
+  manifestCache.set(cacheKey, {
+    data,
+    expiresAt: Date.now() + MANIFEST_TTL_MS,
+  });
+
+  return { ok: true, data };
+}
+
+/**
+ * Normalize a client `path` query into a relative path under `{hostPrefix}/`.
+ * Accepts `Assets/…`, `_Assets/…`, or bare relative paths; rejects `..` / abs / `\`.
+ */
+export function normalizeGalEffectsRelPath(raw: string): string | null {
+  let decoded = raw.trim();
+  if (!decoded) return null;
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {
+    // keep raw
+  }
+  decoded = decoded.replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!decoded || decoded.includes("\0")) return null;
+  const parts = decoded.split("/").filter((p) => p.length > 0 && p !== ".");
+  if (parts.length === 0) return null;
+  if (parts.some((p) => p === ".." || p.includes("\\"))) return null;
+  return parts.join("/");
+}
+
+/**
+ * Resolve `path` (relative to host prefix) → full R2 key under `{prefix}/`, or null.
+ * Sandboxed to the host prefix only (not just Assets/).
+ */
+export function resolveGalEffectsFileKey(
+  relPath: string,
+  host: GalEffectsHost = "PR",
+): string | null {
+  const rel = normalizeGalEffectsRelPath(relPath);
+  if (!rel) return null;
+  const prefix = `${galEffectsPrefix(host)}/`;
+  const key = `${prefix}${rel}`;
+  if (!key.startsWith(prefix)) return null;
+  return key;
+}
+
+export type GalEffectsFileLink = {
+  url: string;
+  key: string;
+  path: string;
+  etag: string;
+  size: number | null;
+  expires_in: number;
+};
+
+export type GalEffectsFileLinkResult =
+  | { ok: true; data: GalEffectsFileLink }
+  | { ok: false; error: "NOT_FOUND" | "BAD_PATH" | "PRESIGN_FAILED" };
+
+/**
+ * HeadObject + short-lived presigned GET for a file under `{hostPrefix}/`.
+ */
+export async function getGalEffectsFilePresign(
+  relPath: string,
+  host: GalEffectsHost = "PR",
+): Promise<GalEffectsFileLinkResult> {
+  const key = resolveGalEffectsFileKey(relPath, host);
+  if (!key) return { ok: false, error: "BAD_PATH" };
+
+  const prefix = `${galEffectsPrefix(host)}/`;
+  const path = key.slice(prefix.length);
+  const bucket = galToolkitBucket();
+  const client = getR2Client();
+
+  let etag = "";
+  let size: number | null = null;
+  try {
+    const head = await client.send(
+      new HeadObjectCommand({ Bucket: bucket, Key: key }),
+    );
+    etag = (head.ETag || "").replace(/^W\//, "").trim() || "";
+    if (!etag) {
+      etag = `"${createHash("sha256").update(key).digest("hex").slice(0, 16)}"`;
+    } else if (!etag.startsWith('"')) {
+      etag = `"${etag.replace(/"/g, "")}"`;
+    }
+    size = typeof head.ContentLength === "number" ? head.ContentLength : null;
+  } catch (e) {
+    const name = (e as { name?: string } | undefined)?.name;
+    const status = (e as { $metadata?: { httpStatusCode?: number } } | undefined)
+      ?.$metadata?.httpStatusCode;
+    if (name === "NoSuchKey" || name === "NotFound" || status === 404) {
+      return { ok: false, error: "NOT_FOUND" };
+    }
+    throw e;
+  }
+
+  const filename = path.split("/").pop() || "download";
+  try {
+    const url = await getSignedUrl(
+      client,
+      new GetObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        ResponseContentDisposition: `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      }),
+      { expiresIn: GAL_EFFECTS_FILE_PRESIGN_TTL_SECONDS },
+    );
+    return {
+      ok: true,
+      data: {
+        url,
+        key,
+        path,
+        etag,
+        size,
+        expires_in: GAL_EFFECTS_FILE_PRESIGN_TTL_SECONDS,
+      },
+    };
+  } catch (e) {
+    console.error("[gal-effects-file] getSignedUrl failed", e);
+    return { ok: false, error: "PRESIGN_FAILED" };
+  }
 }

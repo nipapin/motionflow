@@ -361,10 +361,10 @@ Panel: `buildPackTree(content)` for sidebar / search; apply + previews still nee
 
 Gal CEP browses Effects from private R2 bucket **`gal-toolkit-max`** (override with `R2_GAL_TOOLKIT_BUCKET`):
 
-| Host | JSON key | Assets prefix |
-|------|----------|---------------|
-| `PR` (default) | `premiere-pro/Premiere Pro.json` | `premiere-pro/Assets/` |
-| `AE` | `after-effects/After Effects.json` | `after-effects/Assets/` |
+| Host | JSON key | Manifest | Assets prefix |
+|------|----------|----------|---------------|
+| `PR` (default) | `premiere-pro/Premiere Pro.json` | `premiere-pro/manifest.json` | `premiere-pro/Assets/` |
+| `AE` | `after-effects/After Effects.json` | `after-effects/manifest.json` | `after-effects/Assets/` |
 
 ### Catalog
 
@@ -388,15 +388,67 @@ Gal CEP browses Effects from private R2 bucket **`gal-toolkit-max`** (override w
 
 Panel: `buildPackTree(content)`; preview URLs = `{assets_base_url}/{segments}.{ext}` (see media route).
 
+### Assets manifest (Bearer)
+
+`GET /api/cep/gal/effects/assets-manifest?host=PR|AE`
+
+Reads **`{hostPrefix}/manifest.json`** (e.g. `premiere-pro/manifest.json`). Same array / `{ files: { path: { hash } } }` shapes as Market pack manifests.
+
+**Headers:** Bearer required. Optional `If-None-Match`.
+
+**200**
+
+```json
+{
+  "host": "PR",
+  "etag": "\"…\"",
+  "manifest": [{ "path": "Assets/_Assets/foo.mp4", "hash": "…" }]
+}
+```
+
+CEP syncs only `_Assets` / `Assets/_Assets` entries on panel start; project files are downloaded on Apply.
+
+### File download — presigned URL (Bearer)
+
+`GET /api/cep/gal/effects/file?host=PR|AE&path={rel under hostPrefix}`
+
+**Headers:** Bearer required. `path` examples: `Assets/Transitions/Bokeh/Bokeh.prproj`, `Assets/_Assets/…`.
+
+**200**
+
+```json
+{
+  "url": "https://…r2…presigned…",
+  "key": "premiere-pro/Assets/Transitions/Bokeh/Bokeh.prproj",
+  "path": "Assets/Transitions/Bokeh/Bokeh.prproj",
+  "etag": "\"…\"",
+  "size": 12345678,
+  "expires_in": 600
+}
+```
+
+CEP follows `url` **without** Authorization (strip auth on redirect). Compare `etag`/`size` to local `gal-file-index.json` and skip re-download when unchanged.
+
+**Errors:** `401 UNAUTHORIZED`, `400 MISSING_PARAMS` / `BAD_PATH`, `404 NOT_FOUND`, `500 PRESIGN_FAILED`.
+
 ### Media proxy (private bucket)
 
 `GET /api/cep/gal/effects/media/{…relative under Assets/}?host=PR|AE`
 
 - **No Bearer** — `<img>` / `<video>` cannot send Authorization (same as showcase-media).
 - Supports `Range` for video seek.
-- Scoped to `{host}/Assets/` only; pack JSON stays gated.
+- Scoped to `{host}/Assets/` only; pack JSON and project downloads stay gated.
 
 Public CDN bucket is **not** required while this proxy is used.
+
+**Panel flow (Gal Apply without zip):**
+
+```
+1. GET /api/cep/gal/effects → tree + media base
+2. GET /api/cep/gal/effects/assets-manifest → sync _Assets into install root
+3. On Import: GET /api/cep/gal/effects/file?path=Assets/…/{group}.prproj
+4. Stream to disk if etag changed → applyPackItemToHost
+```
 
 ---
 
@@ -407,6 +459,7 @@ Public CDN bucket is **not** required while this proxy is used.
 2. GET /api/cep/market?host=PR|AE
 3. Render Packages[]
 3b. Gal Effects: GET /api/cep/gal/effects?host=PR → sidebar + grid (Assets via media proxy)
+3b2. Gal: GET /api/cep/gal/effects/assets-manifest → sync `_Assets`; on Apply GET …/file?path= → presign + disk
 3c. Optionally GET /api/cep/market/structure?pack_id=… → sidebar categories before install
 4. On Install / Get free:
      - Check min_extension_version / min_host_version locally
