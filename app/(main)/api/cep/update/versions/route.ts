@@ -5,7 +5,8 @@ import {
 } from "@/lib/auth/resolve-captions-user";
 import { isSpunkramReleaseAdmin } from "@/lib/spunkram-beta";
 import {
-  listSpunkramVersionsFromR2,
+  cepProductFromClient,
+  listCepProductVersionsFromR2,
   readBetaManifestFromR2,
   readLatestManifestFromR2,
 } from "@/lib/spunkram-release";
@@ -14,8 +15,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/cep/update/versions — full list of uploaded Spunkram ZXPs (admin only).
- * Auth: Bearer CEP token; email must be on the beta/admin allowlist.
+ * GET /api/cep/update/versions — uploaded ZXPs for the caller's brand (admin only).
  */
 export async function GET(req: NextRequest) {
   const bearer = bearerFromRequest(req);
@@ -27,9 +27,11 @@ export async function GET(req: NextRequest) {
   }
 
   let email: string | null = null;
+  let product: ReturnType<typeof cepProductFromClient> = "spunkram";
   try {
     const user = await resolveCaptionsUser({ bearer });
     email = user?.email ?? null;
+    product = cepProductFromClient(user?.cepClient);
   } catch {
     email = null;
   }
@@ -43,9 +45,9 @@ export async function GET(req: NextRequest) {
 
   try {
     const [versions, stable, beta] = await Promise.all([
-      listSpunkramVersionsFromR2(),
-      readLatestManifestFromR2(),
-      readBetaManifestFromR2(),
+      listCepProductVersionsFromR2(product),
+      readLatestManifestFromR2(product),
+      readBetaManifestFromR2(product),
     ]);
 
     const betas = versions.filter((v) => v.channel === "beta");
@@ -53,6 +55,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(
       {
+        product,
         current: {
           stable: stable?.version ?? null,
           beta: beta?.version ?? null,

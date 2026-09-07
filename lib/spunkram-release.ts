@@ -13,6 +13,9 @@ export const SPUNKRAM_FFMPEG_KEYS = {
   mac: "public/downloads/ffmpeg/mac/ffmpeg-mac.zip",
 } as const;
 
+/** R2 folder under `public/downloads/` for each CEP brand. */
+export type CepReleaseProduct = "spunkram" | "gal";
+
 export type SpunkramReleaseChannel = "stable" | "beta";
 
 export type SpunkramLatestManifest = {
@@ -21,6 +24,7 @@ export type SpunkramLatestManifest = {
   changelog: string;
   publishedAt: string;
   channel?: SpunkramReleaseChannel;
+  product?: CepReleaseProduct;
   ffmpeg: {
     win: string;
     mac: string;
@@ -33,17 +37,39 @@ export type SpunkramVersionEntry = {
   channel: SpunkramReleaseChannel;
 };
 
-export function spunkramZxpKey(version: string): string {
+export function cepProductFromClient(client?: string | null): CepReleaseProduct {
+  const c = String(client || "").trim().toLowerCase();
+  if (c === "gal-cep" || c === "gal") return "gal";
+  return "spunkram";
+}
+
+export function cepProductZxpFile(product: CepReleaseProduct): string {
+  return product === "gal" ? "gal.zxp" : "spunkram.zxp";
+}
+
+export function cepProductZxpKey(product: CepReleaseProduct, version: string): string {
   const safe = version.replace(/^v/i, "").replace(/[^0-9A-Za-z._-]+/g, "");
-  return `public/downloads/spunkram/${safe}/spunkram.zxp`;
+  return `public/downloads/${product}/${safe}/${cepProductZxpFile(product)}`;
+}
+
+export function cepProductLatestKey(product: CepReleaseProduct): string {
+  return `public/downloads/${product}/latest.json`;
+}
+
+export function cepProductBetaKey(product: CepReleaseProduct): string {
+  return `public/downloads/${product}/beta.json`;
+}
+
+export function spunkramZxpKey(version: string): string {
+  return cepProductZxpKey("spunkram", version);
 }
 
 export function spunkramLatestKey(): string {
-  return "public/downloads/spunkram/latest.json";
+  return cepProductLatestKey("spunkram");
 }
 
 export function spunkramBetaKey(): string {
-  return "public/downloads/spunkram/beta.json";
+  return cepProductBetaKey("spunkram");
 }
 
 export function defaultFfmpegUrls(): SpunkramLatestManifest["ffmpeg"] {
@@ -59,9 +85,11 @@ export function buildLatestManifest(opts: {
   publishedAt?: string;
   zxpKey?: string;
   channel?: SpunkramReleaseChannel;
+  product?: CepReleaseProduct;
 }): SpunkramLatestManifest {
+  const product = opts.product ?? "spunkram";
   const version = opts.version.replace(/^v/i, "");
-  const zxpKey = opts.zxpKey ?? spunkramZxpKey(version);
+  const zxpKey = opts.zxpKey ?? cepProductZxpKey(product, version);
   const channel = opts.channel ?? (/-beta/i.test(version) ? "beta" : "stable");
   return {
     version,
@@ -69,16 +97,21 @@ export function buildLatestManifest(opts: {
     changelog: opts.changelog ?? "",
     publishedAt: opts.publishedAt ?? new Date().toISOString(),
     channel,
+    product,
     ffmpeg: defaultFfmpegUrls(),
   };
 }
 
-function manifestPointerKey(channel: SpunkramReleaseChannel): string {
-  return channel === "beta" ? spunkramBetaKey() : spunkramLatestKey();
+function manifestPointerKey(
+  product: CepReleaseProduct,
+  channel: SpunkramReleaseChannel,
+): string {
+  return channel === "beta" ? cepProductBetaKey(product) : cepProductLatestKey(product);
 }
 
 /** Upload ZXP bytes to versioned key and refresh latest.json or beta.json. */
-export async function publishSpunkramZxp(opts: {
+export async function publishCepProductZxp(opts: {
+  product: CepReleaseProduct;
   version: string;
   zxpBody: Buffer | Uint8Array;
   changelog?: string;
@@ -88,10 +121,11 @@ export async function publishSpunkramZxp(opts: {
 }): Promise<SpunkramLatestManifest> {
   const client = getR2Client();
   const bucket = getR2Bucket();
+  const product = opts.product;
   const version = opts.version.replace(/^v/i, "");
   const channel: SpunkramReleaseChannel =
     opts.channel ?? (/-beta/i.test(version) ? "beta" : "stable");
-  const zxpKey = spunkramZxpKey(version);
+  const zxpKey = cepProductZxpKey(product, version);
 
   await client.send(
     new PutObjectCommand({
@@ -109,12 +143,13 @@ export async function publishSpunkramZxp(opts: {
     publishedAt: opts.publishedAt,
     zxpKey,
     channel,
+    product,
   });
 
   await client.send(
     new PutObjectCommand({
       Bucket: bucket,
-      Key: manifestPointerKey(channel),
+      Key: manifestPointerKey(product, channel),
       Body: Buffer.from(JSON.stringify(manifest, null, 2), "utf8"),
       ContentType: "application/json; charset=utf-8",
       CacheControl: "public, max-age=60",
@@ -127,9 +162,20 @@ export async function publishSpunkramZxp(opts: {
     changelog: manifest.changelog,
     channel: manifest.channel ?? channel,
     published_at: manifest.publishedAt,
+    product,
   });
 
   return manifest;
+}
+
+export async function publishSpunkramZxp(opts: {
+  version: string;
+  zxpBody: Buffer | Uint8Array;
+  changelog?: string;
+  publishedAt?: string;
+  channel?: SpunkramReleaseChannel;
+}): Promise<SpunkramLatestManifest> {
+  return publishCepProductZxp({ ...opts, product: "spunkram" });
 }
 
 async function readManifestKey(key: string): Promise<SpunkramLatestManifest | null> {
@@ -155,14 +201,18 @@ async function readManifestKey(key: string): Promise<SpunkramLatestManifest | nu
   }
 }
 
-export async function readLatestManifestFromR2(): Promise<SpunkramLatestManifest | null> {
-  return readManifestKey(spunkramLatestKey());
+export async function readLatestManifestFromR2(
+  product: CepReleaseProduct = "spunkram",
+): Promise<SpunkramLatestManifest | null> {
+  return readManifestKey(cepProductLatestKey(product));
 }
 
-export async function readBetaManifestFromR2(): Promise<SpunkramLatestManifest | null> {
-  const m = await readManifestKey(spunkramBetaKey());
+export async function readBetaManifestFromR2(
+  product: CepReleaseProduct = "spunkram",
+): Promise<SpunkramLatestManifest | null> {
+  const m = await readManifestKey(cepProductBetaKey(product));
   if (!m) return null;
-  return { ...m, channel: m.channel ?? "beta" };
+  return { ...m, channel: m.channel ?? "beta", product };
 }
 
 function compareVersionsAsc(a: string, b: string): number {
@@ -193,13 +243,20 @@ function compareVersionsAsc(a: string, b: string): number {
 }
 
 /**
- * List every uploaded Spunkram ZXP under `public/downloads/spunkram/{version}/spunkram.zxp`.
+ * List uploaded ZXPs under `public/downloads/{product}/{version}/{file}.zxp`.
  * Newest first. Used by admin Settings version switcher.
  */
-export async function listSpunkramVersionsFromR2(): Promise<SpunkramVersionEntry[]> {
+export async function listCepProductVersionsFromR2(
+  product: CepReleaseProduct = "spunkram",
+): Promise<SpunkramVersionEntry[]> {
   const client = getR2Client();
   const bucket = getR2Bucket();
-  const prefix = "public/downloads/spunkram/";
+  const prefix = `public/downloads/${product}/`;
+  const file = cepProductZxpFile(product).replace(/\./g, "\\.");
+  const re = new RegExp(
+    `^public\\/downloads\\/${product}\\/([^/]+)\\/${file}$`,
+    "i",
+  );
   const byVersion = new Map<string, SpunkramVersionEntry>();
 
   let token: string | undefined;
@@ -213,8 +270,7 @@ export async function listSpunkramVersionsFromR2(): Promise<SpunkramVersionEntry
     );
     for (const obj of res.Contents ?? []) {
       const key = obj.Key || "";
-      // public/downloads/spunkram/0.4.3-beta.1/spunkram.zxp
-      const m = key.match(/^public\/downloads\/spunkram\/([^/]+)\/spunkram\.zxp$/i);
+      const m = key.match(re);
       if (!m) continue;
       const version = m[1];
       if (!version || version === "latest" || version === "beta") continue;
@@ -228,4 +284,8 @@ export async function listSpunkramVersionsFromR2(): Promise<SpunkramVersionEntry
   } while (token);
 
   return [...byVersion.values()].sort((a, b) => compareVersionsAsc(b.version, a.version));
+}
+
+export async function listSpunkramVersionsFromR2(): Promise<SpunkramVersionEntry[]> {
+  return listCepProductVersionsFromR2("spunkram");
 }

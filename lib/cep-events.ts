@@ -20,7 +20,7 @@ export function cepEventsChannel(authorId: number): string {
   return `cep:events:${authorId}`;
 }
 
-/** Global fan-out for Spunkram extension releases (all connected CEP panels). */
+/** Global fan-out for CEP extension releases (all connected panels; filter by `product`). */
 export const CEP_EXTENSION_CHANNEL = "cep:extension";
 
 export type CepExtensionUpdatePayload = {
@@ -30,6 +30,8 @@ export type CepExtensionUpdatePayload = {
   changelog?: string;
   channel: "stable" | "beta";
   published_at: string;
+  /** Which brand ZXP was published (`spunkram` | `gal`). Older notifies omit this. */
+  product?: "spunkram" | "gal";
   ts: number;
 };
 
@@ -50,7 +52,7 @@ export async function publishCepPackEvent(
   }
 }
 
-/** Notify all open CEP panels that a new ZXP is on the CDN. Returns false if Redis is down. */
+/** Notify open CEP panels that a new ZXP is on the CDN. Returns false if Redis is down. */
 export async function publishCepExtensionUpdate(
   event: Omit<CepExtensionUpdatePayload, "type" | "ts"> & { ts?: number },
 ): Promise<boolean> {
@@ -64,6 +66,7 @@ export async function publishCepExtensionUpdate(
       changelog: event.changelog || "",
       channel: event.channel,
       published_at: event.published_at,
+      product: event.product,
       ts: event.ts ?? Date.now(),
     };
     await redis.publish(CEP_EXTENSION_CHANNEL, JSON.stringify(payload));

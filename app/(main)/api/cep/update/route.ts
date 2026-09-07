@@ -5,6 +5,7 @@ import {
 } from "@/lib/auth/resolve-captions-user";
 import { isSpunkramBetaTester } from "@/lib/spunkram-beta";
 import {
+  cepProductFromClient,
   defaultFfmpegUrls,
   readBetaManifestFromR2,
   readLatestManifestFromR2,
@@ -54,13 +55,15 @@ function emptyManifest(ffmpeg: SpunkramLatestManifest["ffmpeg"]) {
 }
 
 /**
- * GET /api/cep/update — Spunkram extension update manifest (signed-in CEP only).
- * Stable: R2 `latest.json`.
- * Beta: R2 `beta.json` when the user is on the beta-tester allowlist.
+ * GET /api/cep/update — extension update manifest for the caller's CEP client
+ * (`gal-cep` → `public/downloads/gal/…`, else Spunkram).
+ * Stable: R2 `latest.json`. Beta: `beta.json` for allowlisted testers.
  */
 export async function GET(req: NextRequest) {
   const auth = await requireCaptionsAuth({ bearer: bearerFromRequest(req) });
   if (!auth.ok) return auth.response;
+
+  const product = cepProductFromClient(auth.user.cepClient);
 
   let ffmpeg: SpunkramLatestManifest["ffmpeg"];
   try {
@@ -78,11 +81,11 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const stable = await readLatestManifestFromR2();
+    const stable = await readLatestManifestFromR2(product);
     let beta: SpunkramLatestManifest | null = null;
 
     if (isSpunkramBetaTester(auth.user.email)) {
-      beta = await readBetaManifestFromR2();
+      beta = await readBetaManifestFromR2(product);
     }
 
     let chosen: SpunkramLatestManifest | null = stable;
@@ -96,7 +99,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(
         {
           ...chosen,
-          channel: chosen.channel ?? (/-beta/i.test(chosen.version) ? "beta" : "stable"),
+          product,
+          channel:
+            chosen.channel ?? (/-beta/i.test(chosen.version) ? "beta" : "stable"),
           ffmpeg: chosen.ffmpeg ?? ffmpeg,
         },
         { headers: { "Cache-Control": "private, max-age=30" } },

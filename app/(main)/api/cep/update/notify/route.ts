@@ -13,13 +13,14 @@ function asString(value: unknown): string {
 }
 
 /**
- * POST /api/cep/update/notify — proxy a Spunkram release into Redis `cep:extension`.
+ * POST /api/cep/update/notify — proxy a CEP release into Redis `cep:extension`.
  * Auth: CEP Bearer (`mfcep_…`) or Motionflow session. No shared secret — CEP cannot hide one.
  *
  * Body JSON (camelCase or snake_case):
  * - version (required)
  * - zxpUrl / zxp_url (required)
  * - channel: "stable" | "beta" (default from version)
+ * - product: "spunkram" | "gal" (optional; panels filter by brand)
  * - changelog?
  * - publishedAt / published_at?
  */
@@ -49,6 +50,10 @@ export async function POST(req: NextRequest) {
         ? "beta"
         : "stable";
 
+  const rawProduct = asString(body.product).toLowerCase();
+  const product: "spunkram" | "gal" | undefined =
+    rawProduct === "gal" || rawProduct === "spunkram" ? rawProduct : undefined;
+
   const publishedAt =
     asString(body.publishedAt) ||
     asString(body.published_at) ||
@@ -60,6 +65,7 @@ export async function POST(req: NextRequest) {
     changelog: asString(body.changelog),
     channel,
     published_at: publishedAt,
+    product,
   });
 
   if (!ok) {
@@ -70,6 +76,7 @@ export async function POST(req: NextRequest) {
     ok: true,
     version,
     channel,
+    product: product ?? null,
     notifiedBy: auth.user.email,
   });
 }

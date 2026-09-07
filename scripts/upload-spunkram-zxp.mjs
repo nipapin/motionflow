@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 /**
- * Upload a Spunkram .zxp to the public R2 bucket and refresh the channel pointer.
+ * Upload a CEP .zxp to the public R2 bucket and refresh the channel pointer.
  *
- * Keys:
- *   public/downloads/spunkram/{version}/spunkram.zxp
- *   public/downloads/spunkram/latest.json   (--channel=stable, default)
- *   public/downloads/spunkram/beta.json     (--channel=beta)
+ * Keys (product = spunkram | gal):
+ *   public/downloads/{product}/{version}/{product}.zxp
+ *   public/downloads/{product}/latest.json   (--channel=stable, default)
+ *   public/downloads/{product}/beta.json     (--channel=beta)
  *
  * Usage (from next-app):
  *   node --env-file=.env scripts/upload-spunkram-zxp.mjs --zxp=./spunkram.zxp --version=0.1.0
+ *   node --env-file=.env scripts/upload-spunkram-zxp.mjs --product=gal --zxp=./gal.zxp --version=0.1.0
  *   node --env-file=.env scripts/upload-spunkram-zxp.mjs --zxp=./x.zxp --version=0.1.1-beta.1 --channel=beta
  *   node --env-file=.env scripts/upload-spunkram-zxp.mjs --dry-run --zxp=./x.zxp --version=0.1.0
  */
@@ -24,6 +25,7 @@ function parseArgs(argv) {
     version: "",
     changelog: "",
     channel: "", // stable | beta | auto
+    product: "spunkram", // spunkram | gal
     dryRun: false,
   };
   for (const arg of argv.slice(2)) {
@@ -32,10 +34,11 @@ function parseArgs(argv) {
     else if (arg.startsWith("--version=")) opts.version = arg.slice("--version=".length);
     else if (arg.startsWith("--changelog=")) opts.changelog = arg.slice("--changelog=".length);
     else if (arg.startsWith("--channel=")) opts.channel = arg.slice("--channel=".length);
+    else if (arg.startsWith("--product=")) opts.product = arg.slice("--product=".length);
     else if (arg === "--help" || arg === "-h") {
       console.log(
         "Usage: node --env-file=.env scripts/upload-spunkram-zxp.mjs " +
-          "--zxp=<file.zxp> --version=x.y.z [--channel=stable|beta] [--changelog=...] [--dry-run]",
+          "--zxp=<file.zxp> --version=x.y.z [--product=spunkram|gal] [--channel=stable|beta] [--changelog=…] [--dry-run]",
       );
       process.exit(0);
     } else {
@@ -95,6 +98,12 @@ function resolveChannel(explicit, version) {
   return /-beta/i.test(version) ? "beta" : "stable";
 }
 
+function resolveProduct(raw) {
+  const p = String(raw || "spunkram").trim().toLowerCase();
+  if (p === "gal" || p === "spunkram") return p;
+  throw new Error(`Invalid --product=${raw} (use spunkram|gal)`);
+}
+
 async function main() {
   const opts = parseArgs(process.argv);
   if (!opts.zxp) throw new Error("--zxp=<path> is required");
@@ -103,15 +112,17 @@ async function main() {
   const version = normalizeVersion(opts.version);
   if (!version) throw new Error("Invalid --version");
 
+  const product = resolveProduct(opts.product);
   const channel = resolveChannel(opts.channel, version);
   const zxpPath = path.resolve(opts.zxp);
   await stat(zxpPath);
 
-  const zxpKey = `public/downloads/spunkram/${version}/spunkram.zxp`;
+  const zxpFile = product === "gal" ? "gal.zxp" : "spunkram.zxp";
+  const zxpKey = `public/downloads/${product}/${version}/${zxpFile}`;
   const pointerKey =
     channel === "beta"
-      ? "public/downloads/spunkram/beta.json"
-      : "public/downloads/spunkram/latest.json";
+      ? `public/downloads/${product}/beta.json`
+      : `public/downloads/${product}/latest.json`;
   const ffmpeg = {
     win: publicUrl("public/downloads/ffmpeg/win/ffmpeg.exe"),
     mac: publicUrl("public/downloads/ffmpeg/mac/ffmpeg-mac.zip"),
@@ -122,6 +133,7 @@ async function main() {
     changelog: opts.changelog || "",
     publishedAt: new Date().toISOString(),
     channel,
+    product,
     ffmpeg,
   };
 
@@ -136,7 +148,7 @@ async function main() {
   const client = createClient();
   const body = await readFile(zxpPath);
 
-  console.log(`[upload-zxp] bucket=${bucket} channel=${channel}`);
+  console.log(`[upload-zxp] product=${product} bucket=${bucket} channel=${channel}`);
   console.log(`  → ${zxpKey} (${(body.length / 1024 / 1024).toFixed(1)} MB)`);
   await client.send(
     new PutObjectCommand({
@@ -197,6 +209,7 @@ async function notifyCepPanels(manifest) {
         zxpUrl: manifest.zxpUrl,
         changelog: manifest.changelog || "",
         channel: manifest.channel,
+        product: manifest.product,
         publishedAt: manifest.publishedAt,
       }),
     });
