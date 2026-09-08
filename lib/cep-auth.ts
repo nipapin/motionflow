@@ -332,9 +332,14 @@ export async function approveAuthSession(
   const fingerprint = parseFingerprint(row.device_json);
   const pool = getPool();
 
-  // Same physical machine (matched by MAC) re-logging in: rotate the token on
-  // the existing device row instead of burning a device slot.
-  const existing = await findActiveDeviceByMac(userId, fingerprint?.mac);
+  // Re-login of the same CEP client on this machine (MAC + client): rotate the
+  // token instead of burning a slot. Gal (`gal-cep`) and Spunkram (`spunkram-cep`)
+  // on one MAC are separate devices so both panels can stay signed in.
+  const existing = await findActiveDeviceByMacAndClient(
+    userId,
+    fingerprint?.mac,
+    row.client,
+  );
 
   if (!existing) {
     const activeCount = await countActiveDevices(userId);
@@ -679,20 +684,31 @@ async function countActiveDevices(userId: number): Promise<number> {
   return Number(rows[0]?.c ?? 0);
 }
 
-async function findActiveDeviceByMac(
-  userId: number,
-  mac: string | undefined,
-): Promise<DeviceRow | null> {
+function normalizedMac(mac: string | undefined | null): string | null {
   const m = mac?.trim().toLowerCase();
   if (!m || m === "unknown") return null;
+  return m;
+}
+
+/** Active row for this user + NIC + CEP client. Client must match so Gal and
+ * Spunkram keep independent Bearer tokens on the same machine. */
+async function findActiveDeviceByMacAndClient(
+  userId: number,
+  mac: string | undefined,
+  client: string,
+): Promise<DeviceRow | null> {
+  const m = normalizedMac(mac);
+  const clientId = client.trim();
+  if (!m || !clientId) return null;
   const pool = getPool();
   const [rows] = await pool.execute<DeviceRow[]>(
-    `SELECT * FROM \`${DEVICES_TABLE}\` WHERE user_id = ? AND revoked_at IS NULL`,
-    [userId],
+    `SELECT * FROM \`${DEVICES_TABLE}\`
+     WHERE user_id = ? AND revoked_at IS NULL AND client = ?`,
+    [userId, clientId],
   );
   for (const row of rows) {
     const fp = parseFingerprint(row.user_fingerprint);
-    if (fp?.mac?.trim().toLowerCase() === m) return row;
+    if (normalizedMac(fp?.mac) === m) return row;
   }
   return null;
 }
@@ -783,15 +799,25 @@ export type CepDeviceListItem = {
 export async function listDevicesForUser(
   userId: number,
   currentDeviceId?: number,
+  /** When set, only this CEP client (so Gal does not list Spunkram sessions). */
+  client?: string,
 ): Promise<CepDeviceListItem[]> {
   await ensureSchema();
   const pool = getPool();
-  const [rows] = await pool.execute<DeviceRow[]>(
-    `SELECT * FROM \`${DEVICES_TABLE}\`
-     WHERE user_id = ? AND revoked_at IS NULL
-     ORDER BY id ASC`,
-    [userId],
-  );
+  const clientId = client?.trim();
+  const [rows] = clientId
+    ? await pool.execute<DeviceRow[]>(
+        `SELECT * FROM \`${DEVICES_TABLE}\`
+         WHERE user_id = ? AND revoked_at IS NULL AND client = ?
+         ORDER BY id ASC`,
+        [userId, clientId],
+      )
+    : await pool.execute<DeviceRow[]>(
+        `SELECT * FROM \`${DEVICES_TABLE}\`
+         WHERE user_id = ? AND revoked_at IS NULL
+         ORDER BY id ASC`,
+        [userId],
+      );
   return rows.map((r) => ({
     id: `dev_${r.id}`,
     ip: r.ip ?? "",

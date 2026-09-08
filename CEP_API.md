@@ -97,7 +97,7 @@ Revokes the chosen device (must belong to the pending session’s user), creates
 }
 ```
 
-Same-MAC re-login still rotates the existing device token and does **not** consume an extra slot.
+Same-MAC re-login **for the same `client`** (`spunkram-cep` vs `gal-cep`) still rotates that client’s token and does **not** consume an extra slot. Gal and Spunkram on one machine are separate devices and keep independent sessions.
 
 Store `token` securely. Use it as Bearer on every subsequent CEP call.
 
@@ -107,7 +107,8 @@ Store `token` securely. Use it as Bearer on every subsequent CEP call.
 Header: `Authorization: Bearer <token>`
 
 Returns tier, subscription, entitlements, subscribe / manage URLs.  
-`subscription.active` reflects the **author** (e.g. Spunkram) plan — not Motion Flow Creator platform alone.
+`subscription.active` reflects the **author** (e.g. Spunkram) plan — not Motion Flow Creator platform alone.  
+`devices` lists only sessions for this token’s `client` (Gal and Spunkram do not see each other’s devices).
 
 ---
 

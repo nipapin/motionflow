@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
     const hostRaw = (req.nextUrl.searchParams.get("host") || "").toUpperCase();
     const host = hostRaw === "AE" || hostRaw === "PR" ? hostRaw : undefined;
 
-    const devices = await listDevicesForUser(user.id, user.deviceId);
+    const devices = await listDevicesForUser(user.id, user.deviceId, user.client);
 
     if (cfg.platformSubscription) {
       const [creatorActive, generationPlan, generations, { purchases }] =
