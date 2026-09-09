@@ -12,9 +12,20 @@ function asString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function adminSecretFromRequest(req: NextRequest): string | null {
+  const header = req.headers.get("x-motionflow-admin-secret")?.trim();
+  return header || null;
+}
+
+function adminSecretMatches(got: string | null): boolean {
+  const expected = process.env.MOTIONFLOW_ADMIN_API_SECRET?.trim();
+  return Boolean(expected && got && got === expected);
+}
+
 /**
  * POST /api/cep/update/notify — proxy a CEP release into Redis `cep:extension`.
- * Auth: CEP Bearer (`mfcep_…`) or Motionflow session. No shared secret — CEP cannot hide one.
+ * Auth: `x-motionflow-admin-secret` (same `MOTIONFLOW_ADMIN_API_SECRET` as credits admin),
+ * or CEP Bearer / Motionflow session as a leftover fallback.
  *
  * Body JSON (camelCase or snake_case):
  * - version (required)
@@ -25,8 +36,13 @@ function asString(value: unknown): string {
  * - publishedAt / published_at?
  */
 export async function POST(req: NextRequest) {
-  const auth = await requireCaptionsAuth({ bearer: bearerFromRequest(req) });
-  if (!auth.ok) return auth.response;
+  const viaAdmin = adminSecretMatches(adminSecretFromRequest(req));
+  let notifiedBy = "admin";
+  if (!viaAdmin) {
+    const auth = await requireCaptionsAuth({ bearer: bearerFromRequest(req) });
+    if (!auth.ok) return auth.response;
+    notifiedBy = auth.user.email;
+  }
 
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body || typeof body !== "object") {
@@ -77,6 +93,6 @@ export async function POST(req: NextRequest) {
     version,
     channel,
     product: product ?? null,
-    notifiedBy: auth.user.email,
+    notifiedBy,
   });
 }

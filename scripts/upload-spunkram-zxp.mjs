@@ -177,18 +177,23 @@ async function main() {
   console.log("[upload-zxp] done");
 }
 
-/** CEP Bearer of a signed-in user (`mfcep_…`). Redis stays on the server. */
-function bearerToken() {
-  const raw =
+function notifyAuthHeaders() {
+  const admin = readEnvOptional("MOTIONFLOW_ADMIN_API_SECRET");
+  if (admin) {
+    return { "x-motionflow-admin-secret": admin };
+  }
+  const leftover =
     readEnvOptional("CEP_RELEASE_TOKEN") || readEnvOptional("CEP_BEARER_TOKEN") || "";
-  return raw.replace(/^Bearer\s+/i, "");
+  const token = leftover.replace(/^Bearer\s+/i, "");
+  if (token) return { Authorization: `Bearer ${token}` };
+  return null;
 }
 
 async function notifyCepPanels(manifest) {
-  const token = bearerToken();
-  if (!token) {
+  const authHeaders = notifyAuthHeaders();
+  if (!authHeaders) {
     console.warn(
-      "[upload-zxp] WSS notify skipped: set CEP_RELEASE_TOKEN to a signed-in CEP Bearer (mfcep_…)",
+      "[upload-zxp] WSS notify skipped: set MOTIONFLOW_ADMIN_API_SECRET in next-app/.env",
     );
     return;
   }
@@ -202,7 +207,7 @@ async function notifyCepPanels(manifest) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        ...authHeaders,
       },
       body: JSON.stringify({
         version: manifest.version,

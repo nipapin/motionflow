@@ -29,7 +29,7 @@ Payload: `{ type, id, name, pack_name, host, version?, image_url?, visible?, ts,
 
 ## Extension releases (Redis `cep:extension`)
 
-Published after R2 upload via `POST /api/cep/update/notify` (CEP Bearer of a signed-in user) or in-process from `publishSpunkramZxp` (GitHub webhook). Hub broadcasts to **authenticated** CEP sockets only.
+Published after R2 upload via `POST /api/cep/update/notify` (`x-motionflow-admin-secret` = `MOTIONFLOW_ADMIN_API_SECRET`) or in-process from `publishSpunkramZxp` (GitHub webhook). Hub broadcasts to **authenticated** CEP sockets only.
 
 ```json
 {
