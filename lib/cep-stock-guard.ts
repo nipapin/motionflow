@@ -9,12 +9,44 @@ import { getRedis } from "@/lib/redis";
 export type StockCaller = {
   id: number;
   email: string;
-  source: "cep-bearer" | "session";
+  source: "cep-bearer" | "session" | "anonymous";
   deviceId?: number;
+  ipHash?: string;
 };
 
+function clientIp(req: NextRequest): string {
+  const real = req.headers.get("x-real-ip")?.trim();
+  if (real) return real;
+  const forwarded = req.headers.get("x-forwarded-for");
+  if (forwarded) {
+    const first = forwarded.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  return "unknown";
+}
+
+function hashIp(ip: string): string {
+  return crypto.createHash("sha256").update(ip).digest("hex").slice(0, 24);
+}
+
+function anonymousCaller(req: NextRequest): StockCaller {
+  return {
+    id: 0,
+    email: "",
+    source: "anonymous",
+    ipHash: hashIp(clientIp(req)),
+  };
+}
+
+function rateLimitKey(caller: StockCaller): string {
+  if (caller.source === "anonymous") {
+    return `mf:stock:anon:${caller.ipHash ?? "unknown"}`;
+  }
+  return `mf:stock:${caller.id}`;
+}
+
 /**
- * CEP Bearer or web session — required before any Unsplash/Pexels upstream call.
+ * CEP Bearer or web session. Browse routes may fall back to an IP-based anonymous caller.
  */
 export async function resolveStockCaller(
   req: NextRequest,
@@ -95,17 +127,20 @@ redis.call("PEXPIRE", key, ttl_ms)
 return {1, 0}
 `;
 
-/** Sliding window: default 60 search/download ops per user per minute. */
+/** Sliding window: default 60 ops/min for signed-in users, 40/min per IP for guests. */
 export async function checkStockRateLimit(
   caller: StockCaller,
 ): Promise<{ ok: true } | { ok: false; retryAfterSec: number }> {
   if (rateLimitDisabled()) return { ok: true };
-  const max = envInt("MOTIONFLOW_STOCK_MAX_PER_WINDOW", 60);
+  const max =
+    caller.source === "anonymous"
+      ? envInt("MOTIONFLOW_STOCK_ANON_MAX_PER_WINDOW", 40)
+      : envInt("MOTIONFLOW_STOCK_MAX_PER_WINDOW", 60);
   const windowMs = envInt("MOTIONFLOW_STOCK_WINDOW_MS", 60_000);
   try {
     const redis = getRedis();
     await redis.connect().catch(() => {});
-    const key = `mf:stock:${caller.id}`;
+    const key = rateLimitKey(caller);
     const now = Date.now();
     const member = `${now}:${crypto.randomBytes(8).toString("hex")}`;
     const raw = await redis.eval(
@@ -130,8 +165,9 @@ export async function checkStockRateLimit(
 /** Guard for stock routes: auth + rate limit. Returns Response if blocked. */
 export async function guardStockRequest(
   req: NextRequest,
+  opts?: { allowAnonymous?: boolean },
 ): Promise<{ caller: StockCaller } | { response: NextResponse }> {
-  const caller = await resolveStockCaller(req);
+  const caller = (await resolveStockCaller(req)) ?? (opts?.allowAnonymous ? anonymousCaller(req) : null);
   if (!caller) return { response: unauthorizedStockResponse() };
   const rl = await checkStockRateLimit(caller);
   if (!rl.ok) return { response: rateLimitedStockResponse(rl.retryAfterSec) };

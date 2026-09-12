@@ -34,7 +34,9 @@ export function FootagesPromo() {
   useEffect(() => {
     const query = QUERIES[Math.floor(Math.random() * QUERIES.length)];
     const page = Math.floor(Math.random() * 3) + 1;
-    fetch(`/api/stock/unsplash?q=${encodeURIComponent(query)}&per_page=${COLLAGE_COUNT}&page=${page}`)
+    fetch(`/api/stock/unsplash?query=${encodeURIComponent(query)}&perPage=${COLLAGE_COUNT}&page=${page}`, {
+      credentials: "include",
+    })
       .then((r) => r.json())
       .then((data: { results?: FootagePhoto[] }) => {
         setPhotos(data.results?.slice(0, COLLAGE_COUNT) ?? []);
@@ -174,7 +176,9 @@ function PhotoDetailModal({
     setDetailLoading(true);
     void (async () => {
       try {
-        const res = await fetch(`/api/stock/unsplash/${encodeURIComponent(photo.id)}`);
+        const res = await fetch(`/api/stock/unsplash/${encodeURIComponent(photo.id)}`, {
+          credentials: "include",
+        });
         if (!res.ok) throw new Error(String(res.status));
         const data = (await res.json()) as FootagePhotoDetail;
         if (detailRequestRef.current === requestId) setDetail(data);

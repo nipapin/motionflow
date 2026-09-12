@@ -58,6 +58,12 @@ export function productKind(product: Product): ProductKind {
   return "template";
 }
 
+/** Stock music / SFX: preview as a guest, download with any signed-in account (same as footages). */
+export function productAllowsSignedInDownload(product: Product): boolean {
+  const kind = productKind(product);
+  return kind === "stock-audio" || kind === "sound-fx";
+}
+
 /** Coerce DB/API `files` (object or JSON string) to `ProductFiles`. */
 export function normalizeProductFiles(files: Product["files"] | string | null | undefined): ProductFiles {
   if (files == null) return {};

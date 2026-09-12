@@ -26,6 +26,7 @@ import {
   DialogContent,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/components/auth-provider";
 import { useDownloadAsset } from "@/components/use-download-asset";
 import type { FootagePhoto, FootageSearchResult } from "@/app/(main)/api/stock/unsplash/route";
 import type { FootagePhotoDetail } from "@/app/(main)/api/stock/unsplash/[id]/route";
@@ -74,6 +75,7 @@ type FeedState<T> = {
   isLoading: boolean;
   isLoadingMore: boolean;
   error: string | null;
+  needsAuth: boolean;
 };
 
 const INITIAL_FEED_STATE: FeedState<never> = {
@@ -84,7 +86,29 @@ const INITIAL_FEED_STATE: FeedState<never> = {
   isLoading: false,
   isLoadingMore: false,
   error: null,
+  needsAuth: false,
 };
+
+async function messageFromStockResponse(
+  res: Response,
+  fallback: string,
+): Promise<{ message: string; needsAuth: boolean }> {
+  if (res.status === 401) {
+    return { message: "Please sign in to browse stock media.", needsAuth: true };
+  }
+  if (res.status === 429) {
+    return { message: "Too many requests. Try again in a moment.", needsAuth: false };
+  }
+  try {
+    const body = (await res.json()) as { message?: string; error?: string };
+    return {
+      message: body.message || body.error || fallback,
+      needsAuth: false,
+    };
+  } catch {
+    return { message: fallback, needsAuth: false };
+  }
+}
 
 function withUtm(url: string): string {
   if (!url) return url;
@@ -104,10 +128,12 @@ function formatDuration(seconds: number): string {
 }
 
 export function FootagesPage() {
+  const { user, openSignIn } = useAuth();
   const [tab, setTab] = useState<TabValue>("images");
   const [searchInput, setSearchInput] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
   const [orientation, setOrientation] = useState<OrientationValue>("any");
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   const [photosFeed, setPhotosFeed] = useState<FeedState<FootagePhoto>>(
     INITIAL_FEED_STATE as FeedState<FootagePhoto>,
@@ -138,6 +164,7 @@ export function FootagesPage() {
         isLoading: append ? prev.isLoading : true,
         isLoadingMore: append,
         error: null,
+        needsAuth: false,
       }));
 
       try {
@@ -148,8 +175,25 @@ export function FootagesPage() {
         const apiOrientation = ORIENTATION_TO_UNSPLASH[nextOrientation].trim();
         if (apiOrientation) params.set("orientation", apiOrientation);
 
-        const res = await fetch(`/api/stock/unsplash?${params.toString()}`);
-        if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
+        const res = await fetch(`/api/stock/unsplash?${params.toString()}`, {
+          credentials: "include",
+        });
+        if (!res.ok) {
+          const parsed = await messageFromStockResponse(
+            res,
+            "Could not load images. Please try again.",
+          );
+          if (requestId !== photoRequestIdRef.current) return;
+          setPhotosFeed((prev) => ({
+            ...prev,
+            items: append ? prev.items : [],
+            isLoading: false,
+            isLoadingMore: false,
+            error: parsed.message,
+            needsAuth: parsed.needsAuth,
+          }));
+          return;
+        }
         const data = (await res.json()) as FootageSearchResult;
         if (requestId !== photoRequestIdRef.current) return;
 
@@ -163,6 +207,7 @@ export function FootagesPage() {
             isLoading: false,
             isLoadingMore: false,
             error: null,
+            needsAuth: false,
           };
         });
       } catch (err) {
@@ -174,6 +219,7 @@ export function FootagesPage() {
           isLoading: false,
           isLoadingMore: false,
           error: "Could not load images. Please try again.",
+          needsAuth: false,
         }));
       }
     },
@@ -193,6 +239,7 @@ export function FootagesPage() {
         isLoading: append ? prev.isLoading : true,
         isLoadingMore: append,
         error: null,
+        needsAuth: false,
       }));
 
       try {
@@ -203,8 +250,25 @@ export function FootagesPage() {
         const apiOrientation = ORIENTATION_TO_PEXELS[nextOrientation].trim();
         if (apiOrientation) params.set("orientation", apiOrientation);
 
-        const res = await fetch(`/api/stock/pexels/videos?${params.toString()}`);
-        if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
+        const res = await fetch(`/api/stock/pexels/videos?${params.toString()}`, {
+          credentials: "include",
+        });
+        if (!res.ok) {
+          const parsed = await messageFromStockResponse(
+            res,
+            "Could not load videos. Please try again.",
+          );
+          if (requestId !== videoRequestIdRef.current) return;
+          setVideosFeed((prev) => ({
+            ...prev,
+            items: append ? prev.items : [],
+            isLoading: false,
+            isLoadingMore: false,
+            error: parsed.message,
+            needsAuth: parsed.needsAuth,
+          }));
+          return;
+        }
         const data = (await res.json()) as FootageVideoSearchResult;
         if (requestId !== videoRequestIdRef.current) return;
 
@@ -218,6 +282,7 @@ export function FootagesPage() {
             isLoading: false,
             isLoadingMore: false,
             error: null,
+            needsAuth: false,
           };
         });
       } catch (err) {
@@ -229,6 +294,7 @@ export function FootagesPage() {
           isLoading: false,
           isLoadingMore: false,
           error: "Could not load videos. Please try again.",
+          needsAuth: false,
         }));
       }
     },
@@ -241,7 +307,7 @@ export function FootagesPage() {
       return;
     }
     void fetchVideos({ query: activeQuery, orientation, page: 1, append: false });
-  }, [activeQuery, fetchPhotos, fetchVideos, orientation, tab]);
+  }, [activeQuery, fetchPhotos, fetchVideos, orientation, reloadNonce, tab, user?.id]);
 
   const activeFeed = tab === "images" ? photosFeed : videosFeed;
   const activeHasMore = useMemo(() => hasMoreItems(activeFeed), [activeFeed]);
@@ -366,6 +432,8 @@ export function FootagesPage() {
             activeQuery={activeQuery}
             summaryLabel="images"
             emptyLabel="No images to display."
+            onRetry={() => setReloadNonce((n) => n + 1)}
+            onSignIn={() => openSignIn("signin")}
             renderItems={() =>
               orientation === "any" ? (
                 <MasonryGrid
@@ -427,6 +495,8 @@ export function FootagesPage() {
             activeQuery={activeQuery}
             summaryLabel="videos"
             emptyLabel="No videos to display."
+            onRetry={() => setReloadNonce((n) => n + 1)}
+            onSignIn={() => openSignIn("signin")}
             renderItems={() =>
               orientation === "any" ? (
                 <MasonryGrid
@@ -531,6 +601,8 @@ function FeedContent({
   activeQuery,
   summaryLabel,
   emptyLabel,
+  onRetry,
+  onSignIn,
   renderItems,
 }: {
   tab: TabValue;
@@ -538,6 +610,8 @@ function FeedContent({
   activeQuery: string;
   summaryLabel: string;
   emptyLabel: string;
+  onRetry: () => void;
+  onSignIn: () => void;
   renderItems: () => ReactNode;
 }) {
   return (
@@ -557,8 +631,28 @@ function FeedContent({
       )}
 
       {feed.error && (
-        <div className="mb-6 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {feed.error}
+        <div className="mb-6 flex flex-col gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between">
+          <p>{feed.error}</p>
+          {feed.needsAuth ? (
+            <Button
+              type="button"
+              size="sm"
+              className="shrink-0 rounded-full"
+              onClick={onSignIn}
+            >
+              Sign in
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="shrink-0 rounded-full border-destructive/40 bg-transparent text-destructive hover:bg-destructive/10"
+              onClick={onRetry}
+            >
+              Try again
+            </Button>
+          )}
         </div>
       )}
 
@@ -823,7 +917,9 @@ function PhotoDetailModal({
     setDetailLoading(true);
     void (async () => {
       try {
-        const res = await fetch(`/api/stock/unsplash/${encodeURIComponent(photo.id)}`);
+        const res = await fetch(`/api/stock/unsplash/${encodeURIComponent(photo.id)}`, {
+          credentials: "include",
+        });
         if (!res.ok) throw new Error(String(res.status));
         const data = (await res.json()) as FootagePhotoDetail;
         if (detailRequestRef.current === requestId) setDetail(data);

@@ -3,6 +3,7 @@ import { resolveRequestUser } from "@/lib/auth/resolve-request-user";
 import { getActiveAuthorSubscription } from "@/lib/cep-entitlements";
 import { getMarketItemsByIds } from "@/lib/market-items";
 import { userOwnsItem } from "@/lib/purchases";
+import { productAllowsSignedInDownload } from "@/lib/product-ui";
 import { hasActiveMotionflowSubscription } from "@/lib/subscriptions";
 
 /**
@@ -31,6 +32,7 @@ export async function GET(req: NextRequest) {
     (product.discount_price != null
       ? Number(product.discount_price)
       : Number(product.price)) <= 0;
+  const sessionStockAudio = product != null && productAllowsSignedInDownload(product);
 
   const [subOk, owns, authorSub] = await Promise.all([
     hasActiveMotionflowSubscription(user.id),
@@ -42,6 +44,6 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     authenticated: true,
-    canDownload: subOk || owns || authorSub.active || freePack,
+    canDownload: subOk || owns || authorSub.active || freePack || sessionStockAudio,
   });
 }

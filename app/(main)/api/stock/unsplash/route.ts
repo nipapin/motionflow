@@ -119,7 +119,7 @@ function matchesOrientation(photo: UnsplashPhoto, orientation: string | null): b
 }
 
 export async function GET(req: NextRequest) {
-  const gate = await guardStockRequest(req);
+  const gate = await guardStockRequest(req, { allowAnonymous: true });
   if ("response" in gate) return gate.response;
 
   const accessKey = process.env.UNSPLASH_ACCESS_KEY;
@@ -131,12 +131,12 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
-  const query = (searchParams.get("query") ?? "").trim();
+  const query = (searchParams.get("query") ?? searchParams.get("q") ?? "").trim();
   const orientationParam = (searchParams.get("orientation") ?? "").trim();
   const orientation = ALLOWED_ORIENTATIONS.has(orientationParam) ? orientationParam : null;
 
   const pageRaw = Number(searchParams.get("page") ?? "1");
-  const perPageRaw = Number(searchParams.get("perPage") ?? "24");
+  const perPageRaw = Number(searchParams.get("perPage") ?? searchParams.get("per_page") ?? "24");
   const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.min(Math.floor(pageRaw), 100) : 1;
   const perPage = Number.isFinite(perPageRaw) && perPageRaw > 0 ? Math.min(Math.floor(perPageRaw), 30) : 24;
 
