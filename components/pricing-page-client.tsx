@@ -125,6 +125,8 @@ function PlanIncludesList({ items }: { items: PlanIncludeItem[] }) {
 interface PricingPageClientProps {
   currentUser: { id: number; email: string } | null;
   currentSubscription: ActiveSubscriptionSummary | null;
+  /** Affiliate referral slug from the httpOnly cookie, forwarded to Paddle. */
+  affiliateSlug?: string | null;
 }
 
 interface UpgradePreview {
@@ -180,7 +182,7 @@ function formatDateDMY(raw: string | null | undefined): string {
   return `${dd}.${mm}.${d.getFullYear()}`;
 }
 
-export function PricingPageClient({ currentUser, currentSubscription }: PricingPageClientProps) {
+export function PricingPageClient({ currentUser, currentSubscription, affiliateSlug }: PricingPageClientProps) {
   const router = useRouter();
   const { paddle, ready, subscribe } = usePaddle();
   const { openSignIn } = useAuth();
@@ -260,6 +262,7 @@ export function PricingPageClient({ currentUser, currentSubscription }: PricingP
           buyer_id: String(currentUser.id),
           plan,
           billingPeriod,
+          ...(affiliateSlug ? { affiliate_slug: affiliateSlug } : {}),
         },
       });
     } catch (err) {

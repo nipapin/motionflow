@@ -7,6 +7,7 @@ import { AuthProvider } from "@/components/auth-provider";
 import { FavoritesProvider } from "@/components/favorites-provider";
 import { VideoMuteProvider } from "@/components/video-mute-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { AffiliateRefTracker } from "@/components/affiliate-ref-tracker";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import "./globals.css";
 import { PaddleProvider } from "@/lib/paddle";
@@ -84,6 +85,7 @@ export default async function RootLayout({
             </AuthProvider>
           </VideoMuteProvider>
           <Toaster />
+          <AffiliateRefTracker />
         </ThemeProvider>
         <Analytics />
       </body>

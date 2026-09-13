@@ -3,6 +3,7 @@ import "server-only";
 import { sendResendEmail } from "@/lib/mail/resend-mailer";
 import { resolveMailSiteOrigin } from "@/lib/mail/public-origin";
 import {
+  affiliateInviteEmail,
   authorAccessInviteEmail,
   googlePasswordHintEmail,
   passwordResetEmail,
@@ -99,6 +100,33 @@ export async function sendAuthorAccessInviteEmail(opts: {
     text: content.text,
     html: content.html,
     logPrefix: "[author-access-invite-mail]",
+  });
+}
+
+export async function sendAffiliateInviteEmail(opts: {
+  email: string;
+  token: string;
+  name?: string | null;
+  refLink: string;
+  commissionPercent: number;
+  siteOrigin?: string;
+}): Promise<void> {
+  const resetUrl = buildPasswordResetUrl(opts.email, opts.token, opts.siteOrigin, {
+    invite: true,
+  });
+  const content = affiliateInviteEmail({
+    name: opts.name,
+    refLink: opts.refLink,
+    commissionPercent: opts.commissionPercent,
+    resetUrl,
+    expiresDays: Math.round(PASSWORD_INVITE_EXPIRE_MINUTES / (60 * 24)),
+  });
+  await sendResendEmail({
+    to: opts.email,
+    subject: content.subject,
+    text: content.text,
+    html: content.html,
+    logPrefix: "[affiliate-invite-mail]",
   });
 }
 

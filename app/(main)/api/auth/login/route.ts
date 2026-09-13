@@ -17,6 +17,10 @@ import {
   encryptLaravelCookie,
 } from "@/lib/auth/laravel-session";
 import { hasPendingEmailVerification } from "@/lib/auth/email-verification";
+import {
+  affiliateRefSlugFromRequest,
+  attachAffiliateReferralToUser,
+} from "@/lib/affiliate/attribution";
 
 type UserRow = RowDataPacket & {
   id: number;
@@ -95,6 +99,14 @@ export async function POST(req: NextRequest) {
         { status: 403 },
       );
     }
+
+    // Accounts that existed before the partner's link was clicked are only
+    // attributable here — there is no signup event to hook into.
+    await attachAffiliateReferralToUser({
+      userId: user.id,
+      email: user.email,
+      slug: affiliateRefSlugFromRequest(req),
+    });
 
     const token = await signSessionToken({
       id: user.id,

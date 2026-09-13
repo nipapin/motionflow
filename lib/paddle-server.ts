@@ -33,6 +33,10 @@ import {
 } from "@/lib/paddle-laravel-port";
 import { sendGhlEvent, type GhlEventType } from "@/lib/ghl-forwarder";
 import { isSpunkramSubscriptionPriceId } from "@/lib/spunkram-paddle-config";
+import {
+  accrueAffiliateCommission,
+  reverseAffiliateCommissionsForPayment,
+} from "@/lib/affiliate/commission";
 
 const SUBSCRIPTIONS_TABLE = "subscription_systems";
 const EXTRA_GEN_CREDIT_EVENTS_TABLE = "paddle_extra_generation_credit_events";
@@ -156,6 +160,8 @@ interface PaddleTxnTotals {
   subtotal?: string;
   grand_total?: string;
   currency_code?: string;
+  /** Real Paddle gateway fee in cents, when the transaction is already settled. */
+  fee?: string | null;
 }
 
 interface PaddleTxnLineItem {
@@ -208,6 +214,8 @@ interface PaddleTransaction {
     billingPeriod?: string;
     kind?: string;
     generations?: string | number;
+    /** Subscription affiliate slug carried from the checkout overlay. */
+    affiliate_slug?: string | null;
   } | null;
   items?: PaddleItem[];
   details?: {
@@ -1070,6 +1078,42 @@ export async function upsertFromTransaction(txnInput: PaddleTransaction): Promis
       }
     }
 
+    // Subscription affiliate program: pay the referring partner a percentage of
+    // (gross − Paddle fee) on Motion Flow's own tiers. `authorId == null` keeps
+    // Spunkram / Premiere Gal bundles out, and `accrueAffiliateCommission`
+    // additionally allowlists the Creator price ids. Never let this break the
+    // webhook — the subscription row is already written at this point.
+    if (!authorId && rowSubscriptionId.startsWith("sub_")) {
+      try {
+        const line = txn.details?.line_items?.[0];
+        const grossCents =
+          Number(line?.unit_totals?.subtotal ?? 0) -
+          Number(line?.totals?.discount ?? 0);
+        const taxedTotalCents = Number(line?.unit_totals?.total ?? 0);
+        const result = await accrueAffiliateCommission(conn, {
+          paymentId,
+          subscriptionId: rowSubscriptionId,
+          buyerUserId: userId,
+          tier: txn.custom_data?.plan ?? null,
+          billingPeriod: plan,
+          paddlePriceId: paddlePriceId,
+          currency: currencyCode ?? "USD",
+          grossCents: grossCents > 0 ? grossCents : Math.round(subtotalFromTotals * 100),
+          taxedTotalCents:
+            taxedTotalCents > 0 ? taxedTotalCents : Math.round(grandTotal * 100),
+          feeCents: totals.fee == null ? null : Number(totals.fee),
+          checkoutSlug: txn.custom_data?.affiliate_slug ?? null,
+        });
+        if (result.accrued) {
+          console.info(
+            `[paddle] affiliate commission ${result.commissionAmount} for affiliate ${result.affiliateId} on ${paymentId}`,
+          );
+        }
+      } catch (err) {
+        console.error(`[paddle] affiliate commission threw for ${paymentId}:`, err);
+      }
+    }
+
     // currency stamp for analytics — kept in a separate column historically;
     // we don't have one in the schema, so we just log it.
     if (currencyCode && currencyCode !== "USD") {
@@ -1679,6 +1723,25 @@ export async function handlePaddleEvent(
     // 1:1 port of `GatewayPaddle::webhook` adjustment.updated branch's
     // trailing call to `SubscriptionSystem::reverseAuthorBalancesForRefundedSubscriptionPayment`
     // — reverses any author-subscription balance credited for this transaction.
+    // Subscription affiliate program: add a negative counter-row so the refunded
+    // payment nets out of the partner's month instead of vanishing from history.
+    try {
+      const reversedCommissions = await reverseAffiliateCommissionsForPayment(
+        null,
+        transactionId,
+      );
+      if (reversedCommissions > 0) {
+        console.info(
+          `[paddle] reversed ${reversedCommissions} affiliate commission row(s) for ${transactionId}`,
+        );
+      }
+    } catch (err) {
+      console.error(
+        `[paddle] reverseAffiliateCommissionsForPayment threw for ${transactionId}:`,
+        err,
+      );
+    }
+
     try {
       await reverseAuthorBalanceForRefundedSubscriptionPayment(transactionId);
     } catch (err) {

@@ -1,9 +1,18 @@
 import { ProfileShell } from "@/components/profile-shell";
+import { affiliateNavFlags } from "@/lib/affiliate/nav";
 
-export default function ProfileShellLayout({
+export default async function ProfileShellLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return <ProfileShell>{children}</ProfileShell>;
+  // Header dropdown links are gated server-side; `affiliateNavFlags` is cached
+  // per request, so the sidebar layout below reuses this same lookup.
+  const { showPartners, showAffiliate } = await affiliateNavFlags();
+
+  return (
+    <ProfileShell showPartners={showPartners} showAffiliate={showAffiliate}>
+      {children}
+    </ProfileShell>
+  );
 }

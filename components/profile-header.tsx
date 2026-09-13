@@ -7,7 +7,9 @@ import {
   Bookmark,
   CreditCard,
   Download,
+  Handshake,
   LogOut,
+  Share2,
   ShoppingBag,
   Sparkles,
   User,
@@ -38,7 +40,14 @@ const ACCOUNT_LINKS = [
   { icon: Bookmark, label: "Favorites", href: "/profile/favorites" },
 ] as const;
 
-export function ProfileHeader() {
+interface ProfileHeaderProps {
+  /** Admin: subscription affiliates. Resolved server-side in the profile layout. */
+  showPartners?: boolean;
+  /** The signed-in user is a subscription affiliate. */
+  showAffiliate?: boolean;
+}
+
+export function ProfileHeader({ showPartners, showAffiliate }: ProfileHeaderProps = {}) {
   const pathname = usePathname();
   const { user, signOut } = useAuth();
   const [signInOpen, setSignInOpen] = useState(false);
@@ -133,8 +142,14 @@ export function ProfileHeader() {
                 >
                   {[
                     ...ACCOUNT_LINKS,
+                    ...(showAffiliate
+                      ? ([{ icon: Share2, label: "Affiliate", href: "/profile/affiliate" }] as const)
+                      : []),
                     ...(user?.email && PACKAGES_ADMIN_EMAILS.has(user.email.trim().toLowerCase())
                       ? ([{ icon: Users, label: "Authors", href: "/profile/packages" }] as const)
+                      : []),
+                    ...(showPartners
+                      ? ([{ icon: Handshake, label: "Partners", href: "/profile/partners" }] as const)
                       : []),
                   ].map(({ icon: Icon, label, href }) => (
                     <DropdownMenuItem

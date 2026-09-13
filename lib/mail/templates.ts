@@ -187,6 +187,33 @@ export function authorAccessInviteEmail(opts: {
   };
 }
 
+export function affiliateInviteEmail(opts: {
+  name?: string | null;
+  refLink: string;
+  commissionPercent: number;
+  resetUrl: string;
+  expiresDays: number;
+}): BrandedEmailContent {
+  const rendered = renderMotionflowEmail({
+    preheader: "Your Motion Flow affiliate account is ready. Set a password to see your stats.",
+    heading: "Welcome to the Motion Flow affiliate program",
+    greetingName: opts.name,
+    paragraphs: [
+      `You earn ${opts.commissionPercent}% of every Motion Flow subscription payment you refer, after payment processing fees.`,
+      `Your referral link: ${opts.refLink}`,
+      "Set a password with the button below, then open the Affiliate tab in your profile to track clicks, referred subscribers and payouts.",
+      `This link expires in ${opts.expiresDays} days.`,
+    ],
+    ctaLabel: "Set password",
+    ctaUrl: opts.resetUrl,
+    footer: "Payouts are sent in the middle of each month for the previous month.",
+  });
+  return {
+    subject: "Your Motion Flow affiliate account",
+    ...rendered,
+  };
+}
+
 export function verifyEmailContent(opts: {
   name?: string | null;
   email: string;

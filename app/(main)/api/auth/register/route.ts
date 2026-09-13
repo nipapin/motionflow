@@ -9,6 +9,10 @@ import {
 } from "@/lib/auth/email-verification";
 import { sendVerifyEmail } from "@/lib/auth/password-reset-mailer";
 import { mailSiteOriginFromHeaders } from "@/lib/mail/public-origin";
+import {
+  affiliateRefSlugFromRequest,
+  attachAffiliateReferralToUser,
+} from "@/lib/affiliate/attribution";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -85,11 +89,17 @@ export async function POST(req: NextRequest) {
     const hashed = await bcrypt.hash(password, 10);
     const mailingVal: number | null = mailing ? 0 : null;
 
-    await pool.execute<ResultSetHeader>(
+    const [inserted] = await pool.execute<ResultSetHeader>(
       `INSERT INTO users (name, email, password, mailing, created_at, updated_at)
        VALUES (?, ?, ?, ?, NOW(), NOW())`,
       [name, normalizedEmail, hashed, mailingVal],
     );
+
+    await attachAffiliateReferralToUser({
+      userId: inserted.insertId,
+      email: normalizedEmail,
+      slug: affiliateRefSlugFromRequest(req),
+    });
 
     const token = generateEmailVerificationToken();
     await storeEmailVerificationToken(normalizedEmail, token);

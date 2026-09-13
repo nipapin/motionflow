@@ -51,9 +51,13 @@ const FIXED_MARKET_TAX = { personal: 30, extended: 25 } as const;
 /** Port of `config/aniom.php` → `marketplace.affiliate_profit_amount`. % of `sold_net` paid to ref author. */
 const AFFILIATE_PROFIT_AMOUNT = 10;
 
-/** Paddle's transaction tax: 5% of the line total + a flat $0.50. From `config/aniom.php`. */
-const PADDLE_TXN_TAX_PERCENT = 5;
-const PADDLE_TXN_TAX_FLAT = 0.5;
+/**
+ * Paddle's transaction tax: 5% of the line total + a flat $0.50. From `config/aniom.php`.
+ * Exported because the affiliate program falls back to the same formula when a
+ * webhook does not carry a real fee (`lib/affiliate/commission.ts`).
+ */
+export const PADDLE_TXN_TAX_PERCENT = 5;
+export const PADDLE_TXN_TAX_FLAT = 0.5;
 
 /* -------------------------------------------------------------------------- */
 /*  Math helpers — ports of the Laravel methods                                */

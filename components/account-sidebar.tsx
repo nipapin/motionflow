@@ -13,6 +13,8 @@ import {
   LayoutDashboard,
   ChevronDown,
   Users,
+  Handshake,
+  Share2,
 } from "lucide-react";
 import { PACKAGES_AUTHORS, packagesAuthorLogoUrl } from "@/lib/packages-admin-client";
 import { cn } from "@/lib/utils";
@@ -43,6 +45,10 @@ interface AccountSidebarProps {
   access: number;
   email?: string | null;
   showPackages?: boolean;
+  /** Admin: manage subscription affiliates. */
+  showPartners?: boolean;
+  /** The signed-in user is a subscription affiliate. */
+  showAffiliate?: boolean;
 }
 
 function AuthorSubmenu({
@@ -139,7 +145,12 @@ function AuthorSubmenu({
   );
 }
 
-export function AccountSidebar({ access, showPackages }: AccountSidebarProps) {
+export function AccountSidebar({
+  access,
+  showPackages,
+  showPartners,
+  showAffiliate,
+}: AccountSidebarProps) {
   const pathname = usePathname();
   const normalized = pathname.replace(/\/$/, "") || "/";
   const onPackages =
@@ -211,6 +222,34 @@ export function AccountSidebar({ access, showPackages }: AccountSidebarProps) {
               onToggle={() => setPackagesManualOpen((v) => !v)}
             />
           ) : null}
+          {[
+            ...(showAffiliate
+              ? ([{ href: "/profile/affiliate", label: "Affiliate", icon: Share2 }] as const)
+              : []),
+            ...(showPartners
+              ? ([{ href: "/profile/partners", label: "Partners", icon: Handshake }] as const)
+              : []),
+          ].map(({ href, label, icon: Icon }) => {
+            const active = isActive(normalized, href);
+            return (
+              <li key={href}>
+                <Link
+                  href={href}
+                  className={cn(
+                    navItemBase,
+                    active
+                      ? "bg-linear-to-r from-blue-600 to-blue-500 text-white shadow-md shadow-blue-500/20"
+                      : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+                  )}
+                >
+                  <Icon
+                    className={cn("h-5 w-5 shrink-0", active ? "text-white" : "text-blue-400")}
+                  />
+                  {label}
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       </div>
 

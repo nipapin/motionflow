@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { AccountSidebar } from "@/components/account-sidebar";
 import { isPackagesAdmin } from "@/lib/packages-admin";
+import { affiliateNavFlags } from "@/lib/affiliate/nav";
 
 export const metadata: Metadata = {
   title: "Account",
@@ -21,6 +22,7 @@ export default async function ProfileSectionLayout({
   if (!sessionUser) {
     redirect("/");
   }
+  const { showPartners, showAffiliate } = await affiliateNavFlags();
 
   return (
     <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
@@ -29,6 +31,8 @@ export default async function ProfileSectionLayout({
           access={sessionUser.access}
           email={sessionUser.email}
           showPackages={isPackagesAdmin(sessionUser.email)}
+          showPartners={showPartners}
+          showAffiliate={showAffiliate}
         />
       </aside>
       <div className="min-w-0 flex-1">{children}</div>

@@ -62,9 +62,10 @@ const nextConfig = {
         // See .cursor/rules/profile-route-allowlist.mdc
         //
         // Allowlist: downloads|purchases|subscriptions|favorites|generations|
-        //            dashboard|upload|items|earnings|payouts|packages|extensions
+        //            dashboard|upload|items|earnings|payouts|packages|extensions|
+        //            partners|affiliate
         source:
-          '/profile/:slug((?!downloads|purchases|subscriptions|favorites|generations|dashboard|upload|items|earnings|payouts|packages|extensions)[^/]+)',
+          '/profile/:slug((?!downloads|purchases|subscriptions|favorites|generations|dashboard|upload|items|earnings|payouts|packages|extensions|partners|affiliate)[^/]+)',
         destination: '/profile',
         permanent: false,
       },

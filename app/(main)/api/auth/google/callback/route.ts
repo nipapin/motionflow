@@ -21,6 +21,10 @@ import {
   createLaravelSession,
   encryptLaravelCookie,
 } from "@/lib/auth/laravel-session";
+import {
+  affiliateRefSlugFromRequest,
+  attachAffiliateReferralToUser,
+} from "@/lib/affiliate/attribution";
 
 export const dynamic = "force-dynamic";
 
@@ -165,6 +169,14 @@ export async function GET(req: NextRequest) {
       }
       user = inserted[0];
     }
+
+    // Covers both branches: a fresh Google signup and an existing account
+    // signing in after following a partner link.
+    await attachAffiliateReferralToUser({
+      userId: user.id,
+      email: user.email,
+      slug: affiliateRefSlugFromRequest(req),
+    });
 
     const token = await signSessionToken({
       id: user.id,
