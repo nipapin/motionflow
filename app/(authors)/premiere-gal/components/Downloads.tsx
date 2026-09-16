@@ -37,7 +37,7 @@ export default function Downloads() {
           textAlign="center"
           lineHeight={1.2}
         >
-          Download and Start Free
+          Download the Free Version.
         </Typography>
         <Typography
           fontWeight={400}

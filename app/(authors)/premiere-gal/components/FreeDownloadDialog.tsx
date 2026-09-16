@@ -59,7 +59,7 @@ export default function FreeDownloadDialog({ open, onClose }: FreeDownloadDialog
               textAlign="center"
               lineHeight={1.25}
             >
-              Download and Start Free
+              Download the Free Version.
             </Typography>
             <Typography
               fontWeight={400}

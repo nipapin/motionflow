@@ -119,7 +119,7 @@ export function PricingPlans() {
           onClick={handleCta}
         >
           <Typography fontWeight={400} fontSize={12} color="white">
-            {isFree ? "Download Free" : "Get Started Now"}
+            {isFree ? "Download the Free Version." : "Get Started Now"}
           </Typography>
         </Button>
       </Stack>

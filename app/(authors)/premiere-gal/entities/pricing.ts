@@ -27,7 +27,7 @@ const PAID_FEATURES = [
 export const pricingPlans: PricingPlanEntry[] = [
   {
     id: 0,
-    name: "Try Free",
+    name: "Free",
     price: 0,
     per: "",
     tagline: "No credit card required",
