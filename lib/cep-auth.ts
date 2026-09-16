@@ -336,7 +336,7 @@ export async function approveAuthSession(
   let existing = findReusableOccupiedDevice(fingerprint, occupied);
 
   if (!existing) {
-    const activeCount = await countActiveDevices(userId);
+    const activeCount = await countActiveDevices(userId, row.client);
     if (activeCount >= cepDeviceLimit()) {
       existing = findReusableOccupiedDevice(fingerprint, occupied, {
         matchOsUser: true,
@@ -469,7 +469,7 @@ export async function claimAuthToken(
     if (!row.user_id) {
       return { status: "expired", message: "Code expired" };
     }
-    const devices = await listDevicesForLimitPicker(row.user_id);
+    const devices = await listDevicesForLimitPicker(row.user_id, row.client);
     return {
       status: "device_limit",
       devices,
@@ -502,14 +502,17 @@ export async function claimAuthToken(
 
 async function listDevicesForLimitPicker(
   userId: number,
+  client: string,
 ): Promise<DeviceLimitListItem[]> {
   await ensureSchema();
+  const clientId = client.trim();
+  if (!clientId) return [];
   const pool = getPool();
   const [rows] = await pool.execute<DeviceRow[]>(
     `SELECT * FROM \`${DEVICES_TABLE}\`
-     WHERE user_id = ? AND revoked_at IS NULL
+     WHERE user_id = ? AND revoked_at IS NULL AND client = ?
      ORDER BY COALESCE(last_seen_at, created_at) DESC, id DESC`,
-    [userId],
+    [userId, clientId],
   );
   return rows.map((r) => ({
     id: `dev_${r.id}`,
@@ -581,7 +584,7 @@ export async function replaceDeviceForAuthSession(opts: {
   }
 
   const userId = Number(row.user_id);
-  const revoked = await revokeDevice(userId, opts.revokeDeviceId);
+  const revoked = await revokeDevice(userId, opts.revokeDeviceId, row.client);
   if (!revoked) {
     return {
       ok: false,
@@ -591,7 +594,7 @@ export async function replaceDeviceForAuthSession(opts: {
   }
 
   // Re-check slot (race: another login may have filled it)
-  const activeCount = await countActiveDevices(userId);
+  const activeCount = await countActiveDevices(userId, row.client);
   if (activeCount >= cepDeviceLimit()) {
     return {
       ok: false,
@@ -675,11 +678,15 @@ async function loadUserBasic(
   return { id: Number(u.id), email: u.email, name: u.name ?? "" };
 }
 
-async function countActiveDevices(userId: number): Promise<number> {
+/** Active device count for this user + CEP client (Gal and Spunkram have separate seats). */
+async function countActiveDevices(userId: number, client: string): Promise<number> {
+  const clientId = client.trim();
+  if (!clientId) return 0;
   const pool = getPool();
   const [rows] = await pool.execute<(RowDataPacket & { c: number })[]>(
-    `SELECT COUNT(*) AS c FROM \`${DEVICES_TABLE}\` WHERE user_id = ? AND revoked_at IS NULL`,
-    [userId],
+    `SELECT COUNT(*) AS c FROM \`${DEVICES_TABLE}\`
+     WHERE user_id = ? AND revoked_at IS NULL AND client = ?`,
+    [userId, clientId],
   );
   return Number(rows[0]?.c ?? 0);
 }
@@ -829,15 +836,24 @@ export function parseDeviceId(raw: unknown): number | null {
 export async function revokeDevice(
   userId: number,
   deviceId: number,
+  client?: string,
 ): Promise<boolean> {
   await ensureSchema();
   const pool = getPool();
-  const [res] = await pool.execute<ResultSetHeader>(
-    `UPDATE \`${DEVICES_TABLE}\`
-     SET revoked_at = NOW()
-     WHERE id = ? AND user_id = ? AND revoked_at IS NULL`,
-    [deviceId, userId],
-  );
+  const clientId = client?.trim();
+  const [res] = clientId
+    ? await pool.execute<ResultSetHeader>(
+        `UPDATE \`${DEVICES_TABLE}\`
+         SET revoked_at = NOW()
+         WHERE id = ? AND user_id = ? AND client = ? AND revoked_at IS NULL`,
+        [deviceId, userId, clientId],
+      )
+    : await pool.execute<ResultSetHeader>(
+        `UPDATE \`${DEVICES_TABLE}\`
+         SET revoked_at = NOW()
+         WHERE id = ? AND user_id = ? AND revoked_at IS NULL`,
+        [deviceId, userId],
+      );
   if (res.affectedRows > 0) {
     const { publishCepDeviceRevoked } = await import("@/lib/cep-events");
     void publishCepDeviceRevoked({ userId, deviceId });

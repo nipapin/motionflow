@@ -54,7 +54,7 @@ When complete:
 }
 ```
 
-When the account is already at the **device limit** (default **3**, override with `CEP_DEVICE_LIMIT`):
+When **this CEP client** is already at the **device limit** (default **3**, override with `CEP_DEVICE_LIMIT`; Gal and Spunkram count separately):
 
 ```json
 {
