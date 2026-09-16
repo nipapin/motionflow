@@ -101,7 +101,7 @@ export default async function AffiliatePayoutsPage() {
               <Wallet className="h-8 w-8 text-blue-400" />
               <p className="font-medium text-foreground">No statements yet</p>
               <p className="text-sm text-muted-foreground">
-                A statement appears once a month closes with commission on it.
+                A statement appears once a month closes with income on it.
               </p>
             </div>
           ) : (

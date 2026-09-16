@@ -79,7 +79,7 @@ export default async function PartnerPayoutsPage({ searchParams }: PageProps) {
                 <Wallet className="h-8 w-8 text-blue-400" />
                 <p className="font-medium text-foreground">Nothing due for {period.label}</p>
                 <p className="text-sm text-muted-foreground">
-                  Either no commission was accrued or every partner is already paid.
+                  Either no income was accrued or every partner is already paid.
                 </p>
               </div>
             ) : (

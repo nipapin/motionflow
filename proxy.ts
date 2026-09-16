@@ -5,7 +5,7 @@ import {
   AFFILIATE_REF_COOKIE,
   AFFILIATE_REF_COOKIE_MAX_AGE_SEC,
   AFFILIATE_REF_QUERY_PARAM,
-  normalizeAffiliateSlug,
+  normalizeAffiliateRef,
 } from "@/lib/affiliate/shared";
 
 /** Prefer nginx `X-Forwarded-Host` — raw `Host` is often the upstream loopback. */
@@ -31,7 +31,7 @@ function withAffiliateReferralCookie(
   request: NextRequest,
   response: NextResponse,
 ): NextResponse {
-  const slug = normalizeAffiliateSlug(
+  const slug = normalizeAffiliateRef(
     request.nextUrl.searchParams.get(AFFILIATE_REF_QUERY_PARAM),
   );
   if (!slug) return response;

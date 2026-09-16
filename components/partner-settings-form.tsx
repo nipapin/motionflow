@@ -6,6 +6,15 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import type { Affiliate, AffiliateRecurringMode } from "@/lib/affiliate/types";
 
@@ -25,7 +34,10 @@ export function PartnerSettingsForm({ affiliate }: { affiliate: Affiliate }) {
     affiliate.recurringMode,
   );
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const busy = saving || deleting;
 
   const patch = async (body: Record<string, unknown>, successMessage: string) => {
     setError(null);
@@ -55,6 +67,33 @@ export function PartnerSettingsForm({ affiliate }: { affiliate: Affiliate }) {
     }
   };
 
+  const removePartner = async () => {
+    setError(null);
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/partners/${affiliate.id}`, { method: "DELETE" });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        message?: string;
+        error?: string;
+      };
+      if (!res.ok) {
+        setError(data.message ?? data.error ?? "Could not delete partner");
+        setDeleteOpen(false);
+        return;
+      }
+      toast.success("Partner deleted");
+      setDeleteOpen(false);
+      router.push("/profile/partners");
+      router.refresh();
+    } catch (err) {
+      console.error("[partner-settings delete]", err);
+      setError("Network error. Try again.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const isActive = affiliate.status === "active";
 
   return (
@@ -79,7 +118,7 @@ export function PartnerSettingsForm({ affiliate }: { affiliate: Affiliate }) {
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="edit-partner-percent">Commission %</Label>
+          <Label htmlFor="edit-partner-percent">Income %</Label>
           <Input
             id="edit-partner-percent"
             type="number"
@@ -91,11 +130,11 @@ export function PartnerSettingsForm({ affiliate }: { affiliate: Affiliate }) {
             className="w-32"
           />
           <p className="text-xs text-muted-foreground">
-            Applies to future payments; already accrued commissions keep their percent.
+            Applies to future payments; already accrued income keeps its percent.
           </p>
         </div>
         <div className="space-y-2">
-          <Label>Commission applies to</Label>
+          <Label>Income applies to</Label>
           <div className="flex flex-wrap gap-2">
             {(
               [
@@ -133,7 +172,7 @@ export function PartnerSettingsForm({ affiliate }: { affiliate: Affiliate }) {
       <div className="flex flex-wrap items-center gap-3">
         <Button
           type="button"
-          disabled={saving}
+          disabled={busy}
           onClick={() =>
             void patch(
               {
@@ -149,16 +188,16 @@ export function PartnerSettingsForm({ affiliate }: { affiliate: Affiliate }) {
           {saving ? "Saving…" : "Save changes"}
         </Button>
 
-        <div className="ml-auto flex items-center gap-3 border-l border-border/60 pl-3">
-          <p className="text-xs text-muted-foreground">
+        <div className="ml-auto flex flex-wrap items-center gap-3 border-l border-border/60 pl-3">
+          <p className="max-w-sm text-xs text-muted-foreground">
             {isActive
-              ? "Deactivating stops the link from setting cookies and stops all new commissions, including renewals. Earned money stays payable."
-              : "Reactivating resumes attribution and commissions."}
+              ? "Deactivating stops the link from setting cookies and stops all new income, including renewals. Earned money stays payable."
+              : "Reactivating resumes attribution and income."}
           </p>
           <Button
             type="button"
             variant={isActive ? "destructive" : "outline"}
-            disabled={saving}
+            disabled={busy}
             onClick={() =>
               void patch(
                 { status: isActive ? "inactive" : "active" },
@@ -168,8 +207,47 @@ export function PartnerSettingsForm({ affiliate }: { affiliate: Affiliate }) {
           >
             {isActive ? "Deactivate" : "Reactivate"}
           </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            className="border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={() => setDeleteOpen(true)}
+          >
+            Delete
+          </Button>
         </div>
       </div>
+
+      <AlertDialog
+        open={deleteOpen}
+        onOpenChange={(open) => {
+          if (!deleting) setDeleteOpen(open);
+        }}
+      >
+        <AlertDialogContent className="border-border bg-card">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete partner?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes {affiliate.name} ({affiliate.email}). Their
+              referral link will stop working, the slug can be reused, and income,
+              payout, click, and campaign history will be deleted. Unpaid income
+              is not kept. Their Motion Flow login stays. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleting}
+              onClick={() => void removePartner()}
+            >
+              {deleting ? "Deleting…" : "Delete partner"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

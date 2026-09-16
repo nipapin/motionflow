@@ -7,26 +7,32 @@ import { getPool } from "@/lib/db";
 import {
   AFFILIATE_LINK_HITS_TABLE,
   ensureAffiliateSchema,
-  getAffiliateBySlug,
+  getAffiliateByRef,
+  rememberAffiliateCampaign,
 } from "@/lib/affiliate/db";
-import { AFFILIATE_REF_COOKIE, normalizeAffiliateSlug } from "@/lib/affiliate/shared";
+import {
+  AFFILIATE_REF_COOKIE,
+  campaignFromRef,
+  normalizeAffiliateRef,
+} from "@/lib/affiliate/shared";
+import { motionflowSiteOrigin } from "@/lib/motionflow-urls";
 
-/** Referral slug from the request cookie header (works for `Request` and `NextRequest`). */
+/** Full `?ref=` value from the request cookie (works for `Request` and `NextRequest`). */
 export function affiliateRefSlugFromRequest(req: Request): string | null {
   const header = req.headers.get("cookie");
   if (!header) return null;
   for (const part of header.split(";")) {
     const [rawName, ...rest] = part.split("=");
     if (rawName?.trim() !== AFFILIATE_REF_COOKIE) continue;
-    return normalizeAffiliateSlug(decodeURIComponent(rest.join("=").trim()));
+    return normalizeAffiliateRef(decodeURIComponent(rest.join("=").trim()));
   }
   return null;
 }
 
-/** Referral slug inside server components / route handlers using `next/headers`. */
+/** Full referral value inside server components / route handlers using `next/headers`. */
 export async function affiliateRefSlugFromCookies(): Promise<string | null> {
   const store = await cookies();
-  return normalizeAffiliateSlug(store.get(AFFILIATE_REF_COOKIE)?.value ?? null);
+  return normalizeAffiliateRef(store.get(AFFILIATE_REF_COOKIE)?.value ?? null);
 }
 
 /**
@@ -35,39 +41,40 @@ export async function affiliateRefSlugFromCookies(): Promise<string | null> {
  * keeps the user. The `IS NULL` guard means an existing stamp is never
  * overwritten, so a later partner cannot steal someone else's customer.
  *
- * Called from register, login and the Google callback — an account that already
- * existed before the partner's link was clicked would otherwise never be
- * attributed at all.
+ * `slug` here is the full cookie value (`plownik` or `plownik-email-september`).
  */
 export async function attachAffiliateReferralToUser(input: {
   userId: number;
   email: string;
   slug: string | null;
 }): Promise<{ attached: boolean; affiliateId?: number }> {
-  const slug = normalizeAffiliateSlug(input.slug);
-  if (!slug) return { attached: false };
+  const ref = normalizeAffiliateRef(input.slug);
+  if (!ref) return { attached: false };
 
   try {
-    const affiliate = await getAffiliateBySlug(slug);
+    const affiliate = await getAffiliateByRef(ref);
     if (!affiliate || affiliate.status !== "active") return { attached: false };
 
-    // No self-referral: neither the partner's own account nor their own email.
     const email = input.email.trim().toLowerCase();
     if (affiliate.userId === input.userId || affiliate.email === email) {
       return { attached: false };
     }
 
+    const campaign = campaignFromRef(ref, affiliate.slug);
     const [result] = await getPool().execute<ResultSetHeader>(
       `UPDATE \`users\`
-          SET \`referred_by_affiliate_id\` = ?
+          SET \`referred_by_affiliate_id\` = ?,
+              \`referred_by_campaign\` = ?
         WHERE \`id\` = ? AND \`referred_by_affiliate_id\` IS NULL`,
-      [affiliate.id, input.userId],
+      [affiliate.id, campaign, input.userId],
     );
+    if (result.affectedRows > 0 && campaign) {
+      await rememberAffiliateCampaign(affiliate.id, campaign);
+    }
     return result.affectedRows > 0
       ? { attached: true, affiliateId: affiliate.id }
       : { attached: false };
   } catch (err) {
-    // Attribution must never break signup or sign-in.
     console.error("[affiliate/attribution] attach failed", err);
     return { attached: false };
   }
@@ -94,11 +101,36 @@ export function affiliateClientIp(headers: Headers): string | null {
   return null;
 }
 
-export async function recordAffiliateLinkHit(slug: string, ipHash: string | null): Promise<void> {
+/**
+ * Host of the page that sent the visitor, from `document.referrer`.
+ * The request `Referer` on `/api/affiliate/hit` is this site itself, so the
+ * client must send the browser referrer in the POST body.
+ */
+export function affiliateReferrerHost(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    const host = url.hostname.toLowerCase();
+    if (!host) return null;
+    const siteHost = new URL(motionflowSiteOrigin()).hostname.toLowerCase();
+    if (host === siteHost || host.endsWith(`.${siteHost}`)) return null;
+    return host.slice(0, 191);
+  } catch {
+    return null;
+  }
+}
+
+export async function recordAffiliateLinkHit(input: {
+  slug: string;
+  campaign: string | null;
+  ipHash: string | null;
+  referrerHost: string | null;
+}): Promise<void> {
   await ensureAffiliateSchema();
   await getPool().execute<ResultSetHeader>(
-    `INSERT INTO \`${AFFILIATE_LINK_HITS_TABLE}\` (slug, hit_date, ip_hash, created_at)
-     VALUES (?, UTC_DATE(), ?, NOW())`,
-    [slug, ipHash],
+    `INSERT INTO \`${AFFILIATE_LINK_HITS_TABLE}\`
+       (slug, campaign, hit_date, ip_hash, referrer_host, created_at)
+     VALUES (?, ?, UTC_DATE(), ?, ?, NOW())`,
+    [input.slug, input.campaign, input.ipHash, input.referrerHost],
   );
 }

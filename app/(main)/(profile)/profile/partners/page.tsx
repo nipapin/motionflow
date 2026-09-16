@@ -61,7 +61,7 @@ export default async function PartnersPage({ searchParams }: PageProps) {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Partners</h1>
           <p className="text-muted-foreground">
-            Subscription affiliates. Commission is a share of each payment after the Paddle fee.
+            Subscription affiliates. Income is a share of each payment after the Paddle fee.
           </p>
         </div>
         <Button asChild>
@@ -88,7 +88,7 @@ export default async function PartnersPage({ searchParams }: PageProps) {
           hint="active / all"
         />
         <AffiliateSummaryTile
-          title="Commission accrued"
+          title="Income accrued"
           value={affiliateMoney(summary.commissionTotal)}
           hint={period.label}
         />

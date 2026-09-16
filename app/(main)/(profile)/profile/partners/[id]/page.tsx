@@ -9,6 +9,7 @@ import {
   affiliateDate,
   affiliateMoney,
   affiliateRecurringLabel,
+  affiliateSourceLabel,
 } from "@/lib/affiliate/format";
 import { affiliateRefLink } from "@/lib/affiliate/shared";
 import {
@@ -125,7 +126,7 @@ export default async function PartnerDetailPage({ params, searchParams }: PagePr
         <AffiliateSummaryTile title="Payments" value={String(stats.paymentsCount)} hint={period.label} />
         <AffiliateSummaryTile title="Subscribers" value={String(stats.buyersCount)} hint="unique buyers" />
         <AffiliateSummaryTile
-          title="Commission"
+          title="Income"
           value={affiliateMoney(stats.commissionTotal)}
           hint={period.label}
         />
@@ -141,7 +142,7 @@ export default async function PartnerDetailPage({ params, searchParams }: PagePr
               <Receipt className="h-8 w-8 text-blue-400" />
               <p className="font-medium text-foreground">No payments in this period</p>
               <p className="text-sm text-muted-foreground">
-                Commissions appear here as soon as a referred visitor pays for a Motion Flow plan.
+                Income appears here as soon as a referred visitor pays for a Motion Flow plan.
               </p>
             </div>
           ) : (
@@ -150,11 +151,11 @@ export default async function PartnerDetailPage({ params, searchParams }: PagePr
                 <TableRow>
                   <TableHead>Buyer</TableHead>
                   <TableHead>Plan</TableHead>
-                  <TableHead>Payment</TableHead>
+                  <TableHead>Source</TableHead>
                   <TableHead className="text-right">Gross</TableHead>
                   <TableHead className="text-right">Paddle fee</TableHead>
                   <TableHead className="text-right">Net</TableHead>
-                  <TableHead className="text-right">Commission</TableHead>
+                  <TableHead className="text-right">Income</TableHead>
                   <TableHead>Date (UTC)</TableHead>
                 </TableRow>
               </TableHeader>
@@ -174,12 +175,8 @@ export default async function PartnerDetailPage({ params, searchParams }: PagePr
                       </span>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={row.isFirstPayment ? "default" : "outline"}>
-                        {row.status === "reversed"
-                          ? "Refund"
-                          : row.isFirstPayment
-                            ? "First"
-                            : "Recurring"}
+                      <Badge variant={row.campaign ? "default" : "outline"}>
+                        {affiliateSourceLabel(row.campaign, row.status)}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right tabular-nums">

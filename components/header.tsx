@@ -4,6 +4,7 @@ import { useAuth } from "@/components/auth-provider";
 import { AuthorHeaderNavPopovers } from "@/components/author-header-nav-popovers";
 import { MainHeaderAuthorsPopover } from "@/components/main-header-authors-popover";
 import { SignInModal } from "@/components/sign-in-modal";
+import { useAffiliateNavFlags } from "@/hooks/use-affiliate-nav-flags";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -16,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { motionflowMainSiteUrl, motionflowSiteOrigin } from "@/lib/motionflow-urls";
 import { SEARCH_CATEGORY_OPTIONS, searchCategoryHref, type SearchCategory } from "@/lib/search-categories";
 import { cn } from "@/lib/utils";
-import { Bookmark, ChevronDown, CreditCard, Download, LogOut, Search, ShoppingBag, Sparkles, User, Users, X } from "lucide-react";
+import { Bookmark, ChevronDown, CreditCard, Download, Handshake, LayoutDashboard, LogOut, Search, Share2, ShoppingBag, Sparkles, User, Users, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -51,6 +52,7 @@ export function Header({
   const router = useRouter();
   const pathname = usePathname();
   const { user, signOut } = useAuth();
+  const { showPartners, showAffiliate } = useAffiliateNavFlags(user);
   const [signInOpen, setSignInOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<"signin" | "signup">("signin");
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
@@ -82,7 +84,10 @@ export function Header({
 
   const isLoggedIn = !!user;
   /** Author storefront (e.g. spunkram.*): account and home must target the main site, not the subdomain. */
-  const accountMenuHref = (href: string) => (authorNavPopovers ? motionflowMainSiteUrl(href) : href);
+  const accountMenuHref = (href: string) => {
+    if (/^https?:\/\//i.test(href)) return href;
+    return authorNavPopovers ? motionflowMainSiteUrl(href) : href;
+  };
   const desktopLeftClass = typeof sidebarCollapsed === "boolean" ? (sidebarCollapsed ? "lg:left-[72px]" : "lg:left-72") : "lg:left-0";
   const positionClass = fixed ? `fixed top-0 right-0 left-0 ${desktopLeftClass}` : "relative";
 
@@ -288,8 +293,17 @@ export function Header({
                   { icon: CreditCard, label: "My subscriptions", href: "/profile/subscriptions" },
                   { icon: Download, label: "My downloads", href: "/profile/downloads" },
                   { icon: Bookmark, label: "Favorites", href: "/profile/favorites" },
+                  ...(showAffiliate
+                    ? [{ icon: Share2, label: "Affiliate", href: "/profile/affiliate" }]
+                    : []),
                   ...(user?.email?.trim().toLowerCase() === "basepackagehelp@gmail.com"
                     ? [{ icon: Users, label: "Authors", href: "/profile/packages" }]
+                    : []),
+                  ...(showPartners
+                    ? [{ icon: Handshake, label: "Partners", href: "/profile/partners" }]
+                    : []),
+                  ...(Number(user?.access) >= 1
+                    ? [{ icon: LayoutDashboard, label: "Dashboard", href: "https://authors.motionflow.pro" }]
                     : []),
                 ].map(({ icon: Icon, label, href }) => (
                   <DropdownMenuItem

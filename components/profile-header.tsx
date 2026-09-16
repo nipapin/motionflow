@@ -8,6 +8,7 @@ import {
   CreditCard,
   Download,
   Handshake,
+  LayoutDashboard,
   LogOut,
   Share2,
   ShoppingBag,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { SignInModal } from "@/components/sign-in-modal";
+import { useAffiliateNavFlags } from "@/hooks/use-affiliate-nav-flags";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -50,6 +52,9 @@ interface ProfileHeaderProps {
 export function ProfileHeader({ showPartners, showAffiliate }: ProfileHeaderProps = {}) {
   const pathname = usePathname();
   const { user, signOut } = useAuth();
+  const nav = useAffiliateNavFlags(user);
+  const partnersVisible = showPartners ?? nav.showPartners;
+  const affiliateVisible = showAffiliate ?? nav.showAffiliate;
   const [signInOpen, setSignInOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<"signin" | "signup">("signin");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -142,14 +147,17 @@ export function ProfileHeader({ showPartners, showAffiliate }: ProfileHeaderProp
                 >
                   {[
                     ...ACCOUNT_LINKS,
-                    ...(showAffiliate
+                    ...(affiliateVisible
                       ? ([{ icon: Share2, label: "Affiliate", href: "/profile/affiliate" }] as const)
                       : []),
                     ...(user?.email && PACKAGES_ADMIN_EMAILS.has(user.email.trim().toLowerCase())
                       ? ([{ icon: Users, label: "Authors", href: "/profile/packages" }] as const)
                       : []),
-                    ...(showPartners
+                    ...(partnersVisible
                       ? ([{ icon: Handshake, label: "Partners", href: "/profile/partners" }] as const)
+                      : []),
+                    ...(Number(user?.access) >= 1
+                      ? ([{ icon: LayoutDashboard, label: "Dashboard", href: "https://authors.motionflow.pro" }] as const)
                       : []),
                   ].map(({ icon: Icon, label, href }) => (
                     <DropdownMenuItem

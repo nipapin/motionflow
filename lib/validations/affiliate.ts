@@ -47,3 +47,14 @@ export const affiliatePayoneerSchema = z
       .transform((value) => (value ? value : null)),
   })
   .strict();
+
+export const affiliateCampaignCreateSchema = z
+  .object({
+    code: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Use lowercase letters, digits and dashes")
+      .max(48),
+  })
+  .strict();

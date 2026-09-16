@@ -28,3 +28,13 @@ export function affiliateDate(raw: string | null | undefined): string {
 export function affiliateRecurringLabel(mode: "first_only" | "all"): string {
   return mode === "all" ? "Every payment" : "First payment only";
 }
+
+/** Campaign suffix, or "Default" for the bare `?ref={slug}` link. */
+export function affiliateSourceLabel(
+  campaign: string | null | undefined,
+  status?: string,
+): string {
+  const source = campaign?.trim() || "Default";
+  if (status === "reversed") return `${source} · Refund`;
+  return source;
+}

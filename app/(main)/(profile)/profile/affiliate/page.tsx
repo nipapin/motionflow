@@ -2,20 +2,20 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Users } from "lucide-react";
 import { getSessionUser } from "@/lib/auth/get-session-user";
-import { getAffiliateForUser } from "@/lib/affiliate/db";
+import { getAffiliateForUser, listAffiliateCampaigns } from "@/lib/affiliate/db";
 import {
   affiliateDate,
   affiliateMoney,
   affiliateRecurringLabel,
+  affiliateSourceLabel,
 } from "@/lib/affiliate/format";
-import { affiliateRefLink } from "@/lib/affiliate/shared";
 import {
   affiliatePeriodStats,
   listAffiliateCommissionRows,
   resolveAffiliatePeriod,
 } from "@/lib/affiliate/stats";
 import { AFFILIATE_TABS } from "@/lib/affiliate/tabs";
-import { AffiliateCopyLink } from "@/components/affiliate-copy-link";
+import { AffiliateCampaignLinks } from "@/components/affiliate-campaign-links";
 import { AffiliatePeriodFilter } from "@/components/affiliate-period-filter";
 import { AffiliateSectionTabs } from "@/components/affiliate-section-tabs";
 import { AffiliateSummaryTile } from "@/components/affiliate-summary-tile";
@@ -54,9 +54,10 @@ export default async function AffiliateOverviewPage({ searchParams }: PageProps)
 
   const sp = await searchParams;
   const period = resolveAffiliatePeriod(single(sp.date), single(sp.from), single(sp.to));
-  const [stats, rows] = await Promise.all([
+  const [stats, rows, campaigns] = await Promise.all([
     affiliatePeriodStats(affiliate, period),
     listAffiliateCommissionRows({ affiliateId: affiliate.id, period }),
+    listAffiliateCampaigns(affiliate.id),
   ]);
 
   return (
@@ -76,9 +77,9 @@ export default async function AffiliateOverviewPage({ searchParams }: PageProps)
           <CardTitle className="text-base">Your referral link</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <AffiliateCopyLink link={affiliateRefLink(affiliate.slug)} className="max-w-xl" />
+          <AffiliateCampaignLinks slug={affiliate.slug} campaigns={campaigns} />
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline">{affiliate.commissionPercent}% commission</Badge>
+            <Badge variant="outline">{affiliate.commissionPercent}% income</Badge>
             <Badge variant="outline">{affiliateRecurringLabel(affiliate.recurringMode)}</Badge>
             <Badge variant={affiliate.status === "active" ? "default" : "secondary"}>
               {affiliate.status === "active" ? "Active" : "Inactive"}
@@ -103,7 +104,7 @@ export default async function AffiliateOverviewPage({ searchParams }: PageProps)
         <AffiliateSummaryTile title="Payments" value={String(stats.paymentsCount)} hint={period.label} />
         <AffiliateSummaryTile title="Subscribers" value={String(stats.buyersCount)} hint="unique buyers" />
         <AffiliateSummaryTile
-          title="Commission"
+          title="Income"
           value={affiliateMoney(stats.commissionTotal)}
           hint={period.label}
         />
@@ -119,7 +120,7 @@ export default async function AffiliateOverviewPage({ searchParams }: PageProps)
               <Users className="h-8 w-8 text-blue-400" />
               <p className="font-medium text-foreground">Nothing in this period yet</p>
               <p className="text-sm text-muted-foreground">
-                Share your link — referred subscriptions and your commission show up here.
+                Share your link — referred subscriptions and your income show up here.
               </p>
             </div>
           ) : (
@@ -128,8 +129,8 @@ export default async function AffiliateOverviewPage({ searchParams }: PageProps)
                 <TableRow>
                   <TableHead>Subscriber</TableHead>
                   <TableHead>Plan</TableHead>
-                  <TableHead>Payment</TableHead>
-                  <TableHead className="text-right">Your commission</TableHead>
+                  <TableHead>Source</TableHead>
+                  <TableHead className="text-right">Your income</TableHead>
                   <TableHead>Date (UTC)</TableHead>
                 </TableRow>
               </TableHeader>
@@ -144,12 +145,8 @@ export default async function AffiliateOverviewPage({ searchParams }: PageProps)
                       </span>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={row.isFirstPayment ? "default" : "outline"}>
-                        {row.status === "reversed"
-                          ? "Refund"
-                          : row.isFirstPayment
-                            ? "First"
-                            : "Recurring"}
+                      <Badge variant={row.campaign ? "default" : "outline"}>
+                        {affiliateSourceLabel(row.campaign, row.status)}
                       </Badge>
                     </TableCell>
                     <TableCell

@@ -10,6 +10,7 @@ const nextConfig = {
     '*.motionflow.com',
     'spunkramv2.motionflow.pro',
     'premieregal.motionflow.pro',
+    '3b7c-144-31-183-229.ngrok-free.app'
   ],
   async redirects() {
     return [

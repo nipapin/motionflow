@@ -36,6 +36,8 @@ export interface AffiliateCommission {
   commissionPercent: number;
   /** Negative on reversals (refund / chargeback). */
   commissionAmount: number;
+  /** Campaign suffix from `?ref={slug}-{campaign}`. Null = default link. */
+  campaign: string | null;
   currency: string;
   status: AffiliateCommissionStatus;
   createdAt: string;
@@ -77,6 +79,11 @@ export interface AffiliateUpdateInput {
   commissionPercent?: number;
   recurringMode?: AffiliateRecurringMode;
   status?: AffiliateStatus;
+}
+
+export interface AffiliateCampaignLink {
+  code: string;
+  createdAt: string;
 }
 
 /** Aggregated numbers for one affiliate over a period. */

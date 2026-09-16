@@ -15,6 +15,8 @@ export type AuthUser = {
   id: number;
   email: string;
   name: string;
+  /** Laravel `users.access`: 0 = buyer, 1+ = partner/author (see account sidebar). */
+  access?: number;
   oauthPasswordOnly?: boolean;
   hasGoogleLinked?: boolean;
   canChangePassword?: boolean;

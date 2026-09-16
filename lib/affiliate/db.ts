@@ -2,9 +2,10 @@ import "server-only";
 
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
-import { normalizeAffiliateSlug } from "@/lib/affiliate/shared";
+import { normalizeAffiliateCampaign, normalizeAffiliateRef, normalizeAffiliateSlug } from "@/lib/affiliate/shared";
 import type {
   Affiliate,
+  AffiliateCampaignLink,
   AffiliateCommission,
   AffiliateCommissionStatus,
   AffiliateCreateInput,
@@ -17,6 +18,7 @@ export const AFFILIATES_TABLE = "affiliates";
 export const AFFILIATE_COMMISSIONS_TABLE = "affiliate_commissions";
 export const AFFILIATE_PAYOUTS_TABLE = "affiliate_payouts";
 export const AFFILIATE_LINK_HITS_TABLE = "affiliate_link_hits";
+export const AFFILIATE_CAMPAIGNS_TABLE = "affiliate_campaigns";
 
 let schemaEnsured = false;
 
@@ -119,11 +121,46 @@ export async function ensureAffiliateSchema(): Promise<void> {
      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   );
 
-  // `ADD COLUMN IF NOT EXISTS` is MySQL 8 only; emulate with information_schema.
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS \`${AFFILIATE_CAMPAIGNS_TABLE}\` (
+       \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+       \`affiliate_id\` BIGINT UNSIGNED NOT NULL,
+       \`code\` VARCHAR(48) NOT NULL,
+       \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       PRIMARY KEY (\`id\`),
+       UNIQUE KEY \`uq_affiliate_campaigns_code\` (\`affiliate_id\`, \`code\`),
+       KEY \`idx_affiliate_campaigns_affiliate\` (\`affiliate_id\`)
+     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  );
+
   if (!(await columnExists("users", "referred_by_affiliate_id"))) {
     await pool.query(
       `ALTER TABLE \`users\`
          ADD COLUMN \`referred_by_affiliate_id\` BIGINT UNSIGNED NULL DEFAULT NULL`,
+    );
+  }
+  if (!(await columnExists("users", "referred_by_campaign"))) {
+    await pool.query(
+      `ALTER TABLE \`users\`
+         ADD COLUMN \`referred_by_campaign\` VARCHAR(48) NULL DEFAULT NULL`,
+    );
+  }
+  if (!(await columnExists(AFFILIATE_COMMISSIONS_TABLE, "campaign"))) {
+    await pool.query(
+      `ALTER TABLE \`${AFFILIATE_COMMISSIONS_TABLE}\`
+         ADD COLUMN \`campaign\` VARCHAR(48) NULL DEFAULT NULL AFTER \`billing_period\``,
+    );
+  }
+  if (!(await columnExists(AFFILIATE_LINK_HITS_TABLE, "campaign"))) {
+    await pool.query(
+      `ALTER TABLE \`${AFFILIATE_LINK_HITS_TABLE}\`
+         ADD COLUMN \`campaign\` VARCHAR(48) NULL DEFAULT NULL AFTER \`slug\``,
+    );
+  }
+  if (!(await columnExists(AFFILIATE_LINK_HITS_TABLE, "referrer_host"))) {
+    await pool.query(
+      `ALTER TABLE \`${AFFILIATE_LINK_HITS_TABLE}\`
+         ADD COLUMN \`referrer_host\` VARCHAR(191) NULL DEFAULT NULL AFTER \`ip_hash\``,
     );
   }
 
@@ -201,6 +238,25 @@ export async function getAffiliateBySlug(slug: string): Promise<Affiliate | null
   const [rows] = await getPool().execute<AffiliateRow[]>(
     `SELECT ${AFFILIATE_COLUMNS} FROM \`${AFFILIATES_TABLE}\` WHERE slug = ? LIMIT 1`,
     [normalized],
+  );
+  return rows[0] ? rowToAffiliate(rows[0]) : null;
+}
+
+/**
+ * Resolve `?ref=plownik-email-september` to the partner whose slug is the longest
+ * prefix (`plownik`, not a shorter `plo`). Exact slug still wins when there is
+ * no `-campaign` suffix.
+ */
+export async function getAffiliateByRef(fullRef: string): Promise<Affiliate | null> {
+  const ref = normalizeAffiliateRef(fullRef);
+  if (!ref) return null;
+  await ensureAffiliateSchema();
+  const [rows] = await getPool().execute<AffiliateRow[]>(
+    `SELECT ${AFFILIATE_COLUMNS} FROM \`${AFFILIATES_TABLE}\`
+      WHERE slug = ? OR ? LIKE CONCAT(slug, '-%')
+      ORDER BY CHAR_LENGTH(slug) DESC
+      LIMIT 1`,
+    [ref, ref],
   );
   return rows[0] ? rowToAffiliate(rows[0]) : null;
 }
@@ -336,6 +392,53 @@ export async function updateAffiliate(
   return getAffiliateById(id);
 }
 
+/**
+ * Hard-delete a partner and their affiliate rows. The Motion Flow user account
+ * stays. Referral first-touch on buyers is cleared so a later partner can own
+ * those signups; the slug becomes free again.
+ */
+export async function deleteAffiliate(id: number): Promise<boolean> {
+  await ensureAffiliateSchema();
+  const existing = await getAffiliateById(id);
+  if (!existing) return false;
+
+  const pool = getPool();
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.execute(
+      `DELETE FROM \`${AFFILIATE_COMMISSIONS_TABLE}\` WHERE affiliate_id = ?`,
+      [id],
+    );
+    await conn.execute(
+      `DELETE FROM \`${AFFILIATE_PAYOUTS_TABLE}\` WHERE affiliate_id = ?`,
+      [id],
+    );
+    await conn.execute(
+      `DELETE FROM \`${AFFILIATE_CAMPAIGNS_TABLE}\` WHERE affiliate_id = ?`,
+      [id],
+    );
+    await conn.execute(
+      `DELETE FROM \`${AFFILIATE_LINK_HITS_TABLE}\` WHERE slug = ?`,
+      [existing.slug],
+    );
+    await conn.execute(
+      `UPDATE \`users\`
+          SET referred_by_affiliate_id = NULL, referred_by_campaign = NULL
+        WHERE referred_by_affiliate_id = ?`,
+      [id],
+    );
+    await conn.execute(`DELETE FROM \`${AFFILIATES_TABLE}\` WHERE id = ?`, [id]);
+    await conn.commit();
+    return true;
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 export async function setAffiliatePayoneerEmail(
   affiliateId: number,
   payoneerEmail: string | null,
@@ -363,6 +466,7 @@ export interface AffiliateCommissionInsert {
   subscriptionId: string | null;
   plan: string | null;
   billingPeriod: string | null;
+  campaign: string | null;
   grossAmount: number;
   paddleFee: number;
   netAmount: number;
@@ -380,13 +484,14 @@ export async function insertAffiliateCommission(
   conn: PoolConnection | null,
   row: AffiliateCommissionInsert,
 ): Promise<boolean> {
+  await ensureAffiliateSchema();
   const executor = conn ?? getPool();
   const [result] = await executor.execute<ResultSetHeader>(
     `INSERT IGNORE INTO \`${AFFILIATE_COMMISSIONS_TABLE}\`
        (affiliate_id, buyer_user_id, payment_id, subscription_id, plan, billing_period,
-        gross_amount, paddle_fee, net_amount, commission_percent, commission_amount,
+        campaign, gross_amount, paddle_fee, net_amount, commission_percent, commission_amount,
         currency, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
     [
       row.affiliateId,
       row.buyerUserId,
@@ -394,6 +499,7 @@ export async function insertAffiliateCommission(
       row.subscriptionId,
       row.plan,
       row.billingPeriod,
+      row.campaign,
       row.grossAmount,
       row.paddleFee,
       row.netAmount,
@@ -414,6 +520,7 @@ type CommissionRow = RowDataPacket & {
   subscription_id: string | null;
   plan: string | null;
   billing_period: string | null;
+  campaign: string | null;
   gross_amount: string | number;
   paddle_fee: string | number;
   net_amount: string | number;
@@ -438,6 +545,7 @@ export function rowToCommission(row: CommissionRow): AffiliateCommission {
     netAmount: Number(row.net_amount),
     commissionPercent: Number(row.commission_percent),
     commissionAmount: Number(row.commission_amount),
+    campaign: row.campaign ?? null,
     currency: row.currency,
     status: row.status,
     createdAt: toIso(row.created_at) ?? "",
@@ -445,7 +553,7 @@ export function rowToCommission(row: CommissionRow): AffiliateCommission {
 }
 
 export const COMMISSION_COLUMNS = `id, affiliate_id, buyer_user_id, payment_id, subscription_id,
-  plan, billing_period, gross_amount, paddle_fee, net_amount, commission_percent,
+  plan, billing_period, campaign, gross_amount, paddle_fee, net_amount, commission_percent,
   commission_amount, currency, status, created_at`;
 
 /**
@@ -496,4 +604,86 @@ export async function listCommissionsByPaymentId(
     [paymentId],
   );
   return rows.map(rowToCommission);
+}
+
+export async function findCampaignBySubscriptionId(
+  conn: PoolConnection | null,
+  subscriptionId: string,
+): Promise<string | null> {
+  const executor = conn ?? getPool();
+  type Row = RowDataPacket & { campaign: string | null };
+  const [rows] = await executor.execute<Row[]>(
+    `SELECT campaign FROM \`${AFFILIATE_COMMISSIONS_TABLE}\`
+      WHERE subscription_id = ? AND campaign IS NOT NULL AND campaign <> ''
+      ORDER BY id ASC
+      LIMIT 1`,
+    [subscriptionId],
+  );
+  return rows[0]?.campaign ?? null;
+}
+
+export async function findCampaignByBuyer(
+  conn: PoolConnection | null,
+  buyerUserId: number,
+): Promise<string | null> {
+  const executor = conn ?? getPool();
+  type Row = RowDataPacket & { referred_by_campaign: string | null };
+  const [rows] = await executor.execute<Row[]>(
+    `SELECT referred_by_campaign FROM \`users\` WHERE id = ? LIMIT 1`,
+    [buyerUserId],
+  );
+  return rows[0]?.referred_by_campaign ?? null;
+}
+
+export async function listAffiliateCampaigns(affiliateId: number): Promise<AffiliateCampaignLink[]> {
+  await ensureAffiliateSchema();
+  type Row = RowDataPacket & { code: string; created_at: Date | string };
+  const [rows] = await getPool().execute<Row[]>(
+    `SELECT code, created_at FROM \`${AFFILIATE_CAMPAIGNS_TABLE}\`
+      WHERE affiliate_id = ?
+      ORDER BY created_at DESC, id DESC`,
+    [affiliateId],
+  );
+  return rows.map((row) => ({
+    code: row.code,
+    createdAt: toIso(row.created_at) ?? "",
+  }));
+}
+
+export async function rememberAffiliateCampaign(
+  affiliateId: number,
+  code: string,
+): Promise<void> {
+  const campaign = normalizeAffiliateCampaign(code);
+  if (!campaign) return;
+  await ensureAffiliateSchema();
+  await getPool().execute<ResultSetHeader>(
+    `INSERT IGNORE INTO \`${AFFILIATE_CAMPAIGNS_TABLE}\` (affiliate_id, code, created_at)
+     VALUES (?, ?, NOW())`,
+    [affiliateId, campaign],
+  );
+}
+
+export async function createAffiliateCampaign(
+  affiliateId: number,
+  code: string,
+): Promise<{ ok: true; campaign: AffiliateCampaignLink } | { ok: false; error: "INVALID" | "TAKEN" }> {
+  const campaign = normalizeAffiliateCampaign(code);
+  if (!campaign) return { ok: false, error: "INVALID" };
+  await ensureAffiliateSchema();
+  try {
+    await getPool().execute<ResultSetHeader>(
+      `INSERT INTO \`${AFFILIATE_CAMPAIGNS_TABLE}\` (affiliate_id, code, created_at)
+       VALUES (?, ?, NOW())`,
+      [affiliateId, campaign],
+    );
+    return {
+      ok: true,
+      campaign: { code: campaign, createdAt: new Date().toISOString() },
+    };
+  } catch (err) {
+    const sqlCode = err && typeof err === "object" && "code" in err ? String(err.code) : "";
+    if (sqlCode === "ER_DUP_ENTRY") return { ok: false, error: "TAKEN" };
+    throw err;
+  }
 }

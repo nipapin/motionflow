@@ -7,13 +7,15 @@ import {
 } from "@/lib/paddle-laravel-port";
 import {
   findAffiliateIdBySubscriptionId,
+  findCampaignByBuyer,
+  findCampaignBySubscriptionId,
   getAffiliateById,
-  getAffiliateBySlug,
+  getAffiliateByRef,
   hasCommissionForBuyer,
   insertAffiliateCommission,
   listCommissionsByPaymentId,
 } from "@/lib/affiliate/db";
-import { normalizeAffiliateSlug } from "@/lib/affiliate/shared";
+import { campaignFromRef, normalizeAffiliateRef } from "@/lib/affiliate/shared";
 import type { Affiliate } from "@/lib/affiliate/types";
 import { getPool } from "@/lib/db";
 import type { RowDataPacket } from "mysql2";
@@ -117,11 +119,11 @@ export async function resolveAffiliateForPayment(
     }
   }
 
-  const slug = normalizeAffiliateSlug(input.checkoutSlug);
+  const slug = normalizeAffiliateRef(input.checkoutSlug);
   if (slug) {
-    const bySlug = await getAffiliateBySlug(slug);
-    if (bySlug && bySlug.status === "active" && bySlug.userId !== input.buyerUserId) {
-      return bySlug;
+    const byRef = await getAffiliateByRef(slug);
+    if (byRef && byRef.status === "active" && byRef.userId !== input.buyerUserId) {
+      return byRef;
     }
   }
 
@@ -153,6 +155,27 @@ export interface AffiliateAccrualInput {
   taxedTotalCents: number;
   feeCents: number | null;
   checkoutSlug: string | null;
+}
+
+async function resolveCampaignForPayment(
+  conn: PoolConnection | null,
+  input: {
+    affiliateSlug: string;
+    checkoutSlug: string | null;
+    subscriptionId: string | null;
+    buyerUserId: number;
+  },
+): Promise<string | null> {
+  const checkoutRef = normalizeAffiliateRef(input.checkoutSlug);
+  if (checkoutRef) {
+    const fromCheckout = campaignFromRef(checkoutRef, input.affiliateSlug);
+    if (fromCheckout) return fromCheckout;
+  }
+  if (input.subscriptionId) {
+    const fromSub = await findCampaignBySubscriptionId(conn, input.subscriptionId);
+    if (fromSub) return fromSub;
+  }
+  return findCampaignByBuyer(conn, input.buyerUserId);
 }
 
 export type AffiliateAccrualResult =
@@ -204,6 +227,12 @@ export async function accrueAffiliateCommission(
     subscriptionId: input.subscriptionId,
     plan: input.tier,
     billingPeriod: input.billingPeriod,
+    campaign: await resolveCampaignForPayment(conn, {
+      affiliateSlug: affiliate.slug,
+      checkoutSlug: input.checkoutSlug,
+      subscriptionId: input.subscriptionId,
+      buyerUserId: input.buyerUserId,
+    }),
     grossAmount: breakdown.grossAmount,
     paddleFee: breakdown.paddleFee,
     netAmount: breakdown.netAmount,
@@ -242,6 +271,7 @@ export async function reverseAffiliateCommissionsForPayment(
       subscriptionId: row.subscriptionId,
       plan: row.plan,
       billingPeriod: row.billingPeriod,
+      campaign: row.campaign,
       grossAmount: -row.grossAmount,
       paddleFee: -row.paddleFee,
       netAmount: -row.netAmount,

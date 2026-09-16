@@ -138,7 +138,7 @@ export function PartnerCreateForm() {
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="partner-percent">Commission %</Label>
+          <Label htmlFor="partner-percent">Income %</Label>
           <Input
             id="partner-percent"
             type="number"
@@ -156,7 +156,7 @@ export function PartnerCreateForm() {
         </div>
 
         <div className="space-y-2">
-          <Label>Commission applies to</Label>
+          <Label>Income applies to</Label>
           <div className="flex flex-wrap gap-2">
             {(
               [
