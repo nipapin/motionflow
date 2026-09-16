@@ -14,7 +14,8 @@ export const runtime = "nodejs";
  * POST /api/cep/auth/confirm — the /cep/login web page (session cookie auth)
  * approves or denies a pending device-code login.
  * Body: { code: string, action: "approve" | "deny" }
- * Approve may return status "device_limit" — panel must revoke a slot.
+ * Approve returns "complete" when this panel already occupies a seat.
+ * "device_limit" only for a new occupant — panel must revoke a slot.
  */
 export async function POST(req: NextRequest) {
   try {

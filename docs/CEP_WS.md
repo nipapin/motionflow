@@ -70,4 +70,4 @@ then closes with code **`4401`** / reason **`REVOKED`**. Panel must clear the se
 
 All CEP HTTP + WS use the same opaque Bearer `mfcep_…` (DB-hashed, revocable). Stock search/download require auth + rate limit.
 
-Device limit default is **3** (`CEP_DEVICE_LIMIT`). At limit, token poll returns `device_limit` + devices; panel calls `POST /api/cep/auth/replace-device`.
+Device limit default is **3** (`CEP_DEVICE_LIMIT`). Re-login of a seat already in the list (same MAC+client, or same OS username at the limit) completes normally. A new occupant gets `device_limit` + devices; panel calls `POST /api/cep/auth/replace-device`.

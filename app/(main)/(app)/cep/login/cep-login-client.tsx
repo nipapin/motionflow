@@ -20,7 +20,7 @@ import {
 
 type CodeInfo = {
   code: string;
-  status: "pending" | "complete" | "denied" | "expired";
+  status: "pending" | "complete" | "denied" | "expired" | "device_limit";
   client?: string;
   device?: { mac?: string; user?: string; os?: string } | null;
 };
@@ -100,6 +100,7 @@ export function CepLoginClient({
         if (data.status === "expired") setPhase("expired");
         else if (data.status === "denied") setPhase("denied");
         else if (data.status === "complete") setPhase("approved");
+        else if (data.status === "device_limit") setPhase("device_limit");
         else setPhase("ready");
       } catch {
         if (!cancelled) setPhase("error");

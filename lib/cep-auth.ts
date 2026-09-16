@@ -2,6 +2,13 @@ import "server-only";
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
+import {
+  findReusableOccupiedDevice,
+  parseDeviceFingerprint,
+  type CepDeviceFingerprint,
+} from "@/lib/cep-device-identity";
+
+export type { CepDeviceFingerprint };
 
 /**
  * CEP (Adobe extension) device-code auth.
@@ -152,12 +159,6 @@ export function normalizeDeviceCode(raw: unknown): string | null {
   return t;
 }
 
-export type CepDeviceFingerprint = {
-  mac?: string;
-  user?: string;
-  os?: string;
-};
-
 type SessionRow = RowDataPacket & {
   id: number;
   code: string;
@@ -281,14 +282,7 @@ function effectiveStatus(row: SessionRow): AuthSessionInfo["status"] {
 }
 
 function parseFingerprint(json: string | null): CepDeviceFingerprint | null {
-  if (!json) return null;
-  try {
-    const v = JSON.parse(json) as unknown;
-    if (v && typeof v === "object") return v as CepDeviceFingerprint;
-  } catch {
-    /* ignore */
-  }
-  return null;
+  return parseDeviceFingerprint(json);
 }
 
 /** Session info for the /cep/login confirmation page. */
@@ -315,8 +309,9 @@ export type ApproveResult =
  * Approve a pending login session as the signed-in web user: create (or
  * refresh) the CEP device, generate its Bearer token and stash it on the
  * session row for the panel's next poll.
- * When the device limit is reached, marks the session `device_limit` so the
- * panel can pick a device to revoke via replace-device.
+ * If this panel already occupies a seat (same MAC+client, or at the limit the
+ * same OS username), completes sign-in so the browser shows success. Only a
+ * new occupant (not in the list) gets `device_limit` for the panel picker.
  */
 export async function approveAuthSession(
   code: string,
@@ -332,28 +327,32 @@ export async function approveAuthSession(
   const fingerprint = parseFingerprint(row.device_json);
   const pool = getPool();
 
-  // Re-login of the same CEP client on this machine (MAC + client): rotate the
-  // token instead of burning a slot. Gal (`gal-cep`) and Spunkram (`spunkram-cep`)
-  // on one MAC are separate devices so both panels can stay signed in.
-  const existing = await findActiveDeviceByMacAndClient(
-    userId,
-    fingerprint?.mac,
-    row.client,
-  );
+  // Reuse an occupied seat instead of asking the user to kick themselves:
+  // same MAC+client always, and at the limit the same OS username+client
+  // (User B already in the list). User D (not in the list) still gets
+  // device_limit so the panel can pick a slot. Gal and Spunkram stay
+  // independent because rows are filtered by `client`.
+  const occupied = await listActiveDevicesForUserClient(userId, row.client);
+  let existing = findReusableOccupiedDevice(fingerprint, occupied);
 
   if (!existing) {
     const activeCount = await countActiveDevices(userId);
     if (activeCount >= cepDeviceLimit()) {
-      const [upd] = await pool.execute<ResultSetHeader>(
-        `UPDATE \`${SESSIONS_TABLE}\`
-         SET status = 'device_limit', user_id = ?
-         WHERE id = ? AND status = 'pending' AND expires_at >= NOW()`,
-        [userId, row.id],
-      );
-      if (upd.affectedRows === 0) {
-        return { ok: false, error: "CODE_EXPIRED" };
+      existing = findReusableOccupiedDevice(fingerprint, occupied, {
+        matchOsUser: true,
+      });
+      if (!existing) {
+        const [upd] = await pool.execute<ResultSetHeader>(
+          `UPDATE \`${SESSIONS_TABLE}\`
+           SET status = 'device_limit', user_id = ?
+           WHERE id = ? AND status = 'pending' AND expires_at >= NOW()`,
+          [userId, row.id],
+        );
+        if (upd.affectedRows === 0) {
+          return { ok: false, error: "CODE_EXPIRED" };
+        }
+        return { ok: true, status: "device_limit" };
       }
-      return { ok: true, status: "device_limit" };
     }
   }
 
@@ -363,11 +362,12 @@ export async function approveAuthSession(
   if (existing) {
     await pool.execute<ResultSetHeader>(
       `UPDATE \`${DEVICES_TABLE}\`
-       SET token_hash = ?, user_fingerprint = ?, ip = ?, client = ?, last_seen_at = NOW()
+       SET token_hash = ?, user_fingerprint = ?, name = ?, ip = ?, client = ?, last_seen_at = NOW()
        WHERE id = ?`,
       [
         hash,
         row.device_json,
+        fingerprint?.user?.slice(0, 191) ?? existing.name,
         approverIp ?? row.ip,
         row.client,
         existing.id,
@@ -684,33 +684,21 @@ async function countActiveDevices(userId: number): Promise<number> {
   return Number(rows[0]?.c ?? 0);
 }
 
-function normalizedMac(mac: string | undefined | null): string | null {
-  const m = mac?.trim().toLowerCase();
-  if (!m || m === "unknown") return null;
-  return m;
-}
-
-/** Active row for this user + NIC + CEP client. Client must match so Gal and
- * Spunkram keep independent Bearer tokens on the same machine. */
-async function findActiveDeviceByMacAndClient(
+/** Active rows for this user + CEP client (Gal and Spunkram stay independent). */
+async function listActiveDevicesForUserClient(
   userId: number,
-  mac: string | undefined,
   client: string,
-): Promise<DeviceRow | null> {
-  const m = normalizedMac(mac);
+): Promise<DeviceRow[]> {
   const clientId = client.trim();
-  if (!m || !clientId) return null;
+  if (!clientId) return [];
   const pool = getPool();
   const [rows] = await pool.execute<DeviceRow[]>(
     `SELECT * FROM \`${DEVICES_TABLE}\`
-     WHERE user_id = ? AND revoked_at IS NULL AND client = ?`,
+     WHERE user_id = ? AND revoked_at IS NULL AND client = ?
+     ORDER BY COALESCE(last_seen_at, created_at) DESC, id DESC`,
     [userId, clientId],
   );
-  for (const row of rows) {
-    const fp = parseFingerprint(row.user_fingerprint);
-    if (normalizedMac(fp?.mac) === m) return row;
-  }
-  return null;
+  return rows;
 }
 
 export type CepBearerUser = {

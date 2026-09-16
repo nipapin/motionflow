@@ -73,7 +73,9 @@ When the account is already at the **device limit** (default **3**, override wit
 }
 ```
 
-Browser confirm (`POST /api/cep/auth/confirm` approve) may return `{ "ok": true, "status": "device_limit" }` — the panel keeps polling and shows a picker; it does not receive a token yet.
+Browser confirm (`POST /api/cep/auth/confirm` approve) returns `{ "ok": true, "status": "complete" }` when this panel already occupies a seat (same MAC+client, or at the limit the same OS username already in the list). The confirm UI shows the normal success message.
+
+Only a **new** occupant (not in the device list) gets `{ "ok": true, "status": "device_limit" }` — the panel keeps polling and shows a picker; it does not receive a token yet.
 
 ### 1.2b Replace a device (finish login at limit)
 
