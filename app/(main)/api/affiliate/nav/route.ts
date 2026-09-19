@@ -11,6 +11,10 @@ export async function GET() {
     return NextResponse.json(flags);
   } catch (err) {
     console.error("[affiliate/nav GET]", err);
-    return NextResponse.json({ showPartners: false, showAffiliate: false });
+    return NextResponse.json({
+      showPartners: false,
+      showUsers: false,
+      showAffiliate: false,
+    });
   }
 }

@@ -14,6 +14,7 @@ import {
   ShoppingBag,
   Sparkles,
   User,
+  UserRound,
   Users,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
@@ -45,15 +46,22 @@ const ACCOUNT_LINKS = [
 interface ProfileHeaderProps {
   /** Admin: subscription affiliates. Resolved server-side in the profile layout. */
   showPartners?: boolean;
+  /** Admin: user search and grants. Same gate as Partners. */
+  showUsers?: boolean;
   /** The signed-in user is a subscription affiliate. */
   showAffiliate?: boolean;
 }
 
-export function ProfileHeader({ showPartners, showAffiliate }: ProfileHeaderProps = {}) {
+export function ProfileHeader({
+  showPartners,
+  showUsers,
+  showAffiliate,
+}: ProfileHeaderProps = {}) {
   const pathname = usePathname();
   const { user, signOut } = useAuth();
   const nav = useAffiliateNavFlags(user);
   const partnersVisible = showPartners ?? nav.showPartners;
+  const usersVisible = showUsers ?? nav.showUsers;
   const affiliateVisible = showAffiliate ?? nav.showAffiliate;
   const [signInOpen, setSignInOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<"signin" | "signup">("signin");
@@ -155,6 +163,9 @@ export function ProfileHeader({ showPartners, showAffiliate }: ProfileHeaderProp
                       : []),
                     ...(partnersVisible
                       ? ([{ icon: Handshake, label: "Partners", href: "/profile/partners" }] as const)
+                      : []),
+                    ...(usersVisible
+                      ? ([{ icon: UserRound, label: "Users", href: "/profile/users" }] as const)
                       : []),
                     ...(Number(user?.access) >= 1
                       ? ([{ icon: LayoutDashboard, label: "Dashboard", href: "https://authors.motionflow.pro" }] as const)

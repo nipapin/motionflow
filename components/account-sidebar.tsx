@@ -15,6 +15,7 @@ import {
   Users,
   Handshake,
   Share2,
+  UserRound,
 } from "lucide-react";
 import { PACKAGES_AUTHORS, packagesAuthorLogoUrl } from "@/lib/packages-admin-client";
 import { cn } from "@/lib/utils";
@@ -47,6 +48,8 @@ interface AccountSidebarProps {
   showPackages?: boolean;
   /** Admin: manage subscription affiliates. */
   showPartners?: boolean;
+  /** Admin: search and grant users. */
+  showUsers?: boolean;
   /** The signed-in user is a subscription affiliate. */
   showAffiliate?: boolean;
 }
@@ -149,6 +152,7 @@ export function AccountSidebar({
   access,
   showPackages,
   showPartners,
+  showUsers,
   showAffiliate,
 }: AccountSidebarProps) {
   const pathname = usePathname();
@@ -228,6 +232,9 @@ export function AccountSidebar({
               : []),
             ...(showPartners
               ? ([{ href: "/profile/partners", label: "Partners", icon: Handshake }] as const)
+              : []),
+            ...(showUsers
+              ? ([{ href: "/profile/users", label: "Users", icon: UserRound }] as const)
               : []),
           ].map(({ href, label, icon: Icon }) => {
             const active = isActive(normalized, href);

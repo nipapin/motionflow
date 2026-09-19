@@ -8,6 +8,8 @@ import { getAffiliateForUser } from "@/lib/affiliate/db";
 export interface AffiliateNavFlags {
   /** Admin "Partners" section. */
   showPartners: boolean;
+  /** Admin "Users" section (same gate as Partners). */
+  showUsers: boolean;
   /** Partner "Affiliate" section. */
   showAffiliate: boolean;
 }
@@ -18,9 +20,10 @@ export interface AffiliateNavFlags {
  */
 export const affiliateNavFlags = cache(async (): Promise<AffiliateNavFlags> => {
   const user = await getSessionUser();
-  if (!user) return { showPartners: false, showAffiliate: false };
+  if (!user) return { showPartners: false, showUsers: false, showAffiliate: false };
 
   const showPartners = isAffiliateAdmin(user);
+  const showUsers = showPartners;
   let showAffiliate = false;
   try {
     showAffiliate = (await getAffiliateForUser(user)) != null;
@@ -28,5 +31,5 @@ export const affiliateNavFlags = cache(async (): Promise<AffiliateNavFlags> => {
     // A missing affiliate schema must not take down every profile page.
     console.error("[affiliate/nav] lookup failed", err);
   }
-  return { showPartners, showAffiliate };
+  return { showPartners, showUsers, showAffiliate };
 });

@@ -22,7 +22,7 @@ export default async function ProfileSectionLayout({
   if (!sessionUser) {
     redirect("/");
   }
-  const { showPartners, showAffiliate } = await affiliateNavFlags();
+  const { showPartners, showUsers, showAffiliate } = await affiliateNavFlags();
 
   return (
     <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
@@ -32,6 +32,7 @@ export default async function ProfileSectionLayout({
           email={sessionUser.email}
           showPackages={isPackagesAdmin(sessionUser.email)}
           showPartners={showPartners}
+          showUsers={showUsers}
           showAffiliate={showAffiliate}
         />
       </aside>

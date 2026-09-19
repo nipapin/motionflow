@@ -5,12 +5,13 @@ export const PROFILE_PAGE_CLASS = "mx-auto w-full max-w-7xl px-6";
 export const PROFILE_PAGE_CLASS_WIDE =
   "mx-auto w-full max-w-none px-4 sm:px-6 lg:px-8";
 
-/** Packages / Extensions / Partners admin need the wide shell; other account pages stay constrained. */
+/** Packages / Extensions / Partners / Users admin need the wide shell; other account pages stay constrained. */
 export function profilePageClassForPath(pathname: string | null | undefined): string {
   if (
     pathname?.startsWith("/profile/packages") ||
     pathname?.startsWith("/profile/extensions") ||
-    pathname?.startsWith("/profile/partners")
+    pathname?.startsWith("/profile/partners") ||
+    pathname?.startsWith("/profile/users")
   ) {
     return PROFILE_PAGE_CLASS_WIDE;
   }

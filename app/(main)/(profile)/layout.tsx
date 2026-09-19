@@ -8,10 +8,14 @@ export default async function ProfileShellLayout({
 }>) {
   // Header dropdown links are gated server-side; `affiliateNavFlags` is cached
   // per request, so the sidebar layout below reuses this same lookup.
-  const { showPartners, showAffiliate } = await affiliateNavFlags();
+  const { showPartners, showUsers, showAffiliate } = await affiliateNavFlags();
 
   return (
-    <ProfileShell showPartners={showPartners} showAffiliate={showAffiliate}>
+    <ProfileShell
+      showPartners={showPartners}
+      showUsers={showUsers}
+      showAffiliate={showAffiliate}
+    >
       {children}
     </ProfileShell>
   );
