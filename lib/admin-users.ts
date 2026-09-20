@@ -80,7 +80,7 @@ function verifiedFilterSql(verified: AdminUserVerifiedFilter): string {
 
 function extraPackExcludeSql(): string {
   const ids = EXTRA_GEN_PACKS.map((p) => p.priceId).filter(
-    (id): id is string => Boolean(id) && /^[A-Za-z0-9_]+$/.test(id),
+    (id): id is string => typeof id === "string" && /^[A-Za-z0-9_]+$/.test(id),
   );
   if (ids.length === 0) return "";
   return ` AND (ss.paddle_price_id IS NULL OR ss.paddle_price_id NOT IN (${ids
