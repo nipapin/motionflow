@@ -4,6 +4,7 @@ import { Box, Container } from "@mui/material";
 import { useEffect } from "react";
 import { PremiereGalMainHeader } from "@/components/premiere-gal-main-header";
 import Content from "./components/Content";
+import Footer from "./components/Footer";
 import Sidebar from "./components/Sidebar";
 
 /** Port of `resources/js/premieregal/App.jsx`. */
@@ -43,6 +44,7 @@ export default function PremiereGalApp() {
           <Sidebar />
         </Box>
       </Container>
+      <Footer />
     </>
   );
 }
