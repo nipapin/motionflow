@@ -6,9 +6,22 @@ import {
   extraGenerationsPackCountForPriceId,
 } from "@/lib/paddle-server";
 import { getTransaction, PaddleApiError } from "@/lib/paddle-api";
+import { isSpunkramExtraGenerationsPriceId, SPUNKRAM_AUTHOR_ID } from "@/lib/spunkram-paddle-config";
+import { MOTIONFLOW_CREDITS_AUTHOR_ID } from "@/lib/user-generation-credits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+async function loadExtraGenerationsTransaction(transactionId: string) {
+  try {
+    return await getTransaction(transactionId);
+  } catch (err) {
+    if (err instanceof PaddleApiError && err.status === 404) {
+      return getTransaction(transactionId, { account: "spunkram" });
+    }
+    throw err;
+  }
+}
 
 /**
  * Client-initiated fallback that runs after `paddle.Checkout` fires the
@@ -51,7 +64,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const txn = await getTransaction(transactionId);
+    const txn = await loadExtraGenerationsTransaction(transactionId);
 
     // Only credit on terminal-success states. `completed` is the canonical
     // value for paid one-time charges; we accept `paid`/`billed` defensively
@@ -79,15 +92,16 @@ export async function POST(request: Request) {
     }
 
     const kind = String(txn.custom_data?.kind ?? "").trim().toLowerCase();
-    if (kind !== "extra_ai_generations") {
+    const priceId = txn.items?.[0]?.price?.id?.trim() || null;
+    const packCount = extraGenerationsPackCountForPriceId(priceId);
+    const isExtraPurchase = kind === "extra_ai_generations" || packCount != null;
+    if (!isExtraPurchase) {
       return NextResponse.json(
         { ok: false, reason: "transaction_not_extra_ai_generations" },
         { status: 400 },
       );
     }
 
-    const priceId = txn.items?.[0]?.price?.id?.trim() || null;
-    const packCount = extraGenerationsPackCountForPriceId(priceId);
     if (packCount == null) {
       return NextResponse.json(
         { ok: false, reason: "extra_generations_unknown_price_id" },
@@ -95,10 +109,15 @@ export async function POST(request: Request) {
       );
     }
 
+    const authorId = isSpunkramExtraGenerationsPriceId(priceId)
+      ? SPUNKRAM_AUTHOR_ID
+      : MOTIONFLOW_CREDITS_AUTHOR_ID;
+
     const result = await applyExtraGenerationsCredit(
       txn.id,
       Number(user.id),
       packCount,
+      authorId,
     );
 
     const generationStatus = await getGenerationsStatus(Number(user.id));

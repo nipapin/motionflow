@@ -11,7 +11,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { EXTRA_GEN_PACKS, packsWithConfiguredCheckout } from "@/lib/extra-generation-packs";
+import { EXTRA_GEN_PACKS } from "@/lib/extra-generation-packs";
+
+type ExtraGenPack = { count: number; priceId: string | undefined };
 
 type PriceRow = {
   count: number;
@@ -28,6 +30,8 @@ export interface BuyExtraGenerationsDialogProps {
   onContinue: () => void;
   continueLoading: boolean;
   continueDisabled: boolean;
+  packs?: readonly ExtraGenPack[];
+  pricesUrl?: string;
 }
 
 export function BuyExtraGenerationsDialog({
@@ -38,8 +42,10 @@ export function BuyExtraGenerationsDialog({
   onContinue,
   continueLoading,
   continueDisabled,
+  packs = EXTRA_GEN_PACKS,
+  pricesUrl = "/api/paddle/extra-generation-prices",
 }: BuyExtraGenerationsDialogProps) {
-  const hasConfiguredCheckout = packsWithConfiguredCheckout().length > 0;
+  const hasConfiguredCheckout = packs.some((pack) => Boolean(pack.priceId));
   const [priceByCount, setPriceByCount] = useState<
     Record<number, string | null>
   >({});
@@ -49,7 +55,7 @@ export function BuyExtraGenerationsDialog({
     if (!open) return;
     let cancelled = false;
     setPricesLoading(true);
-    void fetch("/api/paddle/extra-generation-prices", {
+    void fetch(pricesUrl, {
       credentials: "include",
       cache: "no-store",
     })
@@ -70,7 +76,7 @@ export function BuyExtraGenerationsDialog({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, pricesUrl]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -84,7 +90,7 @@ export function BuyExtraGenerationsDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-2 py-1" role="list">
-          {EXTRA_GEN_PACKS.map(({ count, priceId }) => {
+          {packs.map(({ count, priceId }) => {
             const selected = selectedCount === count;
             const unavailable = hasConfiguredCheckout && !priceId;
             const priceLabel =
@@ -124,11 +130,23 @@ export function BuyExtraGenerationsDialog({
 
         {!hasConfiguredCheckout ? (
           <p className="text-xs text-muted-foreground">
-            Set{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-[0.7rem]">
-              NEXT_PUBLIC_PADDLE_PRICE_EXTRA_AI_GEN_*
-            </code>{" "}
-            in your environment to enable checkout.
+            {pricesUrl.includes("account=spunkram") ? (
+              <>
+                Set{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-[0.7rem]">
+                  NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_*
+                </code>{" "}
+                in your environment to enable checkout.
+              </>
+            ) : (
+              <>
+                Set{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-[0.7rem]">
+                  NEXT_PUBLIC_PADDLE_PRICE_EXTRA_AI_GEN_*
+                </code>{" "}
+                in your environment to enable checkout.
+              </>
+            )}
           </p>
         ) : null}
 

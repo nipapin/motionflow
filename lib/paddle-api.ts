@@ -385,8 +385,13 @@ export async function createBilledRecurringTransaction(
 /*  Prices & one-time charges (used by the custom-formula upgrade flow)        */
 /* -------------------------------------------------------------------------- */
 
-export async function getPrice(priceId: string): Promise<PaddleApiPrice> {
-  return paddleFetch<PaddleApiPrice>(`/prices/${encodeURIComponent(priceId)}`);
+export async function getPrice(
+  priceId: string,
+  options: { account?: PaddleApiAccount } = {},
+): Promise<PaddleApiPrice> {
+  return paddleFetch<PaddleApiPrice>(`/prices/${encodeURIComponent(priceId)}`, {
+    account: options.account,
+  });
 }
 
 /**

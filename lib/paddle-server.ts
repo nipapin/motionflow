@@ -32,7 +32,12 @@ import {
   lookupSubscriptionForGhl,
 } from "@/lib/paddle-laravel-port";
 import { sendGhlEvent, type GhlEventType } from "@/lib/ghl-forwarder";
-import { isSpunkramSubscriptionPriceId } from "@/lib/spunkram-paddle-config";
+import {
+  isSpunkramExtraGenerationsPriceId,
+  isSpunkramSubscriptionPriceId,
+  SPUNKRAM_AUTHOR_ID,
+  spunkramExtraPackCountForPriceId,
+} from "@/lib/spunkram-paddle-config";
 import {
   accrueAffiliateCommission,
   reverseAffiliateCommissionsForPayment,
@@ -414,7 +419,11 @@ function sleep(ms: number): Promise<void> {
 function paddleAccountForTransaction(txn: PaddleTransaction): PaddleApiAccount {
   const { priceId } = pickPaddleCatalogIds(txn.items);
   const kind = String(txn.custom_data?.kind ?? "").trim().toLowerCase();
-  if (kind === "spunkram_subscription" || isSpunkramSubscriptionPriceId(priceId)) {
+  if (
+    kind === "spunkram_subscription" ||
+    isSpunkramSubscriptionPriceId(priceId) ||
+    isSpunkramExtraGenerationsPriceId(priceId)
+  ) {
     return "spunkram";
   }
   return "default";
@@ -569,7 +578,14 @@ export function extraGenerationsPackCountForPriceId(
 ): number | null {
   if (!priceId) return null;
   const pack = EXTRA_GEN_PACKS.find((p) => p.priceId === priceId);
-  return pack?.count ?? null;
+  if (pack) return pack.count;
+  return spunkramExtraPackCountForPriceId(priceId);
+}
+
+function extraCreditAuthorId(txn: PaddleTransaction): number {
+  const { priceId } = pickPaddleCatalogIds(txn.items);
+  if (isSpunkramExtraGenerationsPriceId(priceId)) return SPUNKRAM_AUTHOR_ID;
+  return MOTIONFLOW_CREDITS_AUTHOR_ID;
 }
 
 /**
@@ -626,6 +642,7 @@ export async function applyExtraGenerationsCredit(
   paddleTransactionId: string,
   userId: number,
   generations: number,
+  authorId: number = MOTIONFLOW_CREDITS_AUTHOR_ID,
 ): Promise<{ ok: boolean; reason?: string }> {
   await ensureExtraGenerationsSchema();
   const pool = getPool();
@@ -642,15 +659,10 @@ export async function applyExtraGenerationsCredit(
       await conn.commit();
       return { ok: true, reason: "extra_generations_credit_already_applied" };
     }
-    await incrementPurchasedExtraBalance(
-      userId,
-      generations,
-      conn,
-      MOTIONFLOW_CREDITS_AUTHOR_ID,
-    );
+    await incrementPurchasedExtraBalance(userId, generations, conn, authorId);
     await conn.commit();
     console.info(
-      `[paddle] extra AI generations +${generations} for user ${userId} (txn ${paddleTransactionId})`,
+      `[paddle] extra AI generations +${generations} for user ${userId} author ${authorId} (txn ${paddleTransactionId})`,
     );
     return { ok: true };
   } catch (err) {
@@ -833,7 +845,11 @@ export async function upsertFromTransaction(txnInput: PaddleTransaction): Promis
     Array.isArray(txn.items) &&
     txn.items.length > 0 &&
     txn.items.every((i) => i.price?.billing_cycle == null);
+  const extraPackOnTxn = extraGenerationsPackCountForPriceId(
+    pickPaddleCatalogIds(txn.items).priceId,
+  );
   const isSideCharge =
+    extraPackOnTxn == null &&
     !!txn.subscription_id &&
     ((txn.origin && SIDE_CHARGE_ORIGINS.has(txn.origin)) || allItemsAreOneTime);
   if (isSideCharge) {
@@ -852,13 +868,21 @@ export async function upsertFromTransaction(txnInput: PaddleTransaction): Promis
   const userId = await resolveBuyerId(txn);
   if (!userId) return { ok: false, reason: "missing_buyer_id" };
 
-  if (normalizeExtraAiGenerationsKind(txn.custom_data?.kind) === "extra_ai_generations") {
-    const { priceId } = pickPaddleCatalogIds(txn.items);
-    const packCount = extraGenerationsPackCountForPriceId(priceId);
-    if (packCount == null) {
+  const { priceId: extraPriceId } = pickPaddleCatalogIds(txn.items);
+  const extraPackCount = extraGenerationsPackCountForPriceId(extraPriceId);
+  const isExtraGenerationsPurchase =
+    normalizeExtraAiGenerationsKind(txn.custom_data?.kind) === "extra_ai_generations" ||
+    extraPackCount != null;
+  if (isExtraGenerationsPurchase) {
+    if (extraPackCount == null) {
       return { ok: false, reason: "extra_generations_unknown_price_id" };
     }
-    const credit = await applyExtraGenerationsCredit(txn.id, userId, packCount);
+    const credit = await applyExtraGenerationsCredit(
+      txn.id,
+      userId,
+      extraPackCount,
+      extraCreditAuthorId(txn),
+    );
     return { ...credit, buyerId: userId };
   }
 

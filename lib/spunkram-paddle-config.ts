@@ -16,6 +16,9 @@ export type SpunkramSubscriptionTierId = "free" | "library" | "ai_toolkit";
  *   NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_YEARLY=pri_…
  *   NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_MONTHLY=pri_…
  *   NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_YEARLY=pri_…
+ *   NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_20=pri_…
+ *   NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_50=pri_…
+ *   NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_200=pri_…
  */
 export const SPUNKRAM_LIBRARY_SUBSCRIPTION_PRICE_IDS = {
   monthly: process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_MONTHLY ?? "",
@@ -26,6 +29,39 @@ export const SPUNKRAM_AI_TOOLKIT_SUBSCRIPTION_PRICE_IDS = {
   monthly: process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_MONTHLY ?? "",
   yearly: process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_YEARLY ?? "",
 } as const;
+
+/** One-time Additional Credits prices on the Spunkram Paddle account. */
+export const SPUNKRAM_EXTRA_GEN_PACKS: readonly {
+  count: number;
+  priceId: string | undefined;
+}[] = [
+  {
+    count: 20,
+    priceId: process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_20 || undefined,
+  },
+  {
+    count: 50,
+    priceId: process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_50 || undefined,
+  },
+  {
+    count: 200,
+    priceId: process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_200 || undefined,
+  },
+];
+
+export function isSpunkramExtraGenerationsPriceId(
+  priceId: string | null | undefined,
+): boolean {
+  if (!priceId?.startsWith("pri_")) return false;
+  return SPUNKRAM_EXTRA_GEN_PACKS.some((pack) => pack.priceId === priceId);
+}
+
+export function spunkramExtraPackCountForPriceId(
+  priceId: string | null | undefined,
+): number | null {
+  if (!priceId) return null;
+  return SPUNKRAM_EXTRA_GEN_PACKS.find((pack) => pack.priceId === priceId)?.count ?? null;
+}
 
 export const SPUNKRAM_SUBSCRIPTION_PRICE_IDS: Record<
   SpunkramSubscriptionTierId,

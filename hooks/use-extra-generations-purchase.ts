@@ -4,15 +4,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/components/auth-provider";
 import { usePaddle } from "@/lib/paddle";
-import {
-  EXTRA_GEN_PACKS,
-  packsWithConfiguredCheckout,
-} from "@/lib/extra-generation-packs";
+import { EXTRA_GEN_PACKS } from "@/lib/extra-generation-packs";
+
+type ExtraGenPack = { count: number; priceId: string | undefined };
 
 export function useExtraGenerationsPurchase(options?: {
   onSuccess?: () => void | Promise<void>;
+  packs?: readonly ExtraGenPack[];
+  /** Credits this author scope. Spunkram CEP reads author 1691, not Motionflow (0). */
+  authorId?: number;
 }) {
-  const { onSuccess } = options ?? {};
+  const { onSuccess, authorId } = options ?? {};
+  const packs = options?.packs ?? EXTRA_GEN_PACKS;
   const { user, openSignIn } = useAuth();
   const { paddle, ready, subscribe } = usePaddle();
   const [buyOpen, setBuyOpen] = useState(false);
@@ -21,7 +24,9 @@ export function useExtraGenerationsPurchase(options?: {
   const awaitingExtraCheckout = useRef(false);
 
   const openBuyDialog = useCallback(() => {
-    const priced = packsWithConfiguredCheckout();
+    const priced = packs.filter(
+      (pack): pack is { count: number; priceId: string } => Boolean(pack.priceId),
+    );
     if (priced.length > 0) {
       const stillValid = priced.some((p) => p.count === selectedCount);
       if (!stillValid) {
@@ -29,7 +34,7 @@ export function useExtraGenerationsPurchase(options?: {
       }
     }
     setBuyOpen(true);
-  }, [selectedCount]);
+  }, [packs, selectedCount]);
 
   useEffect(() => {
     return subscribe((event) => {
@@ -74,7 +79,7 @@ export function useExtraGenerationsPurchase(options?: {
   }, [subscribe, onSuccess]);
 
   const continuePurchase = useCallback(() => {
-    const pack = EXTRA_GEN_PACKS.find((p) => p.count === selectedCount);
+    const pack = packs.find((p) => p.count === selectedCount);
     if (!pack) return;
 
     if (!user) {
@@ -99,6 +104,9 @@ export function useExtraGenerationsPurchase(options?: {
             buyer_id: String(user.id),
             kind: "extra_ai_generations",
             generations: String(pack.count),
+            ...(authorId != null && authorId > 0
+              ? { author_id: String(authorId) }
+              : {}),
           },
         });
       } catch (err) {
@@ -117,14 +125,14 @@ export function useExtraGenerationsPurchase(options?: {
     }
 
     toast.error("Extra generation checkout is not configured for this pack.");
-  }, [user, paddle, ready, openSignIn, selectedCount]);
+  }, [user, paddle, ready, openSignIn, selectedCount, packs, authorId]);
 
   const selectedPack =
-    EXTRA_GEN_PACKS.find((p) => p.count === selectedCount) ?? EXTRA_GEN_PACKS[1]!;
+    packs.find((p) => p.count === selectedCount) ?? packs[1] ?? packs[0];
   const purchaseDisabled =
     checkoutLoading ||
-    !selectedPack.priceId ||
-    (Boolean(selectedPack.priceId) && !paddle);
+    !selectedPack?.priceId ||
+    (Boolean(selectedPack?.priceId) && !paddle);
 
   return {
     buyOpen,

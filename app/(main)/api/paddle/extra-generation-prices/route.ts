@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { EXTRA_GEN_PACKS } from "@/lib/extra-generation-packs";
-import { getPrice } from "@/lib/paddle-api";
+import { getPrice, type PaddleApiAccount } from "@/lib/paddle-api";
+import { SPUNKRAM_EXTRA_GEN_PACKS } from "@/lib/spunkram-paddle-config";
 
 export const runtime = "nodejs";
 
@@ -22,11 +23,20 @@ function formatMinor(amount: string, currency: string): string {
  * Returns per-pack list prices from the Paddle catalog (GET /prices/{id}).
  * Price ids come from `NEXT_PUBLIC_PADDLE_PRICE_EXTRA_AI_GEN_*` in `.env`.
  */
-export async function GET() {
-  const user = await getSessionUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export async function GET(request: Request) {
+  const account: PaddleApiAccount =
+    new URL(request.url).searchParams.get("account") === "spunkram"
+      ? "spunkram"
+      : "default";
+
+  if (account !== "spunkram") {
+    const user = await getSessionUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
   }
+
+  const packs = account === "spunkram" ? SPUNKRAM_EXTRA_GEN_PACKS : EXTRA_GEN_PACKS;
 
   const items: Array<{
     count: number;
@@ -35,7 +45,7 @@ export async function GET() {
     currency_code: string | null;
   }> = [];
 
-  for (const pack of EXTRA_GEN_PACKS) {
+  for (const pack of packs) {
     if (!pack.priceId) {
       items.push({
         count: pack.count,
@@ -46,7 +56,7 @@ export async function GET() {
       continue;
     }
     try {
-      const p = await getPrice(pack.priceId);
+      const p = await getPrice(pack.priceId, { account });
       const amount = p.unit_price?.amount ?? null;
       const cur = p.unit_price?.currency_code ?? "USD";
       const label =

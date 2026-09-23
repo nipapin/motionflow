@@ -8,6 +8,7 @@ import { Pricing } from "@/components/Pricing";
 import { FAQ } from "@/components/FAQ";
 import { Contact } from "@/components/Contact";
 import { CepExtensionAuthDialog } from "@/components/cep-extension-auth-dialog";
+import { SpunkramBuyExtraCredits } from "@/components/spunkram-buy-extra-credits";
 import type { Project, ProjectApp } from "@/lib/data";
 import type { Product } from "@/lib/product-types";
 import { getMarketItemsByAuthorId } from "@/lib/market-items";
@@ -39,9 +40,9 @@ function toProject(product: Product): Project | null {
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ code?: string; client?: string }>;
+  searchParams: Promise<{ code?: string; client?: string; buy?: string }>;
 }) {
-  const { code, client: clientRaw } = await searchParams;
+  const { code, client: clientRaw, buy } = await searchParams;
   const items = await getMarketItemsByAuthorId(SPUNKRAM_AUTHOR_ID);
   const projects = items
     .map(toProject)
@@ -53,6 +54,7 @@ export default async function HomePage({
         initialCode={code ?? ""}
         initialClient={normalizeCepClient(clientRaw)}
       />
+      <SpunkramBuyExtraCredits openOnLoad={buy === "extra"} />
       <NavbarWithOffset
         topClassName="top-3"
         position="sticky"
