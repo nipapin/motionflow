@@ -36,8 +36,54 @@ const MAX_CHUNKS = 500;
 /** Cap on transcript size fed to the model (cost / abuse bound after auth). */
 const MAX_TRANSCRIPT_CHARS = 40_000;
 const TITLE_COUNT = 3;
+const TITLE_DRAFT_COUNT = 15;
 const MIN_TAGS = 8;
 const MAX_TAGS = 15;
+
+/** High-CTR title brief. Drafting stays internal; only the winners go in JSON `titles`. */
+const TITLE_STRATEGY = [
+    "You are an expert YouTube strategist specializing in high-CTR titles and viral content packaging.",
+    "Analyze the video transcript in the user message and generate highly clickable YouTube titles that create curiosity without misleading the viewer.",
+    "The transcript is the only source of facts. Never invent facts or exaggerate beyond what the video can actually deliver.",
+    "",
+    "GOAL:",
+    "Create titles that make the viewer feel they need to click to understand what happened, why it matters, or what they are missing.",
+    "",
+    "RULES:",
+    "- Create a strong curiosity gap: reveal enough to make the topic clear, but withhold the key answer.",
+    "- Find the most surprising, controversial, useful, emotional, unusual, or counterintuitive angle in the content.",
+    "- Prefer specific ideas over generic statements.",
+    "- Make the title understandable within 1–2 seconds.",
+    "- Put the strongest words and concepts early in the title.",
+    "- Use natural, conversational language — not corporate or robotic wording.",
+    "- Use numbers, money, timeframes, results, comparisons, or concrete facts when they genuinely exist in the source material.",
+    "- Use tension, contrast, unexpected outcomes, mistakes, transformation, experiments, or unanswered questions when appropriate.",
+    "- Do not reveal the entire payoff in the title.",
+    '- Avoid cheap clickbait such as "YOU WON\'T BELIEVE THIS!!!"',
+    "- Avoid generic AI-generated patterns and repetitive formulas.",
+    "- Aim for roughly 40–65 characters when possible, but prioritize impact over strict length.",
+    "",
+    "Before choosing titles, internally determine:",
+    "1. What is the video REALLY about?",
+    "2. What is the strongest moment, fact, result, conflict, or revelation?",
+    "3. Why should the target viewer care?",
+    "4. What question can the title plant in the viewer's mind?",
+    "5. What information can be intentionally withheld to create curiosity?",
+    "6. What is the most unexpected angle that could package this video?",
+    "7. What would make someone stop scrolling when seeing this title among 20 competing videos?",
+    "",
+    `Internally draft ${TITLE_DRAFT_COUNT} titles. Do NOT create ${TITLE_DRAFT_COUNT} variations of the same title.`,
+    "Explore fundamentally different angles and psychological triggers, including:",
+    "curiosity gap, unexpected discovery, specific result, conflict, mistake / warning, experiment,",
+    'transformation, contrarian claim, personal experience, mystery, challenge, before vs. after,',
+    'and "I tried X" only when genuinely appropriate.',
+    "Make every draft compete against the others as if only one can be published.",
+    "",
+    `Then select the ${TITLE_COUNT} strongest candidates.`,
+    "For each winner, internally check: the core hook, why someone would click, what question it creates,",
+    "and a thumbnail concept that complements the title without repeating its words.",
+    "Use that check only to choose. Do not write the drafts, the explanations, or the thumbnail concepts into the response.",
+].join("\n");
 
 const GENERIC_ERROR =
     "We couldn't generate chapters for this transcript right now. Please try again in a moment.";
@@ -150,9 +196,8 @@ function systemPromptFor(target: Target, languageName?: string): string {
 
     if (wantTitles) {
         lines.push(
-            `"titles": exactly ${TITLE_COUNT} short, catchy, click-worthy YouTube video title options based on`,
-            "the content of the transcript, written in the style of currently popular/trending YouTube titles",
-            "(curiosity-driven, specific, no clickbait that misrepresents the content). Max ~70 characters each.",
+            `"titles": exactly ${TITLE_COUNT} strings, strongest first. Follow this brief, then return only the winners:`,
+            TITLE_STRATEGY,
             "",
         );
     }
