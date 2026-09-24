@@ -27,7 +27,7 @@ export interface BuyExtraGenerationsDialogProps {
   onOpenChange: (open: boolean) => void;
   selectedCount: number;
   onSelectCount: (n: number) => void;
-  onContinue: () => void;
+  onContinue: (priceId?: string) => void;
   continueLoading: boolean;
   continueDisabled: boolean;
   packs?: readonly ExtraGenPack[];
@@ -45,9 +45,8 @@ export function BuyExtraGenerationsDialog({
   packs = EXTRA_GEN_PACKS,
   pricesUrl = "/api/paddle/extra-generation-prices",
 }: BuyExtraGenerationsDialogProps) {
-  const hasConfiguredCheckout = packs.some((pack) => Boolean(pack.priceId));
   const [priceByCount, setPriceByCount] = useState<
-    Record<number, string | null>
+    Record<number, { priceId: string | null; label: string | null }>
   >({});
   const [pricesLoading, setPricesLoading] = useState(false);
 
@@ -63,9 +62,9 @@ export function BuyExtraGenerationsDialog({
         if (!r.ok) return;
         const body = (await r.json()) as { items?: PriceRow[] };
         if (cancelled) return;
-        const map: Record<number, string | null> = {};
+        const map: Record<number, { priceId: string | null; label: string | null }> = {};
         for (const row of body.items ?? []) {
-          map[row.count] = row.label;
+          map[row.count] = { priceId: row.priceId, label: row.label };
         }
         setPriceByCount(map);
       })
@@ -77,6 +76,16 @@ export function BuyExtraGenerationsDialog({
       cancelled = true;
     };
   }, [open, pricesUrl]);
+
+  function resolvedPriceId(count: number): string | undefined {
+    const fromApi = priceByCount[count]?.priceId?.trim();
+    if (fromApi) return fromApi;
+    return packs.find((pack) => pack.count === count)?.priceId?.trim() || undefined;
+  }
+
+  const selectedPriceId = resolvedPriceId(selectedCount);
+  const anyPackReady = packs.some((pack) => Boolean(resolvedPriceId(pack.count)));
+  const checkoutUnavailable = !pricesLoading && !anyPackReady;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -90,15 +99,15 @@ export function BuyExtraGenerationsDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-2 py-1" role="list">
-          {packs.map(({ count, priceId }) => {
+          {packs.map(({ count }) => {
             const selected = selectedCount === count;
-            const unavailable = hasConfiguredCheckout && !priceId;
-            const priceLabel =
-              !priceId || unavailable
-                ? null
-                : pricesLoading
-                  ? "…"
-                  : (priceByCount[count] ?? "—");
+            const priceId = resolvedPriceId(count);
+            const unavailable = checkoutUnavailable || (!pricesLoading && !priceId);
+            const priceLabel = !priceId
+              ? null
+              : pricesLoading
+                ? "…"
+                : (priceByCount[count]?.label ?? "—");
             return (
               <button
                 key={count}
@@ -121,32 +130,16 @@ export function BuyExtraGenerationsDialog({
                   <span className="ml-2 text-sm text-muted-foreground">generations</span>
                 </div>
                 <span className="text-sm font-medium tabular-nums text-foreground">
-                  {priceId ? (priceLabel ?? "\u00a0") : "—"}
+                  {priceLabel ?? "\u00a0"}
                 </span>
               </button>
             );
           })}
         </div>
 
-        {!hasConfiguredCheckout ? (
+        {checkoutUnavailable ? (
           <p className="text-xs text-muted-foreground">
-            {pricesUrl.includes("account=spunkram") ? (
-              <>
-                Set{" "}
-                <code className="rounded bg-muted px-1 py-0.5 text-[0.7rem]">
-                  NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_*
-                </code>{" "}
-                in your environment to enable checkout.
-              </>
-            ) : (
-              <>
-                Set{" "}
-                <code className="rounded bg-muted px-1 py-0.5 text-[0.7rem]">
-                  NEXT_PUBLIC_PADDLE_PRICE_EXTRA_AI_GEN_*
-                </code>{" "}
-                in your environment to enable checkout.
-              </>
-            )}
+            Checkout is temporarily unavailable. Please try again later.
           </p>
         ) : null}
 
@@ -156,8 +149,13 @@ export function BuyExtraGenerationsDialog({
           </Button>
           <Button
             type="button"
-            onClick={onContinue}
-            disabled={continueDisabled || continueLoading}
+            onClick={() => onContinue(selectedPriceId)}
+            disabled={
+              continueDisabled ||
+              continueLoading ||
+              pricesLoading ||
+              !selectedPriceId
+            }
             className="bg-linear-to-r from-blue-600 to-blue-500 text-white"
           >
             {continueLoading ? "Opening…" : "Continue"}

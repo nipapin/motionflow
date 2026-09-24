@@ -30,37 +30,49 @@ export const SPUNKRAM_AI_TOOLKIT_SUBSCRIPTION_PRICE_IDS = {
   yearly: process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_YEARLY ?? "",
 } as const;
 
+function envPri(value: string | undefined): string | undefined {
+  const v = value?.trim();
+  return v?.startsWith("pri_") ? v : undefined;
+}
+
 /** One-time Additional Credits prices on the Spunkram Paddle account. */
+export function getSpunkramExtraGenPacks(): readonly {
+  count: number;
+  priceId: string | undefined;
+}[] {
+  return [
+    {
+      count: 20,
+      priceId: envPri(process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_20),
+    },
+    {
+      count: 50,
+      priceId: envPri(process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_50),
+    },
+    {
+      count: 200,
+      priceId: envPri(process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_200),
+    },
+  ];
+}
+
 export const SPUNKRAM_EXTRA_GEN_PACKS: readonly {
   count: number;
   priceId: string | undefined;
-}[] = [
-  {
-    count: 20,
-    priceId: process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_20 || undefined,
-  },
-  {
-    count: 50,
-    priceId: process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_50 || undefined,
-  },
-  {
-    count: 200,
-    priceId: process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_200 || undefined,
-  },
-];
+}[] = getSpunkramExtraGenPacks();
 
 export function isSpunkramExtraGenerationsPriceId(
   priceId: string | null | undefined,
 ): boolean {
   if (!priceId?.startsWith("pri_")) return false;
-  return SPUNKRAM_EXTRA_GEN_PACKS.some((pack) => pack.priceId === priceId);
+  return getSpunkramExtraGenPacks().some((pack) => pack.priceId === priceId);
 }
 
 export function spunkramExtraPackCountForPriceId(
   priceId: string | null | undefined,
 ): number | null {
   if (!priceId) return null;
-  return SPUNKRAM_EXTRA_GEN_PACKS.find((pack) => pack.priceId === priceId)?.count ?? null;
+  return getSpunkramExtraGenPacks().find((pack) => pack.priceId === priceId)?.count ?? null;
 }
 
 export const SPUNKRAM_SUBSCRIPTION_PRICE_IDS: Record<

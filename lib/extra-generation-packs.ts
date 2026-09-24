@@ -12,15 +12,24 @@ import { isSpunkramExtraGenerationsPriceId } from "@/lib/spunkram-paddle-config"
  * Without price ids, Continue stays in the dialog and checkout is disabled.
  */
 
-export const EXTRA_GEN_PACKS: readonly { count: number; priceId: string | undefined }[] =
-  [
-    { count: 20, priceId: process.env.NEXT_PUBLIC_PADDLE_PRICE_EXTRA_AI_GEN_20 },
-    { count: 50, priceId: process.env.NEXT_PUBLIC_PADDLE_PRICE_EXTRA_AI_GEN_50 },
-    { count: 200, priceId: process.env.NEXT_PUBLIC_PADDLE_PRICE_EXTRA_AI_GEN_200 },
+function envPri(value: string | undefined): string | undefined {
+  const v = value?.trim();
+  return v?.startsWith("pri_") ? v : undefined;
+}
+
+export function getExtraGenPacks(): readonly { count: number; priceId: string | undefined }[] {
+  return [
+    { count: 20, priceId: envPri(process.env.NEXT_PUBLIC_PADDLE_PRICE_EXTRA_AI_GEN_20) },
+    { count: 50, priceId: envPri(process.env.NEXT_PUBLIC_PADDLE_PRICE_EXTRA_AI_GEN_50) },
+    { count: 200, priceId: envPri(process.env.NEXT_PUBLIC_PADDLE_PRICE_EXTRA_AI_GEN_200) },
   ];
+}
+
+export const EXTRA_GEN_PACKS: readonly { count: number; priceId: string | undefined }[] =
+  getExtraGenPacks();
 
 export function packsWithConfiguredCheckout(): { count: number; priceId: string }[] {
-  return EXTRA_GEN_PACKS.filter((p): p is { count: number; priceId: string } =>
+  return getExtraGenPacks().filter((p): p is { count: number; priceId: string } =>
     Boolean(p.priceId),
   );
 }
@@ -29,7 +38,7 @@ export function packsWithConfiguredCheckout(): { count: number; priceId: string 
 export function isExtraGenerationsPackPriceId(priceId: string | null | undefined): boolean {
   if (!priceId) return false;
   return (
-    EXTRA_GEN_PACKS.some((p) => p.priceId === priceId) ||
+    getExtraGenPacks().some((p) => p.priceId === priceId) ||
     isSpunkramExtraGenerationsPriceId(priceId)
   );
 }

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
-import { EXTRA_GEN_PACKS } from "@/lib/extra-generation-packs";
+import { getExtraGenPacks } from "@/lib/extra-generation-packs";
 import { getPrice, type PaddleApiAccount } from "@/lib/paddle-api";
-import { SPUNKRAM_EXTRA_GEN_PACKS } from "@/lib/spunkram-paddle-config";
+import { getSpunkramExtraGenPacks } from "@/lib/spunkram-paddle-config";
 
 export const runtime = "nodejs";
 
@@ -21,7 +21,6 @@ function formatMinor(amount: string, currency: string): string {
 
 /**
  * Returns per-pack list prices from the Paddle catalog (GET /prices/{id}).
- * Price ids come from `NEXT_PUBLIC_PADDLE_PRICE_EXTRA_AI_GEN_*` in `.env`.
  */
 export async function GET(request: Request) {
   const account: PaddleApiAccount =
@@ -36,7 +35,15 @@ export async function GET(request: Request) {
     }
   }
 
-  const packs = account === "spunkram" ? SPUNKRAM_EXTRA_GEN_PACKS : EXTRA_GEN_PACKS;
+  const packs =
+    account === "spunkram" ? getSpunkramExtraGenPacks() : getExtraGenPacks();
+
+  if (!packs.some((pack) => pack.priceId)) {
+    console.error(
+      "[paddle/extra-generation-prices] extra generation price ids are missing",
+      { account },
+    );
+  }
 
   const items: Array<{
     count: number;

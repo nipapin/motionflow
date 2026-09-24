@@ -6,7 +6,7 @@ import {
   MOTIONFLOW_CREDITS_AUTHOR_ID,
   incrementPurchasedExtraBalance,
 } from "@/lib/user-generation-credits";
-import { EXTRA_GEN_PACKS } from "@/lib/extra-generation-packs";
+import { getExtraGenPacks } from "@/lib/extra-generation-packs";
 import { normalizePaddleProductNameToken } from "@/lib/paddle-product-label";
 import {
   cancelSubscriptionImmediately,
@@ -577,7 +577,7 @@ export function extraGenerationsPackCountForPriceId(
   priceId: string | null,
 ): number | null {
   if (!priceId) return null;
-  const pack = EXTRA_GEN_PACKS.find((p) => p.priceId === priceId);
+  const pack = getExtraGenPacks().find((p) => p.priceId === priceId);
   if (pack) return pack.count;
   return spunkramExtraPackCountForPriceId(priceId);
 }

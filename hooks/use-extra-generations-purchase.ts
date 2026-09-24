@@ -78,9 +78,10 @@ export function useExtraGenerationsPurchase(options?: {
     });
   }, [subscribe, onSuccess]);
 
-  const continuePurchase = useCallback(() => {
+  const continuePurchase = useCallback((priceIdOverride?: string) => {
     const pack = packs.find((p) => p.count === selectedCount);
     if (!pack) return;
+    const priceId = priceIdOverride?.trim() || pack.priceId?.trim() || undefined;
 
     if (!user) {
       setBuyOpen(false);
@@ -88,7 +89,7 @@ export function useExtraGenerationsPurchase(options?: {
       return;
     }
 
-    if (pack.priceId && paddle) {
+    if (priceId && paddle) {
       setCheckoutLoading(true);
       awaitingExtraCheckout.current = true;
       try {
@@ -98,7 +99,7 @@ export function useExtraGenerationsPurchase(options?: {
             theme: "light",
             allowLogout: false,
           },
-          items: [{ priceId: pack.priceId, quantity: 1 }],
+          items: [{ priceId, quantity: 1 }],
           customer: { email: user.email ?? undefined },
           customData: {
             buyer_id: String(user.id),
@@ -119,20 +120,15 @@ export function useExtraGenerationsPurchase(options?: {
       return;
     }
 
-    if (pack.priceId && !paddle) {
+    if (priceId && !paddle) {
       toast.error(ready ? "Checkout is not ready yet. Please try again." : "Checkout is still loading…");
       return;
     }
 
-    toast.error("Extra generation checkout is not configured for this pack.");
+    toast.error("Checkout is temporarily unavailable. Please try again later.");
   }, [user, paddle, ready, openSignIn, selectedCount, packs, authorId]);
 
-  const selectedPack =
-    packs.find((p) => p.count === selectedCount) ?? packs[1] ?? packs[0];
-  const purchaseDisabled =
-    checkoutLoading ||
-    !selectedPack?.priceId ||
-    (Boolean(selectedPack?.priceId) && !paddle);
+  const purchaseDisabled = checkoutLoading || !paddle;
 
   return {
     buyOpen,
