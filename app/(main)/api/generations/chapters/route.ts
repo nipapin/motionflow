@@ -40,49 +40,49 @@ const TITLE_DRAFT_COUNT = 15;
 const MIN_TAGS = 8;
 const MAX_TAGS = 15;
 
-/** High-CTR title brief. Drafting stays internal; only the winners go in JSON `titles`. */
+/**
+ * Title brief. The transcript is usually a product pitch, so the model copies
+ * landing-page headlines unless the "open the video" job is stated first and
+ * shown with reject/keep examples.
+ */
 const TITLE_STRATEGY = [
-    "You are an expert YouTube strategist specializing in high-CTR titles and viral content packaging.",
-    "Analyze the video transcript in the user message and generate highly clickable YouTube titles that create curiosity without misleading the viewer.",
-    "The transcript is the only source of facts. Never invent facts or exaggerate beyond what the video can actually deliver.",
+    "JOB: write YouTube titles that make the right viewer click the video.",
+    "A title is a reason to open the video. It is not a reason to buy the product.",
+    "Those are different tasks. Do not describe the offer. Plant a question the video answers.",
+    "The transcript is the only source of facts. Never invent numbers, results, or claims.",
     "",
-    "GOAL:",
-    "Create titles that make the viewer feel they need to click to understand what happened, why it matters, or what they are missing.",
+    "REJECT a draft immediately if any of these are true:",
+    "- It could be a landing-page H1, an App Store subtitle, or a product card.",
+    "- The viewer already knows the whole payoff and has no question left.",
+    "- It lists features (transitions, effects, graphics, 'all in one', 'professional').",
+    "- It leads with a brand or product name the viewer may not know. Put the situation first.",
+    "- It uses empty hype: 'changes everything', 'you won't believe', 'game changer', 'ultimate' with no concrete stake.",
+    "- It summarizes the product instead of a moment, decision, experiment, mistake, or consequence.",
     "",
-    "RULES:",
-    "- Create a strong curiosity gap: reveal enough to make the topic clear, but withhold the key answer.",
-    "- Find the most surprising, controversial, useful, emotional, unusual, or counterintuitive angle in the content.",
-    "- Prefer specific ideas over generic statements.",
-    "- Make the title understandable within 1–2 seconds.",
-    "- Put the strongest words and concepts early in the title.",
-    "- Use natural, conversational language — not corporate or robotic wording.",
-    "- Use numbers, money, timeframes, results, comparisons, or concrete facts when they genuinely exist in the source material.",
-    "- Use tension, contrast, unexpected outcomes, mistakes, transformation, experiments, or unanswered questions when appropriate.",
-    "- Do not reveal the entire payoff in the title.",
-    '- Avoid cheap clickbait such as "YOU WON\'T BELIEVE THIS!!!"',
-    "- Avoid generic AI-generated patterns and repetitive formulas.",
-    "- Aim for roughly 40–65 characters when possible, but prioritize impact over strict length.",
+    "KEEP a draft only if a stranger would still need to watch to find out what happened.",
+    "Shape (use only what the transcript actually supports):",
+    "- a personal decision or consequence: 'I Deleted 90% of My Premiere Pro Plugins After This'",
+    "- a replacement with the tool unnamed or delayed: 'This One Plugin Replaced My Entire Premiere Pro Library'",
+    "- an attempt, not a slogan: 'We Tried to Build the Ultimate Premiere Pro Plugin'",
+    "- audience tension: 'Premiere Pro Editors Are Going to Want This'",
+    "- a behavior change: 'Why I Stopped Using Transition Packs in Premiere Pro'",
+    "- a concrete scale that is really in the source: 'We Put 1,000+ Premiere Pro Assets Into One Plugin'",
+    "These are patterns, not lines to copy. Swap in this video's real subject, tool, and numbers.",
     "",
-    "Before choosing titles, internally determine:",
-    "1. What is the video REALLY about?",
-    "2. What is the strongest moment, fact, result, conflict, or revelation?",
-    "3. Why should the target viewer care?",
-    "4. What question can the title plant in the viewer's mind?",
-    "5. What information can be intentionally withheld to create curiosity?",
-    "6. What is the most unexpected angle that could package this video?",
-    "7. What would make someone stop scrolling when seeing this title among 20 competing videos?",
+    "BAD (marketing). Do not write titles like these:",
+    "- 'We Built a Plugin That Changes Everything in Premiere Pro'",
+    "- 'Odin Pro: The Transition Plugin That Replaces Your Entire Library' (unknown brand first)",
+    "- 'Professional Transitions, Motion Graphics & Effects in One Plugin'",
     "",
-    `Internally draft ${TITLE_DRAFT_COUNT} titles. Do NOT create ${TITLE_DRAFT_COUNT} variations of the same title.`,
-    "Explore fundamentally different angles and psychological triggers, including:",
-    "curiosity gap, unexpected discovery, specific result, conflict, mistake / warning, experiment,",
-    'transformation, contrarian claim, personal experience, mystery, challenge, before vs. after,',
-    'and "I tried X" only when genuinely appropriate.',
-    "Make every draft compete against the others as if only one can be published.",
-    "",
-    `Then select the ${TITLE_COUNT} strongest candidates.`,
-    "For each winner, internally check: the core hook, why someone would click, what question it creates,",
-    "and a thumbnail concept that complements the title without repeating its words.",
-    "Use that check only to choose. Do not write the drafts, the explanations, or the thumbnail concepts into the response.",
+    "Before writing, answer privately:",
+    "1. What happened in the video that a viewer cannot fully know from one sentence?",
+    "2. What would make a working editor stop scrolling?",
+    "3. Which fact, number, or before/after is real in the transcript?",
+    `Draft ${TITLE_DRAFT_COUNT} titles on different angles (decision, scale, experiment, warning, before/after).`,
+    "Throw away any draft that fails REJECT.",
+    `Return the ${TITLE_COUNT} that create the strongest urge to click, strongest first.`,
+    "Do not include drafts, scores, or explanations in the JSON.",
+    "Aim for roughly 40–65 characters. Impact beats length. Natural spoken English, not ad copy.",
 ].join("\n");
 
 const GENERIC_ERROR =
@@ -178,7 +178,9 @@ function systemPromptFor(target: Target, languageName?: string): string {
     if (wantTags) shapeParts.push('"tags": string[]');
 
     const lines = [
-        "You analyze video transcripts to produce YouTube metadata.",
+        wantTitles
+            ? "You write YouTube packaging. Titles must make someone click the video, not buy a product."
+            : "You analyze video transcripts to produce YouTube metadata.",
         "Respond with ONLY a single JSON object, no prose, no markdown code fences.",
         `Shape: {${shapeParts.join(", ")}}.`,
         "",
@@ -196,7 +198,7 @@ function systemPromptFor(target: Target, languageName?: string): string {
 
     if (wantTitles) {
         lines.push(
-            `"titles": exactly ${TITLE_COUNT} strings, strongest first. Follow this brief, then return only the winners:`,
+            `"titles": exactly ${TITLE_COUNT} YouTube titles, strongest click-urge first. Not product headlines:`,
             TITLE_STRATEGY,
             "",
         );
@@ -217,8 +219,9 @@ function systemPromptFor(target: Target, languageName?: string): string {
     if (wantDescription) {
         lines.push(
             '"description": a YouTube video description, 2-4 sentences, summarizing the content in an',
-            "engaging, SEO-friendly tone with natural keywords from the transcript. No hashtags, no",
-            "timestamps/chapter list (those are handled separately), no markdown. Max ~700 characters.",
+            "engaging, SEO-friendly tone with natural keywords from the transcript. This field may",
+            "describe the product. Titles must not. No hashtags, no timestamps/chapter list, no markdown.",
+            "Max ~700 characters.",
             "",
         );
     }
