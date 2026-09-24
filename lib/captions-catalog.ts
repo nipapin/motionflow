@@ -47,6 +47,10 @@ export const FLAT_CAPTIONS_CATEGORY = "Base";
 /** Skip AE project footage folders when listing. */
 const SKIP_CAPTION_FOLDERS = new Set(["(Footage)", "Footage"]);
 
+/** Per-pack font library on the public bucket: `{Brand}/{Pack}/Fonts/*`. */
+const PACK_FONTS_FOLDER = "Fonts";
+const FONT_FILE_EXT = new Set([".ttf", ".otf", ".ttc"]);
+
 export type CaptionProjectFileKind = keyof typeof CAPTION_DOWNLOAD_FILES;
 
 export type CaptionTreeCaption = {
@@ -264,6 +268,8 @@ async function listCaptionObjectsInBucket(
         const [category, caption, file] = parts;
         if (!category || !caption || !file) continue;
         if (SKIP_CAPTION_FOLDERS.has(category) || SKIP_CAPTION_FOLDERS.has(caption)) continue;
+        // `{Pack}/Fonts/Inter-SemiBold.ttf` is the pack font library, not a caption.
+        if (caption === PACK_FONTS_FOLDER) continue;
         if (isMasterProjectFile(file)) {
           if (file === CAPTION_DOWNLOAD_FILES.mogrt) master.mogrt = true;
           if (file === CAPTION_DOWNLOAD_FILES.aep) master.aep = true;
@@ -589,6 +595,64 @@ export async function createR2ObjectWebStream(
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error(`Missing object "${key}"`);
+}
+
+export type PackFontFile = {
+  name: string;
+  url: string;
+};
+
+const safePackId = (raw: string): string | null => {
+  const id = raw.trim();
+  if (!id || id.includes("/") || id.includes("\\") || id === "." || id === "..") return null;
+  if (id.includes("..")) return null;
+  return id;
+};
+
+const isFontFileName = (file: string): boolean => FONT_FILE_EXT.has(extname(file));
+
+/**
+ * Public font files for one caption group.
+ * R2: `{Brand} Captions/{Pack}/Fonts/*.{ttf,otf,ttc}` on the public bucket.
+ */
+export async function listPackFontFiles(
+  brand: CaptionsBrand,
+  packIdRaw: string,
+): Promise<PackFontFile[] | null> {
+  const packId = safePackId(packIdRaw);
+  if (!packId) return null;
+
+  const client = getR2Client();
+  const prefix = `${captionsBrandPrefix(brand)}/${packId}/${PACK_FONTS_FOLDER}/`;
+  const names = new Set<string>();
+  let continuationToken: string | undefined;
+
+  do {
+    const res = await client.send(
+      new ListObjectsV2Command({
+        Bucket: publicBucket(),
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+        MaxKeys: 1000,
+      }),
+    );
+    for (const obj of res.Contents ?? []) {
+      const key = obj.Key;
+      if (!key || !key.startsWith(prefix)) continue;
+      const rel = key.slice(prefix.length);
+      if (!rel || rel.includes("/")) continue;
+      if (!isFontFileName(rel)) continue;
+      names.add(rel);
+    }
+    continuationToken = res.IsTruncated ? res.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  return [...names]
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }))
+    .map((name) => ({
+      name,
+      url: r2PublicUrlForKey(`${prefix}${name}`),
+    }));
 }
 
 export function parseProjectFileKind(raw: unknown): CaptionProjectFileKind | null {

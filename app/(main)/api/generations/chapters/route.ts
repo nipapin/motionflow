@@ -36,54 +36,209 @@ const MAX_CHUNKS = 500;
 /** Cap on transcript size fed to the model (cost / abuse bound after auth). */
 const MAX_TRANSCRIPT_CHARS = 40_000;
 const TITLE_COUNT = 3;
-const TITLE_DRAFT_COUNT = 15;
 const MIN_TAGS = 8;
 const MAX_TAGS = 15;
 
-/**
- * Title brief. The transcript is usually a product pitch, so the model copies
- * landing-page headlines unless the "open the video" job is stated first and
- * shown with reject/keep examples.
- */
-const TITLE_STRATEGY = [
-    "JOB: write YouTube titles that make the right viewer click the video.",
-    "A title is a reason to open the video. It is not a reason to buy the product.",
-    "Those are different tasks. Do not describe the offer. Plant a question the video answers.",
-    "The transcript is the only source of facts. Never invent numbers, results, or claims.",
+/** Packaging style. Omitted requests use viral. */
+type ChapterStyle = "balanced" | "viral" | "professional" | "search";
+const CHAPTER_STYLES: ChapterStyle[] = ["balanced", "viral", "professional", "search"];
+
+const TRANSCRIPT_ANALYSIS = [
+    "Before generating metadata, internally identify these from the transcript only.",
+    "Do not include this analysis in the JSON:",
+    "- Main topic",
+    "- Main viewer benefit",
+    "- Strongest hook",
+    "- Most surprising or interesting detail",
+    "- Primary search keyword",
+    "- Target audience",
     "",
-    "REJECT a draft immediately if any of these are true:",
-    "- It could be a landing-page H1, an App Store subtitle, or a product card.",
-    "- The viewer already knows the whole payoff and has no question left.",
-    "- It lists features (transitions, effects, graphics, 'all in one', 'professional').",
-    "- It leads with a brand or product name the viewer may not know. Put the situation first.",
-    "- It uses empty hype: 'changes everything', 'you won't believe', 'game changer', 'ultimate' with no concrete stake.",
-    "- It summarizes the product instead of a moment, decision, experiment, mistake, or consequence.",
-    "",
-    "KEEP a draft only if a stranger would still need to watch to find out what happened.",
-    "Shape (use only what the transcript actually supports):",
-    "- a personal decision or consequence: 'I Deleted 90% of My Premiere Pro Plugins After This'",
-    "- a replacement with the tool unnamed or delayed: 'This One Plugin Replaced My Entire Premiere Pro Library'",
-    "- an attempt, not a slogan: 'We Tried to Build the Ultimate Premiere Pro Plugin'",
-    "- audience tension: 'Premiere Pro Editors Are Going to Want This'",
-    "- a behavior change: 'Why I Stopped Using Transition Packs in Premiere Pro'",
-    "- a concrete scale that is really in the source: 'We Put 1,000+ Premiere Pro Assets Into One Plugin'",
-    "These are patterns, not lines to copy. Swap in this video's real subject, tool, and numbers.",
-    "",
-    "BAD (marketing). Do not write titles like these:",
-    "- 'We Built a Plugin That Changes Everything in Premiere Pro'",
-    "- 'Odin Pro: The Transition Plugin That Replaces Your Entire Library' (unknown brand first)",
-    "- 'Professional Transitions, Motion Graphics & Effects in One Plugin'",
-    "",
-    "Before writing, answer privately:",
-    "1. What happened in the video that a viewer cannot fully know from one sentence?",
-    "2. What would make a working editor stop scrolling?",
-    "3. Which fact, number, or before/after is real in the transcript?",
-    `Draft ${TITLE_DRAFT_COUNT} titles on different angles (decision, scale, experiment, warning, before/after).`,
-    "Throw away any draft that fails REJECT.",
-    `Return the ${TITLE_COUNT} that create the strongest urge to click, strongest first.`,
-    "Do not include drafts, scores, or explanations in the JSON.",
-    "Aim for roughly 40–65 characters. Impact beats length. Natural spoken English, not ad copy.",
+    "Then apply the style below using those findings.",
+    "Do not skip the analysis and decorate a generic title.",
+    "The transcript is the only source of facts. Never invent numbers, results, names, or claims.",
 ].join("\n");
+
+type StyleBrief = {
+    intro: string;
+    titles: string;
+    description: string;
+    tags: string;
+};
+
+const STYLE_BRIEFS: Record<ChapterStyle, StyleBrief> = {
+    balanced: {
+        intro: [
+            "STYLE: BALANCED",
+            "Analyze the transcript and identify the video's main topic, strongest value proposition, and most interesting takeaway.",
+            "Generate YouTube metadata in a balanced, natural style.",
+        ].join("\n"),
+        titles: [
+            "TITLE RULES:",
+            `- Create ${TITLE_COUNT} distinctly different title options.`,
+            "- Titles should be clear, engaging, and easy to understand.",
+            "- Communicate the main topic or benefit of the video.",
+            "- Use natural YouTube-style language without excessive clickbait.",
+            "- Prefer concise titles, usually under 70 characters when possible.",
+            "- You may use strong wording, but do not exaggerate or make claims unsupported by the transcript.",
+            "- Avoid unnecessary ALL CAPS.",
+            "- Avoid generic phrases when a more specific angle from the transcript is available.",
+            "- Each title should use a different angle or structure.",
+            "",
+            "The 3 titles must use different approaches:",
+            "1. Clear topic and main benefit",
+            "2. Outcome, workflow, or how the viewer uses it",
+            "3. A specific feature, number, or takeaway from the transcript",
+            "Do not simply paraphrase the same title three times.",
+        ].join("\n"),
+        description: [
+            "DESCRIPTION:",
+            "- Clearly summarize what the viewer will learn or see.",
+            "- Mention the most important topics naturally.",
+            "- Keep the tone engaging but informative.",
+            "- Do not invent information that is not present in the transcript.",
+            "- 2-4 sentences, no hashtags, no timestamps, no markdown. Max ~700 characters.",
+        ].join("\n"),
+        tags: [
+            "HASHTAGS:",
+            "- Generate relevant hashtags based on the main topic, software, product, niche, and content discussed.",
+            "- Prefer specific and useful hashtags over generic ones.",
+            `Return them as "tags": ${MIN_TAGS}-${MAX_TAGS} search tags, no "#" prefix, no duplicates.`,
+        ].join("\n"),
+    },
+    viral: {
+        intro: [
+            "STYLE: VIRAL",
+            "Analyze the transcript and identify the most surprising, impressive, useful, controversial, or transformative part of the video.",
+            "Generate highly clickable YouTube metadata while remaining truthful to the transcript.",
+        ].join("\n"),
+        titles: [
+            "TITLE RULES:",
+            `- Create ${TITLE_COUNT} distinctly different high-CTR title options.`,
+            "- Build curiosity and make the viewer feel they need to know what happens in the video.",
+            "- Focus on transformation, surprising results, strong benefits, problems solved, or unexpected discoveries.",
+            "- Use punchy YouTube-native language.",
+            "- You may emphasize 1-3 important words using ALL CAPS.",
+            '- Strong phrases such as "This Changes Everything", "I Wasn\'t Expecting This", "You Don\'t Need...", "The Ultimate...", etc. may be used when appropriate.',
+            "- Questions, bold statements, contrast, and curiosity gaps are encouraged.",
+            "- Titles should feel energetic and confident.",
+            "- Avoid misleading clickbait: every implication must be supported by the transcript.",
+            "- Do not reveal every detail in the title; leave a reason to click.",
+            "- Avoid making all three titles follow the same formula.",
+            "- Prefer titles under approximately 70 characters when possible.",
+            "",
+            "The 3 titles must use different approaches:",
+            "1. Curiosity / intrigue",
+            "2. Strong benefit or transformation",
+            "3. Bold statement or unexpected angle",
+            "Do not simply paraphrase the same title three times.",
+            "Do not take one plain title and only add a hype phrase such as THIS CHANGES EVERYTHING.",
+        ].join("\n"),
+        description: [
+            "DESCRIPTION:",
+            "- Start with a strong hook based on the most interesting part of the video.",
+            "- Explain why the viewer should care before giving details.",
+            "- Use energetic language while staying accurate.",
+            "- Highlight the strongest features, discoveries, or results from the transcript.",
+            "- 2-4 sentences, no hashtags, no timestamps, no markdown. Max ~700 characters.",
+        ].join("\n"),
+        tags: [
+            "HASHTAGS:",
+            "- Combine highly relevant niche hashtags with broader discovery hashtags.",
+            "- Prioritize topics that are central to the video.",
+            `Return them as "tags": ${MIN_TAGS}-${MAX_TAGS} search tags, no "#" prefix, no duplicates.`,
+        ].join("\n"),
+    },
+    professional: {
+        intro: [
+            "STYLE: PROFESSIONAL",
+            "Analyze the transcript and determine the exact subject, purpose, and key value of the video.",
+            "Generate professional and authoritative YouTube metadata.",
+        ].join("\n"),
+        titles: [
+            "TITLE RULES:",
+            `- Create ${TITLE_COUNT} distinct title options.`,
+            "- Prioritize clarity, credibility, and accuracy.",
+            "- Clearly state what the video is about.",
+            "- Use professional, polished language.",
+            "- Include important product, software, company, or technical names when relevant.",
+            "- Avoid clickbait, exaggerated claims, sensational wording, emojis, and unnecessary ALL CAPS.",
+            "- Focus on the actual subject, functionality, workflow, tutorial, analysis, or result.",
+            "- Titles should feel suitable for educational channels, companies, professionals, and technical creators.",
+            "- Keep titles concise while preserving useful context.",
+            "",
+            "The 3 titles must use different approaches:",
+            "1. Subject introduction, with the product, software, or topic named",
+            "2. Overview of what the video covers",
+            "3. Workflow, tutorial focus, or concrete result",
+            "Do not simply paraphrase the same title three times.",
+        ].join("\n"),
+        description: [
+            "DESCRIPTION:",
+            "- Provide a structured and informative summary.",
+            "- Clearly explain what the video covers.",
+            "- Mention important features, concepts, products, and workflows discussed in the transcript.",
+            "- Use professional and concise language.",
+            "- Avoid promotional exaggeration.",
+            "- 2-4 sentences, no hashtags, no timestamps, no markdown. Max ~700 characters.",
+        ].join("\n"),
+        tags: [
+            "HASHTAGS:",
+            "- Use precise industry, software, product, and topic-specific hashtags.",
+            "- Avoid vague or overly broad hashtags unless highly relevant.",
+            `Return them as "tags": ${MIN_TAGS}-${MAX_TAGS} search tags, no "#" prefix, no duplicates.`,
+        ].join("\n"),
+    },
+    search: {
+        intro: [
+            "STYLE: SEARCH / SEO",
+            "Analyze the transcript and determine what a user would most likely search for in order to find this video.",
+            "Identify:",
+            "1. The primary search topic.",
+            "2. Important software, products, tools, or entities.",
+            "3. The main problem being solved or result being demonstrated.",
+            "4. Relevant secondary keywords.",
+            "Generate search-optimized YouTube metadata.",
+        ].join("\n"),
+        titles: [
+            "TITLE RULES:",
+            `- Create ${TITLE_COUNT} distinct SEO-focused title options.`,
+            "- Put the primary search topic or keyword near the beginning of the title whenever natural.",
+            "- Clearly communicate the video's subject and search intent.",
+            "- Include important software/product names when relevant.",
+            "- Prefer phrases users would realistically type into YouTube search.",
+            "- Combine the main keyword with a useful benefit, tutorial topic, comparison, feature, or result.",
+            "- Avoid vague curiosity-based titles.",
+            "- Avoid keyword stuffing.",
+            "- Titles must sound natural to humans, not like lists of keywords.",
+            "- Keep the topic immediately understandable.",
+            "",
+            "The 3 titles must use different approaches:",
+            "1. Primary keyword first, plus what the video is",
+            "2. Primary keyword plus a benefit, tutorial, comparison, or feature",
+            "3. Primary keyword plus the product or software name and content category",
+            "Do not simply paraphrase the same title three times.",
+            "Do not write three titles that only reorder the same keywords.",
+        ].join("\n"),
+        description: [
+            "DESCRIPTION:",
+            "- Naturally include the main keyword and related terms in the first sentences.",
+            "- Clearly explain the content of the video.",
+            "- Include relevant secondary topics mentioned in the transcript.",
+            "- Never repeat keywords unnaturally or stuff search terms.",
+            "- 2-4 sentences, no hashtags, no timestamps, no markdown. Max ~700 characters.",
+        ].join("\n"),
+        tags: [
+            "HASHTAGS:",
+            "- Prioritize highly relevant searchable keywords.",
+            "- Include product/software names and the main content category.",
+            `Return them as "tags": ${MIN_TAGS}-${MAX_TAGS} search tags, no "#" prefix, no duplicates.`,
+        ].join("\n"),
+    },
+};
+
+function isChapterStyle(value: unknown): value is ChapterStyle {
+    return typeof value === "string" && (CHAPTER_STYLES as string[]).includes(value);
+}
 
 const GENERIC_ERROR =
     "We couldn't generate chapters for this transcript right now. Please try again in a moment.";
@@ -165,11 +320,13 @@ function isInputChunk(value: unknown): value is InputChunk {
 
 // system prompt собираем по запрошенным полям — точечный Regenerate не должен
 // тратить токены/контекст модели на части, которые всё равно отбросим
-function systemPromptFor(target: Target, languageName?: string): string {
+function systemPromptFor(target: Target, languageName?: string, style: ChapterStyle = "viral"): string {
     const wantTitles = target === "all" || target === "titles";
     const wantChapters = target === "all" || target === "chapters";
     const wantDescription = target === "all" || target === "description";
     const wantTags = target === "all" || target === "tags";
+    const wantPackaging = wantTitles || wantDescription || wantTags;
+    const brief = STYLE_BRIEFS[style];
 
     const shapeParts: string[] = [];
     if (wantTitles) shapeParts.push('"titles": string[]');
@@ -178,11 +335,10 @@ function systemPromptFor(target: Target, languageName?: string): string {
     if (wantTags) shapeParts.push('"tags": string[]');
 
     const lines = [
-        wantTitles
-            ? "You write YouTube packaging. Titles must make someone click the video, not buy a product."
-            : "You analyze video transcripts to produce YouTube metadata.",
+        "You analyze video transcripts to produce YouTube metadata.",
         "Respond with ONLY a single JSON object, no prose, no markdown code fences.",
         `Shape: {${shapeParts.join(", ")}}.`,
+        "Do not include the internal analysis, drafts, or explanations in the JSON.",
         "",
     ];
 
@@ -196,12 +352,12 @@ function systemPromptFor(target: Target, languageName?: string): string {
         );
     }
 
+    if (wantPackaging) {
+        lines.push(TRANSCRIPT_ANALYSIS, "", brief.intro, "");
+    }
+
     if (wantTitles) {
-        lines.push(
-            `"titles": exactly ${TITLE_COUNT} YouTube titles, strongest click-urge first. Not product headlines:`,
-            TITLE_STRATEGY,
-            "",
-        );
+        lines.push(`"titles": exactly ${TITLE_COUNT} YouTube title strings.`, brief.titles, "");
     }
 
     if (wantChapters) {
@@ -217,20 +373,11 @@ function systemPromptFor(target: Target, languageName?: string): string {
     }
 
     if (wantDescription) {
-        lines.push(
-            '"description": a YouTube video description, 2-4 sentences, summarizing the content in an',
-            "engaging, SEO-friendly tone with natural keywords from the transcript. This field may",
-            "describe the product. Titles must not. No hashtags, no timestamps/chapter list, no markdown.",
-            "Max ~700 characters.",
-            "",
-        );
+        lines.push('"description": a YouTube video description.', brief.description, "");
     }
 
     if (wantTags) {
-        lines.push(
-            `"tags": ${MIN_TAGS}-${MAX_TAGS} relevant YouTube search tags (single words or short phrases),`,
-            'ordered by relevance, no "#" prefix, no duplicates, no surrounding quotes.',
-        );
+        lines.push(brief.tags);
     }
 
     return lines.join("\n").trimEnd();
@@ -367,6 +514,15 @@ export async function POST(req: NextRequest) {
         }
         const languageName = typeof rawLanguage === "string" ? LANGUAGE_NAMES[rawLanguage] : undefined;
 
+        const rawStyle = (body as { style?: unknown } | null)?.style;
+        if (rawStyle !== undefined && !isChapterStyle(rawStyle)) {
+            return NextResponse.json(
+                { error: `Invalid "style". Expected one of: ${CHAPTER_STYLES.join(", ")}.` },
+                { status: 400 },
+            );
+        }
+        const style: ChapterStyle = isChapterStyle(rawStyle) ? rawStyle : "viral";
+
         const chunks = rawChunks.filter(isInputChunk);
         if (!chunks.length) {
             return NextResponse.json(
@@ -441,7 +597,7 @@ export async function POST(req: NextRequest) {
                 output = await replicate.run(CHAPTERS_MODEL, {
                     input: {
                         prompt,
-                        system_prompt: systemPromptFor(target, languageName),
+                        system_prompt: systemPromptFor(target, languageName, style),
                         max_tokens: maxTokens,
                     },
                 });
