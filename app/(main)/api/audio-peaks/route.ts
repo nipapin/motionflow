@@ -4,6 +4,11 @@ import path from "path";
 
 const CACHE_DIR = path.join(process.cwd(), ".cache", "audio-peaks");
 
+type AudioPeaksCache = {
+  peaks: number[];
+  duration: number | null;
+};
+
 function cacheKey(url: string): string {
   let hash = 0;
   for (let i = 0; i < url.length; i++) {
@@ -12,18 +17,40 @@ function cacheKey(url: string): string {
   return `peaks-${(hash >>> 0).toString(36)}`;
 }
 
-async function readCache(key: string): Promise<number[] | null> {
+function normalizeCache(value: unknown): AudioPeaksCache | null {
+  // Backward compatibility with cache files created before duration was stored.
+  if (Array.isArray(value) && value.length > 0 && value.every((v) => typeof v === "number")) {
+    return { peaks: value, duration: null };
+  }
+  if (!value || typeof value !== "object") return null;
+
+  const candidate = value as { peaks?: unknown; duration?: unknown };
+  if (
+    !Array.isArray(candidate.peaks) ||
+    candidate.peaks.length === 0 ||
+    !candidate.peaks.every((v) => typeof v === "number")
+  ) {
+    return null;
+  }
+
+  const duration = Number(candidate.duration);
+  return {
+    peaks: candidate.peaks,
+    duration: Number.isFinite(duration) && duration > 0 ? duration : null,
+  };
+}
+
+async function readCache(key: string): Promise<AudioPeaksCache | null> {
   try {
     const raw = await readFile(path.join(CACHE_DIR, `${key}.json`), "utf-8");
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    return normalizeCache(JSON.parse(raw));
   } catch {}
   return null;
 }
 
-async function writeCacheFile(key: string, peaks: number[]): Promise<void> {
+async function writeCacheFile(key: string, value: AudioPeaksCache): Promise<void> {
   await mkdir(CACHE_DIR, { recursive: true });
-  await writeFile(path.join(CACHE_DIR, `${key}.json`), JSON.stringify(peaks));
+  await writeFile(path.join(CACHE_DIR, `${key}.json`), JSON.stringify(value));
 }
 
 /** GET — return cached peaks or 404 */
@@ -47,12 +74,12 @@ export async function POST(req: NextRequest) {
   if (!url) return NextResponse.json({ error: "missing url" }, { status: 400 });
 
   try {
-    const peaks: unknown = await req.json();
-    if (!Array.isArray(peaks) || peaks.length === 0 || !peaks.every((v) => typeof v === "number")) {
+    const value = normalizeCache(await req.json());
+    if (!value) {
       return NextResponse.json({ error: "invalid peaks" }, { status: 400 });
     }
 
-    await writeCacheFile(cacheKey(url), peaks);
+    await writeCacheFile(cacheKey(url), value);
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: "bad body" }, { status: 400 });

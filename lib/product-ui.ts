@@ -225,6 +225,23 @@ export function productAudioUrl(product: Product): string | undefined {
   return undefined;
 }
 
+/** Duration stored by the marketplace importer as `m:ss` or `h:mm:ss`. */
+export function productAudioDurationSeconds(product: Product): number | undefined {
+  const raw = product.attributes?.track_length?.trim();
+  if (!raw) return undefined;
+
+  const parts = raw.split(":").map(Number);
+  if (
+    (parts.length !== 2 && parts.length !== 3) ||
+    parts.some((part) => !Number.isFinite(part) || part < 0)
+  ) {
+    return undefined;
+  }
+
+  const seconds = parts.reduce((total, part) => total * 60 + part, 0);
+  return seconds > 0 ? seconds : undefined;
+}
+
 export function productPreviewVideoUrl(product: Product): string | undefined {
   if (product.youtube_preview) {
     const id = extractYoutubeId(product.youtube_preview);
