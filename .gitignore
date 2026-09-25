@@ -21,8 +21,12 @@ yarn-error.log*
 # env files
 .env*
 
+# local mail campaign state (recipient lists)
+/.campaigns/
+
 # cursor
 .cursor/
+/.claude/settings.local.json
 
 # cache
 /.cache/
