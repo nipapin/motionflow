@@ -6,7 +6,6 @@ import { getAffiliateForUser, listAffiliateCampaigns } from "@/lib/affiliate/db"
 import {
   affiliateDate,
   affiliateMoney,
-  affiliateRecurringLabel,
   affiliateSourceLabel,
 } from "@/lib/affiliate/format";
 import {
@@ -80,7 +79,6 @@ export default async function AffiliateOverviewPage({ searchParams }: PageProps)
           <AffiliateCampaignLinks slug={affiliate.slug} campaigns={campaigns} />
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline">{affiliate.commissionPercent}% income</Badge>
-            <Badge variant="outline">{affiliateRecurringLabel(affiliate.recurringMode)}</Badge>
             <Badge variant={affiliate.status === "active" ? "default" : "secondary"}>
               {affiliate.status === "active" ? "Active" : "Inactive"}
             </Badge>

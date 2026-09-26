@@ -4,7 +4,11 @@ import { useMemo, useState } from "react";
 import { Lock } from "lucide-react";
 
 type TabId = "all-in-one" | "one-click" | "drag-drop" | "customize" | "resize";
-type AiToolsTabId = "auto-subtitles" | "chapters" | "voiceover";
+type AiToolsTabId =
+  | "auto-subtitles"
+  | "chapters"
+  | "silence-remover"
+  | "more-features";
 
 type ShowcaseTab = {
   id: string;
@@ -77,12 +81,19 @@ const aiToolsTabs: Array<ShowcaseTab & { id: AiToolsTabId }> = [
     posterSrc: "https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=1280&q=85&fit=crop",
   },
   {
-    id: "voiceover",
-    label: "Voiceover",
-    title: "Add voiceover in one click",
+    id: "silence-remover",
+    label: "Silence remover",
+    title: "Remove silence automatically",
     description:
-      "Generate a natural-sounding voiceover from your script and sync it to the timeline automatically.",
+      "Detect and remove silent gaps automatically to tighten edits and keep the pacing moving.",
     posterSrc: "https://images.unsplash.com/photo-1478737270239-2f02b77fc618?w=1280&q=85&fit=crop",
+  },
+  {
+    id: "more-features",
+    label: "More features",
+    title: "More AI tools are coming soon",
+    description: "New AI-powered editing tools are already in development.",
+    locked: true,
   },
 ];
 
@@ -404,7 +415,7 @@ export function Showcase() {
                 </h3>
                 <p className="mt-2 max-w-2xl text-sm text-muted lg:ml-auto">
                   Smart tools that live in the same panel — generate subtitles,
-                  chapters, and voiceover in one click.
+                  create chapters, and remove silence in one click.
                 </p>
               </div>
             </div>
@@ -487,21 +498,21 @@ export function Showcase() {
                         ),
                       },
                       {
-                        title: "One-click to timeline",
-                        desc: "Drop any asset straight onto your timeline or into the project bin.",
-                        icon: (
-                          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                            <path d="M12 5v14M5 12l7 7 7-7" />
-                          </svg>
-                        ),
-                      },
-                      {
                         title: "Search inside the panel",
                         desc: "Everything happens in the Spunkram panel — no switching apps.",
                         icon: (
                           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                             <circle cx="11" cy="11" r="8" />
                             <path d="M21 21l-4.35-4.35" />
+                          </svg>
+                        ),
+                      },
+                      {
+                        title: "One-click to timeline",
+                        desc: "Drop any asset straight onto your timeline or into the project bin.",
+                        icon: (
+                          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M12 5v14M5 12l7 7 7-7" />
                           </svg>
                         ),
                       },
