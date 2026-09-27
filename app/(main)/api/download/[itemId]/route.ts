@@ -16,7 +16,7 @@ import {
 } from "@/lib/motionflow-upstream-download";
 import { getPresignedMarketplaceDownloadUrl } from "@/lib/marketplace-r2-presign";
 import { checkMarketplaceDownloadRateLimit } from "@/lib/marketplace-download-rate-limit";
-import { productAllowsSignedInDownload } from "@/lib/product-ui";
+import { productKind } from "@/lib/product-ui";
 import { hasActiveMotionflowSubscription } from "@/lib/subscriptions";
 import { getActiveAuthorSubscription } from "@/lib/cep-entitlements";
 
@@ -74,14 +74,16 @@ export async function GET(
     getActiveAuthorSubscription(user.id, product.author_id),
   ]);
 
+  const isPaidStockAudio =
+    productKind(product) === "stock-audio" || productKind(product) === "sound-fx";
   const freePack =
+    !isPaidStockAudio &&
     (product.discount_price != null
       ? Number(product.discount_price)
       : Number(product.price)) <= 0;
-  const sessionStockAudio = productAllowsSignedInDownload(product);
 
   const authorSubOk = authorSub.active;
-  if (!subOk && !owns && !authorSubOk && !freePack && !sessionStockAudio) {
+  if (!subOk && !owns && !authorSubOk && !freePack) {
     if (apiClient) {
       return NextResponse.json(
         {
@@ -110,7 +112,7 @@ export async function GET(
 
   let purchaseCode: string;
 
-  if (subOk || authorSubOk || freePack || sessionStockAudio) {
+  if (subOk || authorSubOk || freePack) {
     purchaseCode = crypto.randomBytes(16).toString("hex");
     const pool = getPool();
     await pool.execute<ResultSetHeader>(
