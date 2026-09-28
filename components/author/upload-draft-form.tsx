@@ -30,6 +30,7 @@ const schema = z.object({
   name: z.string().min(2).max(100),
   extraSlug: z.string().max(80).optional(),
   description: z.string().max(20000).optional(),
+  showcasePrefix: z.string().max(1024).optional(),
   osCompatibles: z.string().min(2).max(120),
   price: z.coerce.number().min(0).max(500),
   exclusive: z.boolean(),
@@ -76,6 +77,7 @@ export function UploadDraftForm({ indexCategorySlug }: { indexCategorySlug: Uplo
       name: "",
       extraSlug: "",
       description: "",
+      showcasePrefix: "",
       osCompatibles: "Windows & Mac OS",
       price: 0,
       exclusive: false,
@@ -132,6 +134,7 @@ export function UploadDraftForm({ indexCategorySlug }: { indexCategorySlug: Uplo
       name: values.name,
       description: values.description ?? "",
       extraSlug: values.extraSlug?.trim() ? values.extraSlug.trim() : null,
+      showcasePrefix: values.showcasePrefix?.trim() ?? "",
       tags: tagsPayload(),
       subCategorySlugs: subSlugs,
       price: values.price,
@@ -176,6 +179,7 @@ export function UploadDraftForm({ indexCategorySlug }: { indexCategorySlug: Uplo
         name: values.name,
         description: values.description ?? "",
         extraSlug: values.extraSlug?.trim() ? values.extraSlug.trim() : null,
+        showcasePrefix: values.showcasePrefix?.trim() ?? "",
         tags: tagsPayload(),
         subCategorySlugs: subSlugs,
         price: values.price,
@@ -348,6 +352,29 @@ export function UploadDraftForm({ indexCategorySlug }: { indexCategorySlug: Uplo
                       )}
                     />
                   </div>
+
+                  <FormField
+                    control={form.control}
+                    name="showcasePrefix"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Preview assets folder (optional)</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Ex: spunkram/library-ae/previews/"
+                            className="font-mono text-xs"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Folder holding the preview clips for this project. When set,
+                          the item page shows a browsable showcase instead of the
+                          description.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
                   <div className="space-y-2">
                     <FormLabel>Tags</FormLabel>

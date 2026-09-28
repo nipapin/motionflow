@@ -95,6 +95,7 @@ function rowToProduct(row: RowDataPacket): Product | null {
     attributes: parseJsonRecord(row.attributes),
     extra: toStrNull(row.extra),
     json_args: toStrNull(row.json_args),
+    showcase_prefix: toStrNull(row.showcase_prefix),
     files: parseProductFilesRow(row.files),
     has_demo: row.has_demo == null ? null : toNum(row.has_demo),
     demo_url: toStrNull(row.demo_url),

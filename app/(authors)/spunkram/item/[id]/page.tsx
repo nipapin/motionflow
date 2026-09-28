@@ -12,7 +12,15 @@ import {
 } from "lucide-react";
 import { getMarketItemsByIds } from "@/lib/market-items";
 import { productThumbnailUrl } from "@/lib/product-ui";
+import {
+  getItemShowcaseCategories,
+  getItemShowcaseCategory,
+  resolveShowcaseLocation,
+  type ShowcaseCategorySummary,
+  type SpunkramShowcaseNode,
+} from "@/lib/spunkram-showcase-catalog";
 import { ItemCheckoutCard } from "@/app/(authors)/spunkram/item/[id]/item-checkout-card";
+import { ItemShowcase } from "@/app/(authors)/spunkram/item/[id]/item-showcase";
 
 const SPUNKRAM_AUTHOR_ID = 1691;
 
@@ -76,6 +84,33 @@ function toYesNo(value: string | null, fallback = "—"): string {
   return fallback;
 }
 
+type Showcase = {
+  categories: ShowcaseCategorySummary[];
+  initialCategory: SpunkramShowcaseNode;
+};
+
+/**
+ * Preview assets listed from the item's R2 folder. Only the first category is
+ * rendered server-side; the rest load on demand.
+ */
+async function loadShowcase(
+  itemId: number,
+  showcasePrefix: string | null,
+): Promise<Showcase | null> {
+  const location = await resolveShowcaseLocation(showcasePrefix);
+  if (!location) return null;
+  try {
+    const categories = await getItemShowcaseCategories(itemId, location);
+    const first = categories[0];
+    if (!first) return null;
+    const initialCategory = await getItemShowcaseCategory(itemId, location, first.href);
+    return initialCategory ? { categories, initialCategory } : null;
+  } catch (err) {
+    console.error("[spunkram-item] showcase listing failed", itemId, err);
+    return null;
+  }
+}
+
 export default async function SpunkramItemPage({
   params,
 }: {
@@ -88,7 +123,8 @@ export default async function SpunkramItemPage({
   const [item] = await getMarketItemsByIds([itemId]);
   if (!item || item.author_id !== SPUNKRAM_AUTHOR_ID || item.access !== 1) notFound();
 
-  const html = toSafeHtml(item.description_html || item.description);
+  const showcase = await loadShowcase(itemId, item.showcase_prefix);
+  const html = showcase ? "" : toSafeHtml(item.description_html || item.description);
   const tags = item.tags
     .split(",")
     .map((tag) => tag.trim())
@@ -317,6 +353,14 @@ export default async function SpunkramItemPage({
           ) : null}
         </div>
       </article>
+
+      {showcase ? (
+        <ItemShowcase
+          itemId={item.id}
+          categories={showcase.categories}
+          initialCategory={showcase.initialCategory}
+        />
+      ) : null}
 
       {html ? (
         <section className="card mt-6 rounded-2xl p-6 sm:p-8">

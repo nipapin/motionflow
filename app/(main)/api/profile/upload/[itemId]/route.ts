@@ -9,6 +9,10 @@ import type { SqlParams } from "@/lib/author/sql-params";
 import { normalizeProductFiles } from "@/lib/product-ui";
 import type { ProductFiles } from "@/lib/product-types";
 import { normalizeSubCategoriesForIndex } from "@/lib/author/upload-subcategories";
+import {
+  normalizeShowcasePrefixInput,
+  setItemShowcasePrefix,
+} from "@/lib/marketplace-showcase-prefix";
 
 type ItemAttributes = {
   works_with?: string;
@@ -46,6 +50,7 @@ const patchSchema = z
     name: z.string().min(2).max(100).optional(),
     description: z.string().max(20000).optional(),
     extraSlug: z.union([z.string().max(80), z.null()]).optional(),
+    showcasePrefix: z.union([z.string().max(1024), z.null()]).optional(),
     files: z
       .object({
         image: fileSlug.optional(),
@@ -174,15 +179,31 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
     vals.push(JSON.stringify(mergedAttributes));
   }
 
-  if (!sets.length) {
+  /** Lives in its own statement: the column is created lazily on first use. */
+  let showcasePrefix: string | null | undefined;
+  if (parsed.data.showcasePrefix !== undefined) {
+    const showcase = normalizeShowcasePrefixInput(parsed.data.showcasePrefix);
+    if (!showcase.ok) {
+      return NextResponse.json({ error: "Invalid preview assets folder" }, { status: 400 });
+    }
+    showcasePrefix = showcase.value;
+  }
+
+  if (!sets.length && showcasePrefix === undefined) {
     return NextResponse.json({ error: "No changes" }, { status: 400 });
   }
 
-  vals.push(itemId, user.id);
-  await pool.execute(
-    `UPDATE \`${table}\` SET ${sets.join(", ")}, updated_at = NOW() WHERE id = ? AND author_id = ?`,
-    vals,
-  );
+  if (sets.length) {
+    vals.push(itemId, user.id);
+    await pool.execute(
+      `UPDATE \`${table}\` SET ${sets.join(", ")}, updated_at = NOW() WHERE id = ? AND author_id = ?`,
+      vals,
+    );
+  }
+
+  if (showcasePrefix !== undefined) {
+    await setItemShowcasePrefix(itemId, showcasePrefix, { authorId: user.id });
+  }
 
   const [outRows] = await pool.execute<RowDataPacket[]>(
     `SELECT files, tags, sub_category_slug, price, exclusive, subscription, attributes

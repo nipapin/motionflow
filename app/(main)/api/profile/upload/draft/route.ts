@@ -7,6 +7,10 @@ import { isAuthor } from "@/lib/auth/access-control";
 import { marketplaceItemsTable } from "@/lib/author/marketplace-table";
 import { UPLOAD_CATEGORIES, type UploadCategorySlug } from "@/lib/author/upload-categories";
 import { normalizeSubCategoriesForIndex } from "@/lib/author/upload-subcategories";
+import {
+  normalizeShowcasePrefixInput,
+  setItemShowcasePrefix,
+} from "@/lib/marketplace-showcase-prefix";
 
 const slugs = new Set<string>(UPLOAD_CATEGORIES.map((c) => c.slug));
 
@@ -15,6 +19,7 @@ const schema = z.object({
   name: z.string().min(2).max(100),
   description: z.string().max(20000).optional(),
   extraSlug: z.string().max(80).optional().nullable(),
+  showcasePrefix: z.string().max(1024).optional().nullable(),
   tags: z.string().max(4000).optional(),
   subCategorySlugs: z.array(z.string().max(80)).max(3).optional(),
   price: z.coerce.number().min(0).max(500).optional().default(0),
@@ -67,6 +72,10 @@ export async function POST(req: Request) {
     os_compatibles: osCompat,
     ...(fileSize ? { file_size: fileSize.slice(0, 40) } : {}),
   };
+  const showcase = normalizeShowcasePrefixInput(parsed.data.showcasePrefix);
+  if (!showcase.ok) {
+    return NextResponse.json({ error: "Invalid preview assets folder" }, { status: 400 });
+  }
 
   try {
     const [res] = await pool.execute<ResultSetHeader>(
@@ -88,6 +97,9 @@ export async function POST(req: Request) {
         parsed.data.extraSlug ?? null,
       ],
     );
+    if (showcase.value) {
+      await setItemShowcasePrefix(res.insertId, showcase.value, { authorId: user.id });
+    }
     return NextResponse.json({ id: res.insertId, access, attributes });
   } catch (e) {
     console.error("[upload/draft]", e);

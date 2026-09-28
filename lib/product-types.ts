@@ -26,6 +26,8 @@ export interface Product {
   attributes: Record<string, string>;
   extra: string | null;
   json_args: string | null;
+  /** R2 folder with preview assets rendered as the on-page showcase. */
+  showcase_prefix: string | null;
   files: ProductFiles;
   has_demo: number | null;
   demo_url: string | null;

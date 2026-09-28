@@ -194,6 +194,7 @@ export async function getDirectSalesRows(
       attributes: {},
       extra: null,
       json_args: null,
+      showcase_prefix: null,
       files: {},
       has_demo: null,
       demo_url: null,
