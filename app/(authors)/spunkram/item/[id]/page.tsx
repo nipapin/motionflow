@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { getMarketItemsByIds } from "@/lib/market-items";
 import { productThumbnailUrl } from "@/lib/product-ui";
+import { resolveItemShowcasePrefix } from "@/lib/item-showcase-source";
 import {
   getItemShowcaseCategories,
   getItemShowcaseCategory,
@@ -123,7 +124,7 @@ export default async function SpunkramItemPage({
   const [item] = await getMarketItemsByIds([itemId]);
   if (!item || item.author_id !== SPUNKRAM_AUTHOR_ID || item.access !== 1) notFound();
 
-  const showcase = await loadShowcase(itemId, item.showcase_prefix);
+  const showcase = await loadShowcase(itemId, await resolveItemShowcasePrefix(itemId));
   const html = showcase ? "" : toSafeHtml(item.description_html || item.description);
   const tags = item.tags
     .split(",")

@@ -5,7 +5,10 @@ import { createRequire } from "node:module";
 import { PassThrough, Readable, type Readable as NodeReadable } from "node:stream";
 import type { PackagesAuthor } from "@/lib/packages-admin";
 import type { PackagesProjectDto } from "@/lib/packages-projects";
+import { resolvePackContentStem } from "@/lib/pack-showcase-prefix";
 import { getR2Bucket, getR2Client } from "@/lib/r2-storage";
+
+export { resolvePackContentStem };
 
 const nodeRequire = createRequire(import.meta.url);
 // CJS package; call signature from @types/archiver is awkward with NodeNext.
@@ -13,16 +16,6 @@ const archiver = nodeRequire("archiver") as (
   format: string,
   options?: { zlib?: { level?: number } },
 ) => import("archiver").Archiver;
-
-/** Basename of download_key without `.zip` → R2 content prefix. */
-export function resolvePackContentStem(
-  downloadKey: string | null | undefined,
-): string | null {
-  if (!downloadKey) return null;
-  const base = downloadKey.replace(/^\/+/, "").split("/").pop() || "";
-  const stem = base.replace(/\.zip$/i, "").trim();
-  return stem || null;
-}
 
 export type PackManifestEntry = {
   name?: string;

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getItemShowcasePrefix } from "@/lib/marketplace-showcase-prefix";
+import { resolveItemShowcasePrefix } from "@/lib/item-showcase-source";
 import {
   getItemShowcaseCategory,
   resolveShowcaseLocation,
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest, ctx: RouteCtx) {
     return NextResponse.json({ error: "MISSING_PARAMS" }, { status: 400 });
   }
 
-  const location = await resolveShowcaseLocation(await getItemShowcasePrefix(itemId));
+  const location = await resolveShowcaseLocation(await resolveItemShowcasePrefix(itemId));
   if (!location) {
     return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
   }

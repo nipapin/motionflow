@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getItemShowcasePrefix } from "@/lib/marketplace-showcase-prefix";
+import { resolveItemShowcasePrefix } from "@/lib/item-showcase-source";
 import {
   getShowcaseObjectStream,
   resolveShowcaseLocation,
@@ -31,7 +31,7 @@ async function serve(req: NextRequest, context: RouteContext) {
   const itemId = Number(id);
   if (!Number.isInteger(itemId) || itemId < 1) return notFound();
 
-  const location = await resolveShowcaseLocation(await getItemShowcasePrefix(itemId));
+  const location = await resolveShowcaseLocation(await resolveItemShowcasePrefix(itemId));
   if (!location) return notFound();
 
   const objectKey = resolveShowcaseObjectKey(location, segments ?? []);

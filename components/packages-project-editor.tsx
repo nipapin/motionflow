@@ -21,6 +21,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
+import { packShowcasePrefix } from "@/lib/pack-showcase-prefix";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -83,8 +84,6 @@ export function PackagesProjectEditor({
   const [minHost, setMinHost] = useState("");
   const [detailsUrl, setDetailsUrl] = useState("");
   const [marketplaceItemId, setMarketplaceItemId] = useState("");
-  const [showcasePrefix, setShowcasePrefix] = useState("");
-  const [savedShowcasePrefix, setSavedShowcasePrefix] = useState("");
   const [visible, setVisible] = useState(false);
   const [adminOnly, setAdminOnly] = useState(false);
   const [freePack, setFreePack] = useState(true);
@@ -104,10 +103,9 @@ export function PackagesProjectEditor({
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [projRes, authorRes, showcaseRes] = await Promise.all([
+      const [projRes, authorRes] = await Promise.all([
         fetch(`/api/packages/${authorId}/projects/${itemId}`),
         fetch(`/api/packages/authors/${authorId}`),
-        fetch(`/api/packages/${authorId}/projects/${itemId}/showcase`),
       ]);
       if (!projRes.ok) throw new Error(await projRes.text());
       const data = (await projRes.json()) as { project: Project };
@@ -140,12 +138,6 @@ export function PackagesProjectEditor({
       if (authorRes.ok) {
         const a = (await authorRes.json()) as { author: { r2_bucket: string | null } };
         setAuthorBucket(a.author.r2_bucket);
-      }
-
-      if (showcaseRes.ok) {
-        const s = (await showcaseRes.json()) as { showcasePrefix: string | null };
-        setShowcasePrefix(s.showcasePrefix || "");
-        setSavedShowcasePrefix(s.showcasePrefix || "");
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Load failed");
@@ -237,32 +229,6 @@ export function PackagesProjectEditor({
         setPrice(String(savedPrice));
       }
       setDownloadKey(data.project.downloadKey || "");
-
-      if (showcasePrefix.trim() !== savedShowcasePrefix) {
-        const showcaseRes = await fetch(
-          `/api/packages/${authorId}/projects/${itemId}/showcase`,
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ showcasePrefix: showcasePrefix.trim() }),
-          },
-        );
-        const showcaseBody = (await showcaseRes.json().catch(() => ({}))) as {
-          error?: string;
-          showcasePrefix?: string | null;
-        };
-        if (!showcaseRes.ok) {
-          setFeedback(
-            showcaseBody.error === "NO_MARKETPLACE_ITEM"
-              ? "Saved, but the preview assets folder needs a linked marketplace item"
-              : "Saved, but the preview assets folder was rejected",
-            false,
-          );
-          return;
-        }
-        setShowcasePrefix(showcaseBody.showcasePrefix || "");
-        setSavedShowcasePrefix(showcaseBody.showcasePrefix || "");
-      }
 
       setFeedback("Saved", true);
     } catch (e) {
@@ -485,18 +451,14 @@ export function PackagesProjectEditor({
           </div>
 
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="showcase-prefix">Preview assets folder</Label>
-            <Input
-              id="showcase-prefix"
-              value={showcasePrefix}
-              onChange={(e) => setShowcasePrefix(e.target.value)}
-              placeholder="spunkram/library-ae/previews/ or s3://bucket/folder/"
-              className="font-mono text-xs"
-            />
+            <Label>Preview assets folder</Label>
+            <p className="break-all rounded-md border border-input bg-muted/40 px-3 py-2 font-mono text-xs text-foreground">
+              {packShowcasePrefix(authorBucket, downloadKey) ?? "—"}
+            </p>
             <p className="text-[12px] text-muted-foreground">
-              R2 folder with preview clips. When set, the marketplace item page shows
-              a browsable showcase instead of its description. Requires a linked
-              Marketplace Item. Clear the field and save to remove it.
+              Taken from this pack&apos;s zip: the author bucket, the zip name, then
+              Previews/. The linked marketplace item lists that folder. Choose a zip
+              and link a Marketplace Item to turn the showcase on.
             </p>
           </div>
 
