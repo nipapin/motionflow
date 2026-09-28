@@ -201,9 +201,10 @@ export function useGlobalAudioPlaybackState() {
 
 // --------------- helpers ---------------
 
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
+function formatTime(seconds: number, roundUp = false): string {
+  const wholeSeconds = roundUp ? Math.ceil(seconds) : Math.floor(seconds);
+  const m = Math.floor(wholeSeconds / 60);
+  const s = wholeSeconds % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
@@ -273,14 +274,45 @@ function drawWaveform(canvas: HTMLCanvasElement, peaks: number[], progress: numb
   }
 }
 
-async function fetchPeaks(audioUrl: string): Promise<number[]> {
+type PeaksResult = {
+  peaks: number[];
+  duration: number | null;
+};
+
+function validDuration(value: unknown): number | null {
+  const duration = Number(value);
+  return Number.isFinite(duration) && duration > 0 ? duration : null;
+}
+
+function cachePeaksOnServer(audioUrl: string, peaks: number[], duration: number | null) {
+  const encoded = encodeURIComponent(audioUrl);
+  fetch(`/api/audio-peaks?url=${encoded}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ peaks, duration }),
+  }).catch(() => {});
+}
+
+async function fetchPeaks(audioUrl: string): Promise<PeaksResult> {
   const encoded = encodeURIComponent(audioUrl);
 
   // 1. try server cache
   const cacheRes = await fetch(`/api/audio-peaks?url=${encoded}`);
   if (cacheRes.ok) {
-    const data = await cacheRes.json();
-    if (Array.isArray(data) && data.length > 0) return data;
+    const data: unknown = await cacheRes.json();
+    // Old cache entries were plain arrays and did not include duration.
+    if (Array.isArray(data) && data.length > 0) {
+      return { peaks: data as number[], duration: null };
+    }
+    if (data && typeof data === "object") {
+      const cached = data as { peaks?: unknown; duration?: unknown };
+      if (Array.isArray(cached.peaks) && cached.peaks.length > 0) {
+        return {
+          peaks: cached.peaks as number[],
+          duration: validDuration(cached.duration),
+        };
+      }
+    }
   }
 
   // 2. decode via proxy
@@ -293,13 +325,9 @@ async function fetchPeaks(audioUrl: string): Promise<number[]> {
   durationCache.set(audioUrl, decoded.duration);
 
   // 3. cache on server (fire-and-forget)
-  fetch(`/api/audio-peaks?url=${encoded}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(peaks),
-  }).catch(() => {});
+  cachePeaksOnServer(audioUrl, peaks, decoded.duration);
 
-  return peaks;
+  return { peaks, duration: decoded.duration };
 }
 
 // --------------- component ---------------
@@ -322,6 +350,8 @@ export interface WaveformPlayerProps {
   trailingSlot?: React.ReactNode;
   /** Optional metadata for global now-playing UI. */
   trackMeta?: { title: string; subtitle?: string };
+  /** Known media duration, used before browser metadata is available. */
+  initialDuration?: number;
   /** Optional class for time label. */
   timeClassName?: string;
   /** Hide canvas only on mobile while keeping layout spacing. */
@@ -343,6 +373,7 @@ export function WaveformPlayer({
   leadingSlot,
   trailingSlot,
   trackMeta,
+  initialDuration,
   timeClassName,
   hideWaveformOnMobile = false,
 }: WaveformPlayerProps) {
@@ -350,7 +381,8 @@ export function WaveformPlayer({
   const [isBuffering, setIsBuffering] = useState(false);
   const [peaks, setPeaks] = useState<number[] | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const knownDuration = validDuration(initialDuration) ?? 0;
+  const [duration, setDuration] = useState(knownDuration);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
@@ -374,8 +406,12 @@ export function WaveformPlayer({
         if (cancelled) return;
         try {
           const data = await fetchPeaks(url);
-          peakCache.set(url, data);
-          if (!cancelled) setPeaks(data);
+          peakCache.set(url, data.peaks);
+          if (data.duration) durationCache.set(url, data.duration);
+          if (!cancelled) {
+            setPeaks(data.peaks);
+            if (data.duration) setDuration(data.duration);
+          }
         } catch {
           /* ignore */
         }
@@ -417,14 +453,21 @@ export function WaveformPlayer({
       setDuration(durationCache.get(url)!);
       return;
     }
-    // Proxied CDN playback: wait for peaks / play instead of probing every row via the API.
-    if (playSrc !== url) return;
+    // For proxied CDN files, wait for the peaks request first. New cache entries
+    // include duration; old entries then need one lightweight metadata probe.
+    if (playSrc !== url && peaks === null) return;
 
     const probe = new Audio();
     probe.preload = "metadata";
     probe.src = playSrc;
     const onMeta = () => {
-      setDuration(probe.duration);
+      const nextDuration = validDuration(probe.duration);
+      if (nextDuration) {
+        durationCache.set(url, nextDuration);
+        setDuration(nextDuration);
+        const cachedPeaks = peakCache.get(url);
+        if (cachedPeaks) cachePeaksOnServer(url, cachedPeaks, nextDuration);
+      }
       probe.src = "";
     };
     probe.addEventListener("loadedmetadata", onMeta, { once: true });
@@ -444,9 +487,9 @@ export function WaveformPlayer({
     setIsPlaying(false);
     setIsBuffering(false);
     setCurrentTime(0);
-    setDuration(0);
+    setDuration(knownDuration);
     setPeaks(url && peakCache.has(url) ? peakCache.get(url)! : null);
-  }, [url]);
+  }, [url, knownDuration]);
 
   const getOrCreateAudio = useCallback(() => {
     if (audioRef.current) return audioRef.current;
@@ -454,7 +497,13 @@ export function WaveformPlayer({
     const audio = new Audio(playSrc);
     audio.preload = "auto";
     audioRef.current = audio;
-    audio.addEventListener("loadedmetadata", () => setDuration(audio.duration));
+    audio.addEventListener("loadedmetadata", () => {
+      const nextDuration = validDuration(audio.duration);
+      if (nextDuration) {
+        durationCache.set(url, nextDuration);
+        setDuration(nextDuration);
+      }
+    });
     audio.addEventListener("timeupdate", () => setCurrentTime(audio.currentTime));
     audio.addEventListener("playing", () => {
       setIsBuffering(false);
@@ -474,7 +523,7 @@ export function WaveformPlayer({
       emitGlobalPlayback();
     });
     return audio;
-  }, [playSrc]);
+  }, [playSrc, url]);
 
   const activePeaks = peaks ?? FLAT_PEAKS;
 
@@ -616,7 +665,7 @@ export function WaveformPlayer({
         {duration > 0
           ? isPlaying
             ? formatTime(currentTime)
-            : formatTime(duration)
+            : formatTime(duration, true)
           : "--:--"}
       </span>
 

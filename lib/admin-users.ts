@@ -175,7 +175,9 @@ export async function searchAdminUsers(opts: {
   const asId = Number(q);
   const isNumericId = /^\d+$/.test(q) && Number.isFinite(asId) && asId > 0;
   const hasQuery = q.length > 0;
-  const searchCodes = hasQuery && (q.length >= 4 || isNumericId);
+  const isPurchaseCode = /^[a-f0-9]{32}$/i.test(q);
+  const isSubscriptionOrPaymentId = /^(?:sub|txn|admin)_[a-z0-9_]+$/i.test(q);
+  const searchCodes = isPurchaseCode || isSubscriptionOrPaymentId;
 
   const pool = getPool();
   const offset = (page - 1) * pageSize;

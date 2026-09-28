@@ -1,6 +1,5 @@
 import { NavbarWithOffset } from "@/components/Navbar";
 import { Hero } from "@/components/Hero";
-import { Logos } from "@/components/Logos";
 import { Projects } from "@/components/Projects";
 import { Showcase } from "@/components/Showcase";
 import { Testimonials } from "@/components/Testimonials";
@@ -62,7 +61,6 @@ export default async function HomePage({
       />
       <main className="relative z-1">
         <Hero />
-        <Logos />
         <Projects projects={projects} />
         <Showcase />
         <Pricing />

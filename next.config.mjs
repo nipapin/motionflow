@@ -2,6 +2,11 @@
 const nextConfig = {
   // Live PM2 serves `.next`; deploy builds into `.next-build` then swaps (see scripts/swap-next-build.mjs).
   distDir: process.env.NEXT_DIST_DIR || ".next",
+  // Multiple lockfiles exist above this checkout. Keep Turbopack and Tailwind scoped
+  // to this app so generated caches from other paths are never scanned as source.
+  turbopack: {
+    root: process.cwd(),
+  },
   images: {
     unoptimized: true,
   },

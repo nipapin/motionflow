@@ -2,7 +2,11 @@
 
 import { Download, Heart } from "lucide-react";
 import type { Product } from "@/lib/product-types";
-import { productCategoryLabel, productAudioUrl } from "@/lib/product-ui";
+import {
+  productAudioDurationSeconds,
+  productAudioUrl,
+  productCategoryLabel,
+} from "@/lib/product-ui";
 import { useFavorites } from "@/components/favorites-provider";
 import {
   WaveformPlayer,
@@ -45,6 +49,7 @@ export function AudioTrack({
     >
       <WaveformPlayer
         audioUrl={audioUrl}
+        initialDuration={productAudioDurationSeconds(product)}
         className="flex-1 min-w-0 gap-2 sm:gap-4"
         buttonClassName="w-9 h-9 sm:w-10 sm:h-10"
         waveformClassName="h-8 sm:h-10"

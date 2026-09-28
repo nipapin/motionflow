@@ -28,6 +28,13 @@ const PRICE_IDS: Record<PlanId, Record<BillingPeriod, string | undefined>> = {
   },
 };
 
+function checkoutDiscountCode(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const raw = new URLSearchParams(window.location.search).get("coupon")?.trim();
+  if (!raw || !/^[A-Z0-9_-]{3,32}$/i.test(raw)) return undefined;
+  return raw.toUpperCase();
+}
+
 const TIER_RANK: Record<PlanId, number> = { creator: 1, creator_ai: 2 };
 
 const TIER_LABELS: Record<PlanId, string> = {
@@ -249,6 +256,8 @@ export function PricingPageClient({ currentUser, currentSubscription, affiliateS
 
     setPendingPlan(plan);
 
+    const coupon = checkoutDiscountCode();
+
     try {
       paddle.Checkout.open({
         settings: {
@@ -264,6 +273,7 @@ export function PricingPageClient({ currentUser, currentSubscription, affiliateS
           billingPeriod,
           ...(affiliateSlug ? { affiliate_slug: affiliateSlug } : {}),
         },
+        ...(coupon ? { discountCode: coupon } : {}),
       });
     } catch (err) {
       console.error("[Paddle] Failed to open checkout:", err);

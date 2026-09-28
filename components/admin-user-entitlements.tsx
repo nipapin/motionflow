@@ -151,6 +151,21 @@ export const AdminUserEntitlements = forwardRef<
     onPendingChange?.(pendingSub != null || selectedItem != null);
   }, [pendingSub, selectedItem, onPendingChange]);
 
+  const chooseSubKind = (value: SubKind) => {
+    setSubKind(value);
+    setPendingSub({ subKind: value, duration, galPlan });
+  };
+
+  const chooseDuration = (value: Duration) => {
+    setDuration(value);
+    setPendingSub({ subKind, duration: value, galPlan });
+  };
+
+  const chooseGalPlan = (value: GalPlan) => {
+    setGalPlan(value);
+    setPendingSub({ subKind, duration, galPlan: value });
+  };
+
   const postSubscription = async (pending: PendingSub): Promise<boolean> => {
     let body: Record<string, unknown>;
     if (pending.subKind === "motionflow_creator" || pending.subKind === "motionflow_creator_ai") {
@@ -303,7 +318,7 @@ export const AdminUserEntitlements = forwardRef<
             <button
               key={value}
               type="button"
-              onClick={() => setSubKind(value)}
+              onClick={() => chooseSubKind(value)}
               disabled={disabled}
               className={
                 subKind === value
@@ -321,7 +336,7 @@ export const AdminUserEntitlements = forwardRef<
               <button
                 key={value}
                 type="button"
-                onClick={() => setGalPlan(value)}
+                onClick={() => chooseGalPlan(value)}
                 disabled={disabled}
                 className={
                   galPlan === value
@@ -345,7 +360,7 @@ export const AdminUserEntitlements = forwardRef<
               <button
                 key={value}
                 type="button"
-                onClick={() => setDuration(value)}
+                onClick={() => chooseDuration(value)}
                 disabled={disabled}
                 className={
                   duration === value
