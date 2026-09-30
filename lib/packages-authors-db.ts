@@ -4,6 +4,7 @@ import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { getPool } from "@/lib/db";
 import { PREMIERE_GAL_AUTHOR_ID } from "@/lib/premiere-gal-paddle-config";
 import { SPUNKRAM_AUTHOR_ID } from "@/lib/spunkram-paddle-config";
+import { ODIN_PACKAGES_AUTHOR_ID, ODIN_PACKAGES_SLUG, ODIN_PACKAGES_BUCKET } from "@/lib/odin-packages";
 
 const AUTHORS_TABLE = "packages_authors";
 const PROJECTS_TABLE = "packages_projects";
@@ -140,6 +141,21 @@ export async function seedPackagesAuthors(): Promise<void> {
          slug = VALUES(slug)`,
       [a.id, a.slug, a.label, a.r2_prefix],
     );
+  }
+  // This author exists only in the packages registry. Never create a marketplace user.
+  // A duplicate must not rename an unrelated author or reset a bucket chosen in admin.
+  await pool.query(
+    `INSERT INTO \`${AUTHORS_TABLE}\` (id, slug, label, r2_bucket, r2_prefix)
+     VALUES (?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE id = id`,
+    [ODIN_PACKAGES_AUTHOR_ID, ODIN_PACKAGES_SLUG, "Premiere Basics — Odin Pro", ODIN_PACKAGES_BUCKET, "public/downloads/odin/"],
+  );
+  const [odinRows] = await pool.query<RowDataPacket[]>(
+    `SELECT id, slug FROM \`${AUTHORS_TABLE}\` WHERE id = ? OR slug = ?`,
+    [ODIN_PACKAGES_AUTHOR_ID, ODIN_PACKAGES_SLUG],
+  );
+  if (odinRows.length !== 1 || Number(odinRows[0].id) !== ODIN_PACKAGES_AUTHOR_ID || odinRows[0].slug !== ODIN_PACKAGES_SLUG) {
+    throw new Error("Odin packages author ID/slug conflicts with an existing author");
   }
   authorsSeeded = true;
 }

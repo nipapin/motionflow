@@ -3,6 +3,7 @@ import "server-only";
 import { GetObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { getR2Bucket, getR2Client, r2PublicUrlForKey } from "@/lib/r2-storage";
 import { listPackagesAuthorRows } from "@/lib/packages-authors-db";
+import { isInternalPackagesAuthor } from "@/lib/odin-packages";
 
 const VIDEO_EXTS = new Set([".webm", ".mp4"]);
 const AUDIO_EXTS = new Set([".wav", ".mp3", ".ogg", ".m4a", ".flac"]);
@@ -104,7 +105,7 @@ async function isAllowedBucket(bucket: string): Promise<boolean> {
   if (publicBucket && bucket === publicBucket) return true;
   try {
     const authors = await listPackagesAuthorRows();
-    return authors.some((a) => a.r2_bucket && a.r2_bucket === bucket);
+    return authors.some((a) => !isInternalPackagesAuthor(a) && a.r2_bucket && a.r2_bucket === bucket);
   } catch (err) {
     console.error("[spunkram-showcase] bucket allowlist lookup failed", err);
     return false;

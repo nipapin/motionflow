@@ -28,6 +28,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { getPackagesAuthorPublicById } from "@/lib/packages-admin-client";
 import { parseMarketplaceItemIdInput } from "@/lib/packages-marketplace-id";
+import { isInternalPackagesAuthor } from "@/lib/odin-packages";
 import { cn } from "@/lib/utils";
 
 const DEFAULT_PAID_PRICE = 9.99;
@@ -75,6 +76,7 @@ export function PackagesProjectEditor({
   itemId: number;
 }) {
   const author = getPackagesAuthorPublicById(authorId);
+  const internalAuthor = isInternalPackagesAuthor({ id: authorId });
   const [project, setProject] = useState<Project | null>(null);
   const [authorBucket, setAuthorBucket] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -203,7 +205,7 @@ export function PackagesProjectEditor({
           min_host_version: minHost || null,
           details_url: detailsUrl || null,
           // Empty field must stay empty — do not re-parse id from Package page URL.
-          marketplace_item_id: marketRaw || null,
+          marketplace_item_id: internalAuthor ? null : marketRaw || null,
           visible,
           admin_only: adminOnly,
           price: parsedPrice,
@@ -429,7 +431,7 @@ export function PackagesProjectEditor({
             />
           </div>
 
-          <div className="space-y-2 sm:col-span-2">
+          {!internalAuthor && <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="marketplace-item">Marketplace Item</Label>
             <Input
               id="marketplace-item"
@@ -448,9 +450,9 @@ export function PackagesProjectEditor({
               id or a Package Page URL (last path segment is the id). Clear the
               field and save to unlink.
             </p>
-          </div>
+          </div>}
 
-          <div className="space-y-2 sm:col-span-2">
+          {!internalAuthor && <div className="space-y-2 sm:col-span-2">
             <Label>Preview assets folder</Label>
             <p className="break-all rounded-md border border-input bg-muted/40 px-3 py-2 font-mono text-xs text-foreground">
               {packShowcasePrefix(authorBucket, downloadKey) ?? "—"}
@@ -460,7 +462,7 @@ export function PackagesProjectEditor({
               Previews/. The linked marketplace item lists that folder. Choose a zip
               and link a Marketplace Item to turn the showcase on.
             </p>
-          </div>
+          </div>}
 
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="details-url">Package page</Label>
@@ -469,18 +471,18 @@ export function PackagesProjectEditor({
               value={detailsUrl}
               onChange={(e) => setDetailsUrl(e.target.value)}
               onBlur={() => {
-                if (marketplaceItemId.trim()) return;
+                if (internalAuthor || marketplaceItemId.trim()) return;
                 const parsed = parseMarketplaceItemIdInput(detailsUrl);
                 if (parsed != null) setMarketplaceItemId(String(parsed));
               }}
-              placeholder="https://motionflow.pro/item/{id}"
+              placeholder={internalAuthor ? "https://odin-pro.com" : "https://motionflow.pro/item/{id}"}
             />
             <p className="text-[12px] text-muted-foreground">
-              Next.js on the main site:{" "}
+              {internalAuthor ? "Optional package page on odin-pro.com. This author is only managed in Packages and is not listed on the Motionflow site." : <>Next.js on the main site:{" "}
               <code className="text-[11px]">/item/{"{id}"}</code>. Laravel catalog
               stays on author subdomains (
               <code className="text-[11px]">spunkram.motionflow.pro/item/…</code>
-              ).
+              ).</>}
             </p>
           </div>
 

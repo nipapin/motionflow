@@ -10,7 +10,7 @@ import {
 import { getR2Bucket, getR2Client } from "@/lib/r2-storage";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 
-const PACK_JSON_EXT = /\.(spunkram|motionflow)$/i;
+const PACK_JSON_EXT = /\.(spunkram|motionflow|odin)$/i;
 
 function resolveAuthorBucket(author: PackagesAuthor | null): string | null {
   const privateBucket = process.env.R2_BUCKET?.trim();
@@ -93,10 +93,11 @@ function normalizePackBody(raw: string): {
 } | null {
   let parsed: PackJsonBody;
   try {
-    parsed = JSON.parse(raw) as PackJsonBody;
+    parsed = JSON.parse(raw.replace(/^\uFEFF/, "")) as PackJsonBody;
   } catch {
     return null;
   }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
   const settings =
     parsed.settings && typeof parsed.settings === "object"
       ? (parsed.settings as Record<string, unknown>)
@@ -126,7 +127,7 @@ export type PackStructureResult =
     };
 
 /**
- * Load plaintext pack JSON (`*.spunkram` / `*.motionflow`) from R2 `{stem}/`
+ * Load plaintext pack JSON (`*.spunkram` / `*.motionflow` / `*.odin`) from R2 `{stem}/`
  * using the remote manifest to locate the file.
  */
 export async function loadPackStructureFromR2(opts: {

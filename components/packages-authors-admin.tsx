@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Check, Loader2, Save } from "lucide-react";
+import { R2BucketSelect } from "@/components/r2-bucket-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -215,24 +216,13 @@ export function PackagesAuthorsAdmin() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="author-bucket">R2 bucket</Label>
-                  <select
+                  <R2BucketSelect
                     id="author-bucket"
-                    className={cn(
-                      "border-input h-9 w-full rounded-md border bg-transparent px-3 font-mono text-sm outline-none",
-                      "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
-                      "disabled:cursor-not-allowed disabled:opacity-50",
-                    )}
                     value={r2Bucket}
-                    onChange={(e) => setR2Bucket(e.target.value)}
+                    onChange={setR2Bucket}
+                    options={bucketOptions}
                     disabled={busy || (bucketOptions.length === 0 && !r2Bucket)}
-                  >
-                    <option value="">— Not set —</option>
-                    {bucketOptions.map((b) => (
-                      <option key={b} value={b}>
-                        {b}
-                      </option>
-                    ))}
-                  </select>
+                  />
                   {bucketsError ? (
                     <p className="text-[13px] text-destructive">{bucketsError}</p>
                   ) : (

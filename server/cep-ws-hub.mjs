@@ -59,6 +59,7 @@ function makeRedis() {
 const CLIENT_AUTHOR = {
   "spunkram-cep": Number(process.env.SPUNKRAM_AUTHOR_ID) || 1691,
   "gal-cep": Number(process.env.PREMIERE_GAL_AUTHOR_ID) || 4141,
+  "odin-cep": 900000001,
 };
 
 /**

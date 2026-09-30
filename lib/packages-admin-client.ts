@@ -2,7 +2,9 @@
  * Client-safe author logos / seed ids (no server-only imports).
  * Labels may lag DB; prefer `/api/packages/authors` when live data is needed.
  */
-export type PackagesAuthorSlug = "premiere-gal" | "spunkram" | string;
+import { ODIN_PACKAGES_AUTHOR_ID } from "@/lib/odin-packages";
+
+export type PackagesAuthorSlug = "premiere-gal" | "spunkram" | "odin" | string;
 
 export type PackagesAuthorPublic = {
   id: number;
@@ -15,9 +17,16 @@ export type PackagesAuthorPublic = {
 const LOGO_BY_SLUG: Record<string, string> = {
   "premiere-gal": "/premiere-gal/assets/logo.png",
   spunkram: "/assets/spunkram.svg",
+  odin: "/assets/odin.webp",
 };
 
 export const PACKAGES_AUTHORS: PackagesAuthorPublic[] = [
+  {
+    id: ODIN_PACKAGES_AUTHOR_ID,
+    slug: "odin",
+    label: "Premiere Basics — Odin Pro",
+    logoUrl: LOGO_BY_SLUG.odin,
+  },
   {
     id: 4141,
     slug: "premiere-gal",

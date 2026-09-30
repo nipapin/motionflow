@@ -11,6 +11,7 @@ import {
   packagesProjectsTableName,
 } from "@/lib/packages-authors-db";
 import type { PackagesProjectHost } from "@/lib/packages-projects";
+import { ODIN_PACKAGES_AUTHOR_ID, ODIN_PACKAGES_SLUG } from "@/lib/odin-packages";
 
 type PackRow = RowDataPacket & {
   id: number;
@@ -80,8 +81,9 @@ async function automaticShowcasePrefix(itemId: number): Promise<string | null> {
        FROM \`${projects}\` p
        JOIN \`${authors}\` a ON a.id = p.author_id
       WHERE p.marketplace_item_id = ? AND p.deleted_at IS NULL
+        AND a.id <> ? AND a.slug <> ?
       ORDER BY p.id ASC`,
-    [itemId],
+    [itemId, ODIN_PACKAGES_AUTHOR_ID, ODIN_PACKAGES_SLUG],
   );
 
   const candidates = rows.filter((row) => packShowcasePrefix(row.r2_bucket, row.download_key));

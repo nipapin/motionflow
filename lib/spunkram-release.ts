@@ -14,7 +14,7 @@ export const SPUNKRAM_FFMPEG_KEYS = {
 } as const;
 
 /** R2 folder under `public/downloads/` for each CEP brand. */
-export type CepReleaseProduct = "spunkram" | "gal";
+export type CepReleaseProduct = "spunkram" | "gal" | "odin";
 
 export type SpunkramReleaseChannel = "stable" | "beta";
 
@@ -40,11 +40,14 @@ export type SpunkramVersionEntry = {
 export function cepProductFromClient(client?: string | null): CepReleaseProduct {
   const c = String(client || "").trim().toLowerCase();
   if (c === "gal-cep" || c === "gal") return "gal";
+  if (c === "odin-cep" || c === "odin") return "odin";
   return "spunkram";
 }
 
 export function cepProductZxpFile(product: CepReleaseProduct): string {
-  return product === "gal" ? "gal.zxp" : "spunkram.zxp";
+  if (product === "gal") return "gal.zxp";
+  if (product === "odin") return "odin.zxp";
+  return "spunkram.zxp";
 }
 
 export function cepProductZxpKey(product: CepReleaseProduct, version: string): string {

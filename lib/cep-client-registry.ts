@@ -1,4 +1,5 @@
 import "server-only";
+import { ODIN_CEP_CLIENT, ODIN_PACKAGES_AUTHOR_ID } from "@/lib/odin-packages";
 import { PREMIERE_GAL_AUTHOR_ID } from "@/lib/premiere-gal-paddle-config";
 import { PREMIEREGAL_SUBDOMAIN_HOST } from "@/lib/premiere-gal-paths";
 import { SPUNKRAM_AUTHOR_ID } from "@/lib/spunkram-paddle-config";
@@ -86,6 +87,23 @@ const REGISTRY: Record<string, CepClientConfig> = {
     pricingPath: "/",
     manageSubscriptionPath: "/profile/subscriptions?client=gal-cep",
   },
+  [ODIN_CEP_CLIENT]: {
+    client: ODIN_CEP_CLIENT,
+    authorId: ODIN_PACKAGES_AUTHOR_ID,
+    extensionName: "Odin Pro",
+    loginTitle: "Sign in to Odin Pro",
+    loginDescription:
+      "Odin Pro in Premiere Pro is asking to use your account.",
+    verificationPath: "/cep/login",
+    platformSubscription: false,
+    freeGenerationsLimit: 0,
+    editorGenerationsLimit: 0,
+    editorAiGenerationsLimit: 0,
+    subscribedGenerationsLimit: 0,
+    freePackSlots: 0,
+    pricingPath: "/",
+    manageSubscriptionPath: "/profile/subscriptions?client=odin-cep",
+  },
   "motionflow-davinci": {
     client: "motionflow-davinci",
     authorId: MOTIONFLOW_MARKETPLACE_AUTHOR_ID,
@@ -110,6 +128,8 @@ const REGISTRY: Record<string, CepClientConfig> = {
 export const DEFAULT_CEP_CLIENT = "spunkram-cep";
 
 export const GAL_CEP_CLIENT = "gal-cep";
+
+export { ODIN_CEP_CLIENT };
 
 export const MOTIONFLOW_DAVINCI_CLIENT = "motionflow-davinci";
 

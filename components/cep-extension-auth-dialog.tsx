@@ -48,6 +48,11 @@ const CLIENT_COPY: Record<string, { title: string; description: string }> = {
     description:
       "Gal Toolkit MAX in Premiere Pro / After Effects is asking to use your account.",
   },
+  "odin-cep": {
+    title: "Sign in to Odin Pro",
+    description:
+      "Odin Pro in Premiere Pro is asking to use your account.",
+  },
   "motionflow-davinci": {
     title: "Sign in to the Motion Flow DaVinci script",
     description:

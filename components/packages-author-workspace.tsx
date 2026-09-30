@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Package, Puzzle } from "lucide-react";
 import { ExtensionsUsersList } from "@/components/extensions-users-list";
+import { OdinUsersAdmin } from "@/components/odin-users-admin";
+import { ODIN_PACKAGES_AUTHOR_ID } from "@/lib/odin-packages";
 import { PackagesProjectList } from "@/components/packages-project-list";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -97,7 +99,7 @@ export function PackagesAuthorWorkspace({ authorId }: { authorId: number }) {
           <h1 className="text-3xl font-semibold tracking-tight">{label}</h1>
           <p className="mt-1 text-[15px] text-muted-foreground">
             {tab === "users"
-              ? "Users with active CEP devices for this author."
+              ? authorId === ODIN_PACKAGES_AUTHOR_ID ? "Accounts and extension access from Odin Pro." : "Users with active CEP devices for this author."
               : "CEP packages for this author"}
           </p>
         </div>
@@ -118,7 +120,7 @@ export function PackagesAuthorWorkspace({ authorId }: { authorId: number }) {
           <PackagesProjectList authorId={authorId} />
         </TabsContent>
         <TabsContent value="users" className="outline-none">
-          <ExtensionsUsersList authorId={authorId} />
+          {authorId === ODIN_PACKAGES_AUTHOR_ID ? <OdinUsersAdmin /> : <ExtensionsUsersList authorId={authorId} />}
         </TabsContent>
       </Tabs>
     </div>

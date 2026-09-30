@@ -1,7 +1,7 @@
 import "server-only";
 
 import { GetObjectCommand } from "@aws-sdk/client-s3";
-import { createRequire } from "node:module";
+import { ZipArchive } from "archiver";
 import { PassThrough, Readable, type Readable as NodeReadable } from "node:stream";
 import type { PackagesAuthor } from "@/lib/packages-admin";
 import type { PackagesProjectDto } from "@/lib/packages-projects";
@@ -9,13 +9,6 @@ import { resolvePackContentStem } from "@/lib/pack-showcase-prefix";
 import { getR2Bucket, getR2Client } from "@/lib/r2-storage";
 
 export { resolvePackContentStem };
-
-const nodeRequire = createRequire(import.meta.url);
-// CJS package; call signature from @types/archiver is awkward with NodeNext.
-const archiver = nodeRequire("archiver") as (
-  format: string,
-  options?: { zlib?: { level?: number } },
-) => import("archiver").Archiver;
 
 export type PackManifestEntry = {
   name?: string;
@@ -197,7 +190,7 @@ export async function buildPackDiffZip(opts: {
   const { toDownload, toDelete } = diffPackManifests(local, remote);
 
   const pass = new PassThrough();
-  const archive = archiver("zip", { zlib: { level: 5 } });
+  const archive = new ZipArchive({ zlib: { level: 5 } });
   archive.on("error", (err: Error) => {
     pass.destroy(err);
   });

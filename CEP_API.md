@@ -560,6 +560,7 @@ Hidden / soft-deleted packs are omitted from the market and return `NOT_FOUND` o
 |----------|--------|-----------------|
 | `spunkram-cep` | Spunkram (server registry) | Spunkram |
 | `gal-cep` | Premiere Gal / Gal Toolkit MAX (`4141`) | Gal Toolkit MAX |
+| `odin-cep` | Premiere Basics — Odin Pro (`900000001`) | Odin Pro |
 | `motionflow-davinci` | Motion Flow marketplace (`6`) | Motion Flow DaVinci |
 
 Unknown `client` → `400 UNKNOWN_CLIENT` on device login.

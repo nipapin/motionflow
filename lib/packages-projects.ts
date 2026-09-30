@@ -18,6 +18,7 @@ import {
 } from "@/lib/cep-events";
 import { motionflowNextItemUrl } from "@/lib/motionflow-urls";
 import { parseMarketplaceItemIdInput } from "@/lib/packages-marketplace-id";
+import { isInternalPackagesAuthor } from "@/lib/odin-packages";
 
 export type PackagesProjectHost = "PR" | "AE";
 
@@ -264,7 +265,7 @@ export async function createPackagesProject(opts: {
   const host =
     opts.host != null
       ? normalizeHost(String(opts.host))
-      : author.slug === "premiere-gal"
+      : author.slug === "premiere-gal" || author.slug === "odin"
         ? "PR"
         : "AE";
 
@@ -418,6 +419,8 @@ export async function updatePackagesProject(
     // Convenience: Package Page URL ending in /{id} fills marketplace_item_id.
     marketplace_item_id = parseMarketplaceItemIdInput(details_url);
   }
+
+  if (isInternalPackagesAuthor({ id: authorId })) marketplace_item_id = null;
 
   // Prefer Next bare /item/{id} on motionflow.pro when linking a market item.
   if (marketplace_item_id != null && !details_url) {

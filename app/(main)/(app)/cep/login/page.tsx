@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * Device-code Allow/Deny page for CEP / DaVinci clients.
- * Author clients keep their marketing-page dialog via redirect; platform
- * clients (e.g. motionflow-davinci) confirm here.
+ * Author storefronts keep their marketing-page dialog via redirect.
+ * Clients whose confirm page is `/cep/login` (Odin Pro, DaVinci) stay here.
  */
 export default async function CepLoginPage({
   searchParams,
@@ -21,7 +21,7 @@ export default async function CepLoginPage({
   const client = normalizeCepClient(clientRaw);
   const cfg = getCepClientConfig(client);
 
-  if (cfg?.platformSubscription) {
+  if (cfg?.platformSubscription || cfg?.verificationPath === "/cep/login") {
     return <CepLoginClient initialCode={code ?? ""} initialClient={client} />;
   }
 

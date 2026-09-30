@@ -23,6 +23,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { R2BucketSelect } from "@/components/r2-bucket-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -421,24 +422,13 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
           </div>
           <div className="min-w-0 flex-[1.4] space-y-2">
             <Label htmlFor="author-r2-bucket">R2 bucket</Label>
-            <select
+            <R2BucketSelect
               id="author-r2-bucket"
-              className={cn(
-                "border-input h-9 w-full rounded-md border bg-transparent px-3 font-mono text-sm outline-none",
-                "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
-                "disabled:cursor-not-allowed disabled:opacity-50",
-              )}
               value={r2Bucket}
-              onChange={(e) => setR2Bucket(e.target.value)}
+              onChange={setR2Bucket}
+              options={bucketOptions}
               disabled={settingsBusy || (bucketOptions.length === 0 && !r2Bucket)}
-            >
-              <option value="">— Not set —</option>
-              {bucketOptions.map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
-            </select>
+            />
             {bucketsError ? (
               <p className="text-[12px] text-destructive">{bucketsError}</p>
             ) : null}

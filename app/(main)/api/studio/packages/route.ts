@@ -53,7 +53,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ author, demos, objects, events, premieregalSources });
     }
 
-    const spunkramVersions = await listSpunkramVersionsFromR2().catch(() => []);
+    const spunkramVersions = author.slug === "spunkram"
+      ? await listSpunkramVersionsFromR2().catch(() => [])
+      : [];
     return NextResponse.json({ author, spunkramVersions, objects, events });
   } catch (err) {
     console.error("[studio/packages]", err);
