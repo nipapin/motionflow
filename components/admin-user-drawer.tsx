@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { CreditCard, Loader2, User } from "lucide-react";
+import { CreditCard, Loader2, Trash2, User } from "lucide-react";
 import type {
   AdminUserDetail,
   AdminUserPurchaseRow,
@@ -19,6 +19,15 @@ import {
 } from "@/components/admin-user-settings-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Drawer,
   DrawerContent,
@@ -59,21 +68,27 @@ type Payload = {
   user: AdminUserDetail;
   purchases: AdminUserPurchaseRow[];
   subscriptions: AdminUserSubscriptionRow[];
+  canDelete: boolean;
 };
 
 export function AdminUserDrawer({
   userId,
   onOpenChange,
   onUserUpdated,
+  onUserDeleted,
 }: {
   userId: number | null;
   onOpenChange: (open: boolean) => void;
   onUserUpdated: (user: AdminUserDetail) => void;
+  onUserDeleted: (id: number) => void;
 }) {
   const open = userId != null;
   const [payload, setPayload] = useState<Payload | null>(null);
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<DrawerTab>("profile");
   const [profileDirty, setProfileDirty] = useState(false);
@@ -89,6 +104,7 @@ export function AdminUserDrawer({
       const data = (await res.json().catch(() => ({}))) as Payload & {
         error?: string;
       };
+      if (signal?.aborted) return;
       if (!res.ok) {
         setError(data.error ?? "Could not load user");
         setPayload(null);
@@ -98,6 +114,7 @@ export function AdminUserDrawer({
         user: data.user,
         purchases: data.purchases ?? [],
         subscriptions: data.subscriptions ?? [],
+        canDelete: data.canDelete === true,
       });
     } catch (err) {
       if (signal?.aborted) return;
@@ -110,8 +127,10 @@ export function AdminUserDrawer({
   }, []);
 
   useEffect(() => {
+    setPayload(null);
+    setDeleteOpen(false);
+    setDeleteError(null);
     if (userId == null) {
-      setPayload(null);
       setError(null);
       setProfileDirty(false);
       setEntitlementsPending(false);
@@ -128,7 +147,7 @@ export function AdminUserDrawer({
   const canSave = profileDirty || entitlementsPending;
 
   const handleSave = async () => {
-    if (saving || !canSave) return;
+    if (saving || deleting || !canSave) return;
     setSaving(true);
     try {
       const profileOk = await settingsRef.current?.save();
@@ -141,8 +160,44 @@ export function AdminUserDrawer({
     }
   };
 
+  const handleDelete = async () => {
+    if (!user || !payload?.canDelete || deleting || saving) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: true }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setDeleteError(
+          data.error === "SELF_DELETE_FORBIDDEN"
+            ? "You cannot delete your own account."
+            : data.error === "FORBIDDEN"
+              ? "You no longer have permission to delete accounts."
+              : data.error === "NOT_FOUND"
+                ? "This account no longer exists. Close the card and refresh the list."
+                : "Could not delete the account. Try again.",
+        );
+        return;
+      }
+      setDeleteOpen(false);
+      toast.success("Account deleted");
+      onUserDeleted(user.id);
+    } catch (err) {
+      console.error("[admin-user-drawer DELETE]", err);
+      setDeleteError("Network error. Try again.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
-    <Drawer direction="right" open={open} onOpenChange={onOpenChange}>
+    <Drawer direction="right" open={open} onOpenChange={(next) => {
+      if (!deleting && !deleteOpen) onOpenChange(next);
+    }}>
       <DrawerContent className="h-full overflow-hidden">
         <DrawerHeader className="border-b border-border/60">
           <DrawerTitle className="flex flex-wrap items-center gap-2">
@@ -203,7 +258,7 @@ export function AdminUserDrawer({
                   key={user.id}
                   ref={settingsRef}
                   user={user}
-                  disabled={saving}
+                  disabled={saving || deleting}
                   onDirtyChange={setProfileDirty}
                   onSaved={(next) => {
                     setPayload((prev) => (prev ? { ...prev, user: next } : prev));
@@ -222,7 +277,7 @@ export function AdminUserDrawer({
                   userId={user.id}
                   purchases={payload.purchases}
                   subscriptions={payload.subscriptions}
-                  disabled={saving}
+                  disabled={saving || deleting}
                   onPendingChange={setEntitlementsPending}
                   onChanged={() => {
                     if (userId != null) void load(userId);
@@ -237,7 +292,21 @@ export function AdminUserDrawer({
           <DrawerFooter className="border-t border-border/60 sm:flex-row sm:justify-end">
             <Button
               type="button"
-              disabled={saving || !canSave}
+              variant="destructive"
+              className="sm:mr-auto"
+              disabled={busy || saving || deleting || !payload.canDelete}
+              title={!payload.canDelete ? "You cannot delete your own account" : undefined}
+              onClick={() => {
+                setDeleteError(null);
+                setDeleteOpen(true);
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete account
+            </Button>
+            <Button
+              type="button"
+              disabled={saving || deleting || !canSave}
               onClick={() => void handleSave()}
             >
               {saving ? "Saving…" : "Save changes"}
@@ -245,6 +314,37 @@ export function AdminUserDrawer({
           </DrawerFooter>
         ) : null}
       </DrawerContent>
+      <AlertDialog open={deleteOpen} onOpenChange={(next) => {
+        if (!deleting) setDeleteOpen(next);
+      }}>
+        <AlertDialogContent className="border-border bg-card">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete account?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Permanently delete {user?.email} from the database? The user will lose
+              access to their account. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Purchase and payment history will be kept. Any recurring billing must
+            be cancelled separately in Paddle.
+          </p>
+          {deleteError ? (
+            <p role="alert" className="text-sm text-destructive">{deleteError}</p>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleting || !user || !payload?.canDelete}
+              onClick={() => void handleDelete()}
+            >
+              {deleting ? "Deleting…" : "Delete account"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Drawer>
   );
 }

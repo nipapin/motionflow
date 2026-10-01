@@ -247,6 +247,7 @@ export function AdminUsersSearch({ initial }: { initial: SearchResponse }) {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SearchResponse>(initial);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [refresh, setRefresh] = useState(0);
   const skipInitialFetch = useRef(true);
   const qRef = useRef(q);
 
@@ -298,6 +299,7 @@ export function AdminUsersSearch({ initial }: { initial: SearchResponse }) {
           signal: ac.signal,
         });
         const data = (await res.json().catch(() => ({}))) as SearchResponse;
+        if (ac.signal.aborted) return;
         if (!res.ok) {
           setError(data.error ?? "Search failed");
           return;
@@ -324,6 +326,7 @@ export function AdminUsersSearch({ initial }: { initial: SearchResponse }) {
     registeredTo,
     sort,
     dir,
+    refresh,
   ]);
 
   const totalPages = useMemo(
@@ -387,6 +390,19 @@ export function AdminUsersSearch({ initial }: { initial: SearchResponse }) {
           : row,
       ),
     }));
+  };
+
+  const onUserDeleted = (id: number) => {
+    const total = Math.max(0, result.total - 1);
+    const lastPage = Math.max(1, Math.ceil(total / (result.pageSize || ADMIN_USERS_PAGE_SIZE)));
+    setSelectedId(null);
+    setResult((prev) => ({
+      ...prev,
+      users: prev.users.filter((row) => row.id !== id),
+      total,
+    }));
+    setPage((current) => Math.min(current, lastPage));
+    setRefresh((current) => current + 1);
   };
 
   return (
@@ -616,6 +632,7 @@ export function AdminUsersSearch({ initial }: { initial: SearchResponse }) {
           if (!open) setSelectedId(null);
         }}
         onUserUpdated={onUserUpdated}
+        onUserDeleted={onUserDeleted}
       />
     </div>
   );

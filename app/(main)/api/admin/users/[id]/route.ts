@@ -10,7 +10,11 @@ import {
   listAdminUserPurchases,
   listAdminUserSubscriptions,
 } from "@/lib/admin-user-grants";
-import { adminUserPatchSchema } from "@/lib/validations/admin-users";
+import {
+  adminUserDeleteSchema,
+  adminUserPatchSchema,
+} from "@/lib/validations/admin-users";
+import { AdminUserDeletionError, deleteAdminUser } from "@/lib/admin-user-deletion";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,7 +24,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await getSessionUser();
-  if (!isAffiliateAdmin(session)) {
+  if (!session || !isAffiliateAdmin(session)) {
     return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
   }
 
@@ -38,7 +42,7 @@ export async function GET(
       listAdminUserPurchases(id),
       listAdminUserSubscriptions(id),
     ]);
-    return NextResponse.json({ user, purchases, subscriptions });
+    return NextResponse.json({ user, purchases, subscriptions, canDelete: session.id !== id });
   } catch (err) {
     console.error("[admin/users GET id]", err);
     return NextResponse.json({ error: "SERVER_ERROR" }, { status: 500 });
@@ -89,6 +93,45 @@ export async function PATCH(
       );
     }
     console.error("[admin/users PATCH]", err);
+    return NextResponse.json({ error: "SERVER_ERROR" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await getSessionUser();
+  if (!session || !isAffiliateAdmin(session)) {
+    return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+  }
+
+  const id = Number((await params).id);
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    return NextResponse.json({ error: "MISSING_PARAMS" }, { status: 400 });
+  }
+
+  let json: unknown;
+  try {
+    json = await req.json();
+  } catch {
+    return NextResponse.json({ error: "INVALID_JSON" }, { status: 400 });
+  }
+  if (!adminUserDeleteSchema.safeParse(json).success) {
+    return NextResponse.json({ error: "CONFIRMATION_REQUIRED" }, { status: 400 });
+  }
+
+  try {
+    await deleteAdminUser(id, session.id);
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    if (err instanceof AdminUserDeletionError) {
+      return NextResponse.json(
+        { error: err.code },
+        { status: err.code === "NOT_FOUND" ? 404 : 409 },
+      );
+    }
+    console.error("[admin/users DELETE]", err);
     return NextResponse.json({ error: "SERVER_ERROR" }, { status: 500 });
   }
 }
