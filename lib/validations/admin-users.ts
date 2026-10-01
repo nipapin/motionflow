@@ -22,6 +22,8 @@ export const adminUserPatchSchema = z
 
 export type AdminUserPatchInput = z.infer<typeof adminUserPatchSchema>;
 
+export const adminUserDeleteSchema = z.object({ confirm: z.literal(true) }).strict();
+
 export const adminUserGrantSubscriptionSchema = z
   .discriminatedUnion("kind", [
     z.object({
