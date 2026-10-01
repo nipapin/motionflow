@@ -31,7 +31,7 @@ function adminSecretMatches(got: string | null): boolean {
  * - version (required)
  * - zxpUrl / zxp_url (required)
  * - channel: "stable" | "beta" (default from version)
- * - product: "spunkram" | "gal" (optional; panels filter by brand)
+ * - product: "spunkram" | "gal" | "odin" (optional; panels filter by brand)
  * - changelog?
  * - publishedAt / published_at?
  */
@@ -67,8 +67,8 @@ export async function POST(req: NextRequest) {
         : "stable";
 
   const rawProduct = asString(body.product).toLowerCase();
-  const product: "spunkram" | "gal" | undefined =
-    rawProduct === "gal" || rawProduct === "spunkram" ? rawProduct : undefined;
+  const product: "spunkram" | "gal" | "odin" | undefined =
+    rawProduct === "gal" || rawProduct === "spunkram" || rawProduct === "odin" ? rawProduct : undefined;
 
   const publishedAt =
     asString(body.publishedAt) ||

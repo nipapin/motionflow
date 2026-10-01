@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { publishSpunkramZxp } from "@/lib/spunkram-release";
+import { publishCepProductZxp, type CepReleaseProduct } from "@/lib/spunkram-release";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,14 +49,18 @@ function repoAllowed(fullName: string | undefined): boolean {
   return (fullName || "").toLowerCase() === expected.toLowerCase();
 }
 
-function pickZxpAsset(assets: GitHubReleaseAsset[] | undefined): GitHubReleaseAsset | null {
+function pickZxpAsset(assets: GitHubReleaseAsset[] | undefined, product: CepReleaseProduct, branded: boolean): GitHubReleaseAsset | null {
   if (!assets?.length) return null;
+  if (branded) {
+    const extensionId = { spunkram: "com.spunkramlibrary.cep", gal: "com.premieregal.cep", odin: "com.odinpro.cep" }[product];
+    return assets.find(a => [`${extensionId}.zxp`, `${product}.zxp`].includes((a.name || "").toLowerCase())) || null;
+  }
   const zxp = assets.find((a) => (a.name || "").toLowerCase().endsWith(".zxp"));
   return zxp || null;
 }
 
 /**
- * POST /api/github/webhook — GitHub Releases → R2 Spunkram ZXP + latest.json.
+ * POST /api/github/webhook — GitHub Releases → brand-specific R2 ZXP + channel pointer.
  * Verify X-Hub-Signature-256 with GITHUB_WEBHOOK_SECRET.
  */
 export async function POST(request: Request) {
@@ -106,15 +110,20 @@ export async function POST(request: Request) {
   }
 
   const tag = release.tag_name || "";
-    const version = tag.replace(/^v/i, "");
-  if (!version) {
+  if (!tag) {
     return NextResponse.json({ ok: true, skipped: "no_tag" });
+  }
+  const branded = tag.match(/^(spunkram|gal|odin)-(.+)$/i);
+  const product = (branded?.[1]?.toLowerCase() || "spunkram") as CepReleaseProduct;
+  const version = (branded?.[2] || tag).replace(/^v/i, "");
+  if (!/^\d+\.\d+\.\d+(?:-beta\.\d+)?$/.test(version)) {
+    return NextResponse.json({ ok: true, skipped: "invalid_tag" });
   }
 
   const channel =
     release.prerelease || /-beta/i.test(version) ? ("beta" as const) : ("stable" as const);
 
-  const asset = pickZxpAsset(release.assets);
+  const asset = pickZxpAsset(release.assets, product, Boolean(branded));
   if (!asset?.browser_download_url && !asset?.url) {
     console.warn(`[github-webhook] No .zxp asset on release ${tag}`);
     return NextResponse.json({ ok: true, skipped: "no_zxp_asset" });
@@ -137,7 +146,8 @@ export async function POST(request: Request) {
     const ab = await res.arrayBuffer();
     const body = Buffer.from(ab);
 
-    const manifest = await publishSpunkramZxp({
+    const manifest = await publishCepProductZxp({
+      product,
       version,
       zxpBody: body,
       changelog: release.body || "",
@@ -146,10 +156,11 @@ export async function POST(request: Request) {
     });
 
     console.info(
-      `[github-webhook] Published Spunkram ${manifest.version} (${channel}) → ${manifest.zxpUrl}`,
+      `[github-webhook] Published ${product} ${manifest.version} (${channel}) → ${manifest.zxpUrl}`,
     );
     return NextResponse.json({
       ok: true,
+      product,
       version: manifest.version,
       zxpUrl: manifest.zxpUrl,
       channel,

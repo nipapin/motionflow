@@ -198,6 +198,11 @@ test("Odin JSON is loaded from manifests; legacy binary and null are rejected", 
     pack = invalid;
     assert.equal((await loadPackStructureFromR2({ author, project: { downloadKey: "packs/odin.zip" } })).ok, false);
   }
+  pack = JSON.stringify({ settings: { main: { version: "DEMO" }, contents: { Transitions: {} } } });
+  const demo = await loadPackStructureFromR2({ author, project: { id: 7, name: "Odin", downloadKey: "odin-pro-pr-free.zip" } });
+  assert.equal(demo.ok, true);
+  assert.equal(demo.version, "DEMO");
+  assert.deepEqual(demo.content, { Transitions: {} });
 });
 
 test("registering Odin does not expose its bucket through public showcases", async () => {

@@ -102,7 +102,7 @@ function normalizePackBody(raw: string): {
     parsed.settings && typeof parsed.settings === "object"
       ? (parsed.settings as Record<string, unknown>)
       : null;
-  const contentRaw = parsed.content ?? parsed.contents ?? parsed.structure;
+  const contentRaw = parsed.content ?? parsed.contents ?? parsed.structure ?? settings?.contents;
   const content =
     contentRaw && typeof contentRaw === "object"
       ? (contentRaw as Record<string, unknown>)
