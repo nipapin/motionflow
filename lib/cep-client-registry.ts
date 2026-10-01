@@ -123,6 +123,23 @@ const REGISTRY: Record<string, CepClientConfig> = {
     pricingPath: "/pricing?client=motionflow-davinci",
     manageSubscriptionPath: "/profile/subscriptions?client=motionflow-davinci",
   },
+  "motionflow-adobe": {
+    client: "motionflow-adobe",
+    authorId: MOTIONFLOW_MARKETPLACE_AUTHOR_ID,
+    extensionName: "Motion Flow for Adobe",
+    loginTitle: "Sign in to Motion Flow for Adobe",
+    loginDescription:
+      "The Motion Flow extension in After Effects or Premiere Pro is asking to use your account.",
+    verificationPath: "/cep/login",
+    platformSubscription: true,
+    freeGenerationsLimit: 0,
+    editorGenerationsLimit: 0,
+    editorAiGenerationsLimit: 100,
+    subscribedGenerationsLimit: 100,
+    freePackSlots: 0,
+    pricingPath: "/pricing?client=motionflow-adobe",
+    manageSubscriptionPath: "/profile/subscriptions?client=motionflow-adobe",
+  },
 };
 
 export const DEFAULT_CEP_CLIENT = "spunkram-cep";

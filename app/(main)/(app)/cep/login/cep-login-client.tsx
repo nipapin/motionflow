@@ -57,6 +57,11 @@ const CLIENT_COPY: Record<string, { title: string; description: string }> = {
     description:
       "The Motion Flow script in DaVinci Resolve is asking to use your account.",
   },
+  "motionflow-adobe": {
+    title: "Sign in to Motion Flow for Adobe",
+    description:
+      "The Motion Flow extension in After Effects or Premiere Pro is asking to use your account.",
+  },
 };
 
 export function CepLoginClient({
