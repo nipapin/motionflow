@@ -17,7 +17,7 @@ Spunkram/Gal/Odin сохраняют собственные квоты и releas
 3. Проверить SHA-256 ZIP и опубликовать отдельный stream:
 
    ```powershell
-   node --env-file=.env scripts/publish-motionflow-installer.mjs --version=0.3.0 --zip=../CEP/motionflow-cep/dist/MotionFlow-Adobe-CEP-unsigned.zip --ffmpeg=../CEP/motionflow-cep/dist/ffmpeg.exe --setup=../CEP/motionflow-cep/dist/MotionFlow-Setup-0.3.0.exe --dry-run
+   node --env-file=.env scripts/publish-motionflow-installer.mjs --version=0.3.2 --zip=../CEP/motionflow-cep/dist/MotionFlow-Adobe-CEP-unsigned.zip --ffmpeg=../CEP/motionflow-cep/dist/ffmpeg.exe --setup=../CEP/motionflow-cep/dist/MotionFlow-Setup-0.3.2.exe --dry-run
    ```
 
    Затем повторить без `--dry-run`. Скрипт использует существующие R2 env;
@@ -28,7 +28,7 @@ Spunkram/Gal/Odin сохраняют собственные квоты и releas
    переключает `public/downloads/motionflow/installer/latest.json` и
    `public/downloads/motionflow/latest.json`. ZIP остаётся совместимым с updater.
    `--dry-run` только рассчитывает manifest и ничего не публикует.
-4. GitHub Release с тегом `motionflow-0.3.0` и asset
+4. GitHub Release с тегом `motionflow-0.3.2` и asset
    `MotionFlow-Adobe-CEP-unsigned.zip`. CEP Windows workflow создаёт assets.
    Подключить существующий `/api/github/webhook` с `GITHUB_WEBHOOK_SECRET`
    к `motionflowdesign-jpg/motionflow-adobe-cep`, событие Releases.
@@ -67,7 +67,9 @@ WebView2 Runtime — предпосылка графического режим�
 доступ к caption styles и обновление между двумя открытыми Adobe хостами.
 В новом релизе использовать новую версию: повторная запись ZIP той же версии
 под immutable URL не должна заменять выпущенный архив. Для rollback выпустить
-новую версию с исправлением или переустановить сохранённый Setup локально.
+новую версию с исправлением или восстановить сохранённую панель из
+`install-backups` при закрытых Adobe приложениях. Онлайн-Setup всегда
+скачивает текущий release; старый EXE не фиксирует старую версию payload.
 macOS installer: план находится в CEP `docs/macos-installer-plan.md`.
 
 Локальная сборка не подтверждает production-деплой. Публикация R2 и настройка
