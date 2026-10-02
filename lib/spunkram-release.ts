@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 
 import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand } from "@aws-sdk/client-s3";
 import { publishCepExtensionUpdate } from "@/lib/cep-events";
@@ -14,7 +15,7 @@ export const SPUNKRAM_FFMPEG_KEYS = {
 } as const;
 
 /** R2 folder under `public/downloads/` for each CEP brand. */
-export type CepReleaseProduct = "spunkram" | "gal" | "odin";
+export type CepReleaseProduct = "spunkram" | "gal" | "odin" | "motionflow";
 
 export type SpunkramReleaseChannel = "stable" | "beta";
 
@@ -25,6 +26,7 @@ export type SpunkramLatestManifest = {
   publishedAt: string;
   channel?: SpunkramReleaseChannel;
   product?: CepReleaseProduct;
+  sha256?: string;
   ffmpeg: {
     win: string;
     mac: string;
@@ -39,12 +41,14 @@ export type SpunkramVersionEntry = {
 
 export function cepProductFromClient(client?: string | null): CepReleaseProduct {
   const c = String(client || "").trim().toLowerCase();
+  if (c === "motionflow-adobe" || c === "motionflow") return "motionflow";
   if (c === "gal-cep" || c === "gal") return "gal";
   if (c === "odin-cep" || c === "odin") return "odin";
   return "spunkram";
 }
 
 export function cepProductZxpFile(product: CepReleaseProduct): string {
+  if (product === "motionflow") return "motionflow.zip";
   if (product === "gal") return "gal.zxp";
   if (product === "odin") return "odin.zxp";
   return "spunkram.zxp";
@@ -148,6 +152,7 @@ export async function publishCepProductZxp(opts: {
     channel,
     product,
   });
+  manifest.sha256 = createHash("sha256").update(opts.zxpBody).digest("hex");
 
   await client.send(
     new PutObjectCommand({

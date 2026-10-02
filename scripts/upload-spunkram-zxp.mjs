@@ -2,7 +2,7 @@
 /**
  * Upload a CEP .zxp to the public R2 bucket and refresh the channel pointer.
  *
- * Keys (product = spunkram | gal | odin):
+ * Keys (product = spunkram | gal | odin | motionflow):
  *   public/downloads/{product}/{version}/{product}.zxp
  *   public/downloads/{product}/latest.json   (--channel=stable, default)
  *   public/downloads/{product}/beta.json     (--channel=beta)
@@ -11,12 +11,15 @@
  *   node --env-file=.env scripts/upload-spunkram-zxp.mjs --zxp=./spunkram.zxp --version=0.1.0
  *   node --env-file=.env scripts/upload-spunkram-zxp.mjs --product=gal --zxp=./gal.zxp --version=0.1.0
  *   node --env-file=.env scripts/upload-spunkram-zxp.mjs --product=odin --zxp=./odin.zxp --version=1.0.0
+ *   node --env-file=.env scripts/upload-spunkram-zxp.mjs --product=motionflow --zxp=./MotionFlow-Adobe-CEP-unsigned.zip --version=0.2.0
+ * Motion Flow stores motionflow.zip; the other products store signed .zxp.
  *   node --env-file=.env scripts/upload-spunkram-zxp.mjs --zxp=./x.zxp --version=0.1.1-beta.1 --channel=beta
  *   node --env-file=.env scripts/upload-spunkram-zxp.mjs --dry-run --zxp=./x.zxp --version=0.1.0
  */
 
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { createHash } from "node:crypto";
 
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
@@ -26,7 +29,7 @@ function parseArgs(argv) {
     version: "",
     changelog: "",
     channel: "", // stable | beta | auto
-    product: "spunkram", // spunkram | gal | odin
+    product: "spunkram", // spunkram | gal | odin | motionflow
     dryRun: false,
   };
   for (const arg of argv.slice(2)) {
@@ -39,7 +42,7 @@ function parseArgs(argv) {
     else if (arg === "--help" || arg === "-h") {
       console.log(
         "Usage: node --env-file=.env scripts/upload-spunkram-zxp.mjs " +
-          "--zxp=<file.zxp> --version=x.y.z [--product=spunkram|gal|odin] [--channel=stable|beta] [--changelog=…] [--dry-run]",
+          "--zxp=<file.zxp|file.zip> --version=x.y.z [--product=spunkram|gal|odin|motionflow] [--channel=stable|beta] [--changelog=…] [--dry-run]",
       );
       process.exit(0);
     } else {
@@ -101,8 +104,8 @@ function resolveChannel(explicit, version) {
 
 function resolveProduct(raw) {
   const p = String(raw || "spunkram").trim().toLowerCase();
-  if (["spunkram", "gal", "odin"].includes(p)) return p;
-  throw new Error(`Invalid --product=${raw} (use spunkram|gal|odin)`);
+  if (["spunkram", "gal", "odin", "motionflow"].includes(p)) return p;
+  throw new Error(`Invalid --product=${raw} (use spunkram|gal|odin|motionflow)`);
 }
 
 async function main() {
@@ -118,7 +121,7 @@ async function main() {
   const zxpPath = path.resolve(opts.zxp);
   await stat(zxpPath);
 
-  const zxpFile = `${product}.zxp`;
+  const zxpFile = product === "motionflow" ? "motionflow.zip" : `${product}.zxp`;
   const zxpKey = `public/downloads/${product}/${version}/${zxpFile}`;
   const pointerKey =
     channel === "beta"
@@ -136,6 +139,7 @@ async function main() {
     channel,
     product,
     ffmpeg,
+    sha256: createHash("sha256").update(await readFile(zxpPath)).digest("hex"),
   };
 
   if (opts.dryRun) {

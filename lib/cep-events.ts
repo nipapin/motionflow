@@ -31,7 +31,7 @@ export type CepExtensionUpdatePayload = {
   channel: "stable" | "beta";
   published_at: string;
   /** Which brand ZXP was published (`spunkram` | `gal`). Older notifies omit this. */
-  product?: "spunkram" | "gal" | "odin";
+  product?: "spunkram" | "gal" | "odin" | "motionflow";
   ts: number;
 };
 

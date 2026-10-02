@@ -46,12 +46,14 @@ function verifyGitHubSignature(rawBody: string, signatureHeader: string | null, 
 function repoAllowed(fullName: string | undefined): boolean {
   const expected = process.env.GITHUB_SPUNKRAM_REPO?.trim();
   if (!expected) return true; // unset = accept any (dev); set in prod
-  return (fullName || "").toLowerCase() === expected.toLowerCase();
+  const actual = (fullName || "").toLowerCase();
+  return actual === expected.toLowerCase() || actual === "motionflowdesign-jpg/motionflow-adobe-cep";
 }
 
 function pickZxpAsset(assets: GitHubReleaseAsset[] | undefined, product: CepReleaseProduct, branded: boolean): GitHubReleaseAsset | null {
   if (!assets?.length) return null;
   if (branded) {
+    if (product === "motionflow") return assets.find(a => ["motionflow.zip", "motionflow-adobe-cep-unsigned.zip"].includes((a.name || "").toLowerCase())) || null;
     const extensionId = { spunkram: "com.spunkramlibrary.cep", gal: "com.premieregal.cep", odin: "com.odinpro.cep" }[product];
     return assets.find(a => [`${extensionId}.zxp`, `${product}.zxp`].includes((a.name || "").toLowerCase())) || null;
   }
@@ -113,8 +115,12 @@ export async function POST(request: Request) {
   if (!tag) {
     return NextResponse.json({ ok: true, skipped: "no_tag" });
   }
-  const branded = tag.match(/^(spunkram|gal|odin)-(.+)$/i);
+  const branded = tag.match(/^(spunkram|gal|odin|motionflow)-(.+)$/i);
   const product = (branded?.[1]?.toLowerCase() || "spunkram") as CepReleaseProduct;
+  // The dedicated panel repository cannot publish another author's extension.
+  if (payload.repository?.full_name?.toLowerCase() === "motionflowdesign-jpg/motionflow-adobe-cep" && product !== "motionflow") {
+    return NextResponse.json({ ok: true, skipped: "product" });
+  }
   const version = (branded?.[2] || tag).replace(/^v/i, "");
   if (!/^\d+\.\d+\.\d+(?:-beta\.\d+)?$/.test(version)) {
     return NextResponse.json({ ok: true, skipped: "invalid_tag" });

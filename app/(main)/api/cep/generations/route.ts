@@ -67,6 +67,9 @@ async function handleStatus(req: NextRequest) {
       const cfg =
         getCepClientConfig(cepUser.client) ??
         requireCepClientConfig("spunkram-cep");
+      if (cfg.platformSubscription) {
+        return NextResponse.json({ authenticated: true, source: "cep-bearer", ...await getGenerationsStatus(cepUser.id) });
+      }
       const authorSub = await getActiveAuthorSubscription(
         cepUser.id,
         cfg.authorId,

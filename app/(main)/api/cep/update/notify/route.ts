@@ -67,8 +67,8 @@ export async function POST(req: NextRequest) {
         : "stable";
 
   const rawProduct = asString(body.product).toLowerCase();
-  const product: "spunkram" | "gal" | "odin" | undefined =
-    rawProduct === "gal" || rawProduct === "spunkram" || rawProduct === "odin" ? rawProduct : undefined;
+  const product: "spunkram" | "gal" | "odin" | "motionflow" | undefined =
+    rawProduct === "gal" || rawProduct === "spunkram" || rawProduct === "odin" || rawProduct === "motionflow" ? rawProduct : undefined;
 
   const publishedAt =
     asString(body.publishedAt) ||

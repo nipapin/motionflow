@@ -25,12 +25,12 @@ function route(relative, mocks, fetchMock = () => assert.fail("Unexpected HTTP r
   return module.exports;
 }
 
-test("uploader dry-run keeps all three products and stable/beta pointers isolated", () => {
+test("uploader dry-run keeps all four products and stable/beta pointers isolated", () => {
   const directory = mkdtempSync(path.join(os.tmpdir(), "cep-zxp-test-"));
   const zxp = path.join(directory, "sample.zxp");
   writeFileSync(zxp, "test archive");
   try {
-    for (const product of ["spunkram", "gal", "odin"]) {
+    for (const product of ["spunkram", "gal", "odin", "motionflow"]) {
       for (const channel of ["stable", "beta"]) {
         const version = `1.2.3${channel === "beta" ? "-beta.1" : ""}`;
         const result = spawnSync(process.execPath, ["scripts/upload-spunkram-zxp.mjs", `--product=${product}`, `--zxp=${zxp}`, `--version=${version}`, "--dry-run"], {
@@ -41,7 +41,8 @@ test("uploader dry-run keeps all three products and stable/beta pointers isolate
         assert.equal(manifest.product, product);
         assert.equal(manifest.channel, channel);
         assert.equal(manifest.version, version);
-        assert.equal(manifest.zxpUrl, `https://cdn.example.test/public/downloads/${product}/${version}/${product}.zxp`);
+        assert.equal(manifest.zxpUrl, `https://cdn.example.test/public/downloads/${product}/${version}/${product}.${product === "motionflow" ? "zip" : "zxp"}`);
+        assert.match(manifest.sha256, /^[a-f0-9]{64}$/);
         assert.ok(result.stdout.includes(`public/downloads/${product}/${channel === "beta" ? "beta" : "latest"}.json`));
       }
     }
@@ -62,7 +63,7 @@ test("release notify preserves the Odin product for event filtering", async () =
       "@/lib/cep-events": { publishCepExtensionUpdate: async event => { events.push(event); return true; } },
       "@/lib/auth/resolve-captions-user": { requireCaptionsAuth: () => assert.fail("Admin secret should authenticate") },
     });
-    for (const product of ["spunkram", "gal", "odin"]) {
+    for (const product of ["spunkram", "gal", "odin", "motionflow"]) {
       const response = await POST(new Request("https://example.test/api/cep/update/notify", {
         method: "POST", headers: { "Content-Type": "application/json", "x-motionflow-admin-secret": "test-admin-secret" },
         body: JSON.stringify({ product, version: "1.0.0", zxpUrl: `https://cdn.example.test/${product}.zxp` }),
@@ -88,8 +89,8 @@ test("GitHub releases select the tagged brand's ZXP and strip its prefix from th
         return { version: release.version, zxpUrl: `https://cdn.example.test/${release.product}.zxp` };
       } },
     }, async url => { downloads.push(url); return new Response("test archive"); });
-    const send = (tag, assets, signature = null) => {
-      const body = JSON.stringify({ action: "published", repository: { full_name: process.env.GITHUB_SPUNKRAM_REPO || "test/cep" }, release: { tag_name: tag, assets } });
+    const send = (tag, assets, signature = null, repo = process.env.GITHUB_SPUNKRAM_REPO || "test/cep") => {
+      const body = JSON.stringify({ action: "published", repository: { full_name: repo }, release: { tag_name: tag, assets } });
       return POST(new Request("https://example.test/api/github/webhook", {
         method: "POST", body, headers: { "x-github-event": "release", "x-hub-signature-256": signature || `sha256=${createHmac("sha256", "test-webhook-secret").update(body).digest("hex")}` },
       }));
@@ -109,6 +110,12 @@ test("GitHub releases select the tagged brand's ZXP and strip its prefix from th
     await send("v1.2.3", assets);
     assert.equal(publications.at(-1).product, "spunkram");
     assert.equal(publications.at(-1).version, "1.2.3");
+    const mfAssets = [{ name:"MotionFlow-Adobe-CEP-unsigned.zip", browser_download_url:"https://github.example.test/motionflow.zip" }];
+    const mfResponse = await send("motionflow-0.2.0", mfAssets, null, "motionflowdesign-jpg/motionflow-adobe-cep");
+    assert.equal((await mfResponse.json()).product,"motionflow");
+    assert.equal(publications.at(-1).version,"0.2.0");
+    assert.equal(downloads.at(-1),"https://github.example.test/motionflow.zip");
+    assert.equal((await (await send("odin-1.0.0", assets, null, "motionflowdesign-jpg/motionflow-adobe-cep")).json()).skipped,"product");
     const count = publications.length;
     assert.equal((await (await send("odin-1.0.0", [assets[0]])).json()).skipped, "no_zxp_asset");
     assert.equal((await (await send("unknown-1.0.0", assets)).json()).skipped, "invalid_tag");

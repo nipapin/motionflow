@@ -153,6 +153,7 @@ export async function userCanDownloadCaptionProject(
     const cfg =
       getCepClientConfig(user.cepClient || "spunkram-cep") ??
       requireCepClientConfig("spunkram-cep");
+    if (cfg.platformSubscription) return hasActiveMotionflowSubscription(user.id);
     const sub = await getActiveAuthorSubscription(user.id, cfg.authorId);
     return sub.active;
   }

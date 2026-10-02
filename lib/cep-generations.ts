@@ -76,6 +76,9 @@ export async function generationsStatusForResolvedUser(
   if (!isBillableCepUser(user)) return emptyStatus();
 
   if (user.source === "cep-bearer") {
+    if (getCepClientConfig(user.cepClient || "")?.platformSubscription) {
+      return getGenerationsStatus(user.id);
+    }
     const { monthlyLimit, authorSubscribed, authorId } = await cepQuota(user);
     return getCepSpunkramGenerationsStatus(
       user.id,
@@ -100,6 +103,9 @@ export async function consumeGenerationForResolvedUser(
     return { ok: false, reason: "limit_reached", status: emptyStatus() };
   }
   if (user.source === "cep-bearer") {
+    if (getCepClientConfig(user.cepClient || "")?.platformSubscription) {
+      return consumeGeneration(user.id, tool, amount);
+    }
     const { monthlyLimit, authorSubscribed, authorId } = await cepQuota(user);
     return consumeCepSpunkramGeneration(
       user.id,
