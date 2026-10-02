@@ -3,11 +3,20 @@
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
+import { spawnSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { S3Client, PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 const args = Object.fromEntries(process.argv.slice(2).filter(a=>a.startsWith("--")&&a.includes("=")).map(a=>{const i=a.indexOf("=");return [a.slice(2,i),a.slice(i+1)];}));
 const dry = process.argv.includes("--dry-run");
 const version = args.version;
 if (!/^\d+\.\d+\.\d+$/.test(version || "") || !args.zip || !args.ffmpeg || !args.setup) throw Error("Use --version=x.y.z --zip=panel.zip --ffmpeg=ffmpeg.exe --setup=Setup.exe [--dry-run]");
+// Same Adobe tool shipped by Bolt CEP. Verify before uploading any payload or
+// switching either pointer; a plain unsigned ZIP must never become a release.
+const signer = process.env.ZXP_SIGN_CMD || path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../CEP/motionflow-cep/node_modules/vite-cep-plugin/lib/bin", process.platform === "win32" ? "ZXPSignCmd.exe" : "ZXPSignCmd");
+const verification = spawnSync(signer, ["-verify", path.resolve(args.zip)], { encoding:"utf8", windowsHide:true, timeout:180000 });
+if (verification.error || verification.status !== 0 || !verification.stdout?.includes("Signature verified successfully")) throw Error("Adobe signature verification failed; refusing to publish CEP");
+console.log("Adobe ZXP signature verified");
 const sha = bytes => createHash("sha256").update(bytes).digest("hex");
 const zip = await readFile(args.zip), ffmpeg = await readFile(args.ffmpeg), gzip = gzipSync(ffmpeg,{level:9});
 if (sha(ffmpeg)!=="301f347e36adba474b0708c8113eac4326210a9ee9d9e8ee5c584934b597a796") throw Error("FFmpeg differs from the licensed pinned build");

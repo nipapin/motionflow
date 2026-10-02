@@ -12,12 +12,12 @@ Spunkram/Gal/Odin сохраняют собственные квоты и releas
    и `npm run build`; задеплоить этот commit обычным способом сайта.
    После деплоя `/api/cep/auth/device` должен принимать `client=motionflow-adobe`.
 2. Собрать CEP на Windows: `npm ci`, `npm run installer`, `npm test`.
-   Go Installer EXE (~6.9 МиБ) скачивает панель и FFmpeg через BE; unsigned ZIP содержит только
+   Go Installer EXE (~6.9 МиБ) скачивает панель и FFmpeg через BE; подписанный ZXP содержит только
    CEP payload для in-panel update. Версия package.json и manifest совпадает.
-3. Проверить SHA-256 ZIP и опубликовать отдельный stream:
+3. Проверить подпись ZXP и SHA-256 и опубликовать отдельный stream:
 
    ```powershell
-   node --env-file=.env scripts/publish-motionflow-installer.mjs --version=0.3.2 --zip=../CEP/motionflow-cep/dist/MotionFlow-Adobe-CEP-unsigned.zip --ffmpeg=../CEP/motionflow-cep/dist/ffmpeg.exe --setup=../CEP/motionflow-cep/dist/MotionFlow-Setup-0.3.2.exe --dry-run
+   node --env-file=.env scripts/publish-motionflow-installer.mjs --version=0.4.0 --zip=../CEP/motionflow-cep/dist/MotionFlow-Adobe-CEP.zxp --ffmpeg=../CEP/motionflow-cep/dist/ffmpeg.exe --setup=../CEP/motionflow-cep/dist/MotionFlow-Setup-0.4.0.exe --dry-run
    ```
 
    Затем повторить без `--dry-run`. Скрипт использует существующие R2 env;
@@ -28,8 +28,8 @@ Spunkram/Gal/Odin сохраняют собственные квоты и releas
    переключает `public/downloads/motionflow/installer/latest.json` и
    `public/downloads/motionflow/latest.json`. ZIP остаётся совместимым с updater.
    `--dry-run` только рассчитывает manifest и ничего не публикует.
-4. GitHub Release с тегом `motionflow-0.3.2` и asset
-   `MotionFlow-Adobe-CEP-unsigned.zip`. CEP Windows workflow создаёт assets.
+4. GitHub Release с тегом `motionflow-0.4.0` и asset
+   `MotionFlow-Adobe-CEP.zxp`. CEP Windows workflow создаёт assets.
    Подключить существующий `/api/github/webhook` с `GITHUB_WEBHOOK_SECRET`
    к `motionflowdesign-jpg/motionflow-adobe-cep`, событие Releases.
    Dedicated repo разрешён вместе с `GITHUB_SPUNKRAM_REPO`, но может
@@ -58,8 +58,12 @@ storage keys/URL. `GET /api/cep/installer/setup` скачивает текущи
 WebView2 Runtime — предпосылка графического режима, браузер и payloads
 в EXE не встроены. На машине без Runtime доступен `--quiet`, либо сначала
 нужно установить Microsoft Evergreen Runtime. Сам Runtime не является
-частью CEP release. Панель сохраняет подпись/unsigned-статус исходного ZIP;
-текущая сборка unsigned, debug mode включается только с согласия пользователя.
+частью CEP release. CEP подписывается и получает timestamp через Adobe ZXPSignCmd из bolt-cep.
+Setup сохраняет META-INF/signatures.xml и не меняет PlayerDebugMode.
+Извлечённый ZXP остаётся ZIP-совместимым для installer и updater;
+публикация сначала проверяет подпись через ZXPSignCmd (ZXP_SIGN_CMD может
+указать другой путь к инструменту). Локальная сборка использует постоянный
+самоподписанный сертификат Motion Flow; закрытый ключ хранится вне Git.
 
 ## Acceptance
 
