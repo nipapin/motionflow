@@ -1,4 +1,5 @@
 import "server-only";
+import { withAccountAudit } from "@/lib/account-audit";
 
 import type { PoolConnection, ResultSetHeader } from "mysql2/promise";
 import type { RowDataPacket } from "mysql2/promise";
@@ -334,6 +335,7 @@ export async function recordCreditAudit(
 
 export interface AdminCreditUpdateInput {
   userId: number;
+  adminUserId?: number;
   /** Credit scope; default Motionflow (0). */
   authorId?: number;
   /** Set absolute extra balance (SSOT; mirrors `users` only when authorId=0). */
@@ -348,78 +350,76 @@ export async function adminApplyCreditChanges(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   await ensureUserGenerationCreditsSchema();
   const authorId = normalizeAuthorId(input.authorId);
-  const pool = getPool();
-  const conn = await pool.getConnection();
-  try {
-    await conn.beginTransaction();
-    await ensureCreditsRowForUser(input.userId, authorId, conn);
+  return withAccountAudit({ actorUserId: input.adminUserId, source: "admin.credits" }, async (conn) => {
+    try {
+      await conn.beginTransaction();
+      await ensureCreditsRowForUser(input.userId, authorId, conn);
 
-    if (input.setExtraBalance !== undefined) {
-      const n = Math.floor(Number(input.setExtraBalance));
-      if (!Number.isFinite(n) || n < 0) {
-        await conn.rollback();
-        return { ok: false, error: "setExtraBalance must be a non-negative integer" };
-      }
-      await conn.execute(
-        `UPDATE \`${CREDITS_TABLE}\` SET extra_balance = ?
-          WHERE user_id = ? AND author_id = ?`,
-        [n, input.userId, authorId],
-      );
-      if (authorId === MOTIONFLOW_CREDITS_AUTHOR_ID) {
+      if (input.setExtraBalance !== undefined) {
+        const n = Math.floor(Number(input.setExtraBalance));
+        if (!Number.isFinite(n) || n < 0) {
+          await conn.rollback();
+          return { ok: false, error: "setExtraBalance must be a non-negative integer" };
+        }
         await conn.execute(
-          `UPDATE users SET extra_generations_count = ? WHERE id = ?`,
-          [n, input.userId],
+          `UPDATE \`${CREDITS_TABLE}\` SET extra_balance = ?
+            WHERE user_id = ? AND author_id = ?`,
+          [n, input.userId, authorId],
+        );
+        if (authorId === MOTIONFLOW_CREDITS_AUTHOR_ID) {
+          await conn.execute(
+            `UPDATE users SET extra_generations_count = ? WHERE id = ?`,
+            [n, input.userId],
+          );
+        }
+      }
+
+      if (input.subscriptionAdjustment !== undefined) {
+        const adj = Math.floor(Number(input.subscriptionAdjustment));
+        if (!Number.isFinite(adj) || adj < 0) {
+          await conn.rollback();
+          return {
+            ok: false,
+            error: "subscriptionAdjustment must be a non-negative integer",
+          };
+        }
+        await conn.execute(
+          `UPDATE \`${CREDITS_TABLE}\`
+              SET subscription_adjustment = ?,
+                  subscription_adjustment_period_start = NULL
+            WHERE user_id = ? AND author_id = ?`,
+          [adj, input.userId, authorId],
         );
       }
-    }
 
-    if (input.subscriptionAdjustment !== undefined) {
-      const adj = Math.floor(Number(input.subscriptionAdjustment));
-      if (!Number.isFinite(adj) || adj < 0) {
-        await conn.rollback();
-        return {
-          ok: false,
-          error: "subscriptionAdjustment must be a non-negative integer",
-        };
+      await conn.commit();
+
+      const auditPayload: Record<string, unknown> = { authorId };
+      if (input.setExtraBalance !== undefined) {
+        auditPayload.setExtraBalance = input.setExtraBalance;
       }
-      await conn.execute(
-        `UPDATE \`${CREDITS_TABLE}\`
-            SET subscription_adjustment = ?,
-                subscription_adjustment_period_start = NULL
-          WHERE user_id = ? AND author_id = ?`,
-        [adj, input.userId, authorId],
+      if (input.subscriptionAdjustment !== undefined) {
+        auditPayload.subscriptionAdjustment = input.subscriptionAdjustment;
+      }
+      await recordCreditAudit(
+        input.userId,
+        "admin_update",
+        auditPayload,
+        input.note ?? null,
+        authorId,
       );
-    }
 
-    await conn.commit();
-
-    const auditPayload: Record<string, unknown> = { authorId };
-    if (input.setExtraBalance !== undefined) {
-      auditPayload.setExtraBalance = input.setExtraBalance;
+      return { ok: true };
+    } catch (err) {
+      try {
+        await conn.rollback();
+      } catch {
+        /* ignore */
+      }
+      console.error("[user_generation_credits] adminApplyCreditChanges failed:", err);
+      return { ok: false, error: "database_error" };
     }
-    if (input.subscriptionAdjustment !== undefined) {
-      auditPayload.subscriptionAdjustment = input.subscriptionAdjustment;
-    }
-    await recordCreditAudit(
-      input.userId,
-      "admin_update",
-      auditPayload,
-      input.note ?? null,
-      authorId,
-    );
-
-    return { ok: true };
-  } catch (err) {
-    try {
-      await conn.rollback();
-    } catch {
-      /* ignore */
-    }
-    console.error("[user_generation_credits] adminApplyCreditChanges failed:", err);
-    return { ok: false, error: "database_error" };
-  } finally {
-    conn.release();
-  }
+  });
 }
 
 /**

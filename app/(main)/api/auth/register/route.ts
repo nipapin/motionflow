@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { getPool } from "@/lib/db";
+import { withAccountAudit } from "@/lib/account-audit";
 import { registerSchema } from "@/lib/validations/auth";
 import {
   generateEmailVerificationToken,
@@ -89,10 +90,12 @@ export async function POST(req: NextRequest) {
     const hashed = await bcrypt.hash(password, 10);
     const mailingVal: number | null = mailing ? 0 : null;
 
-    const [inserted] = await pool.execute<ResultSetHeader>(
-      `INSERT INTO users (name, email, password, mailing, created_at, updated_at)
-       VALUES (?, ?, ?, ?, NOW(), NOW())`,
-      [name, normalizedEmail, hashed, mailingVal],
+    const [inserted] = await withAccountAudit({ source: "registration" }, (conn) =>
+      conn.execute<ResultSetHeader>(
+        `INSERT INTO users (name, email, password, mailing, created_at, updated_at)
+         VALUES (?, ?, ?, ?, NOW(), NOW())`,
+        [name, normalizedEmail, hashed, mailingVal],
+      ),
     );
 
     await attachAffiliateReferralToUser({

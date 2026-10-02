@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
-import { Loader2, Search, X } from "lucide-react";
+import { Copy, Loader2, Search, X } from "lucide-react";
 import type {
   AdminMarketItemHit,
   AdminUserPurchaseRow,
@@ -146,6 +146,15 @@ export const AdminUserEntitlements = forwardRef<
   }, [itemQ]);
 
   const refresh = () => onChanged?.();
+
+  const copyPurchaseCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      toast.success("Purchase code copied");
+    } catch {
+      toast.error("Could not copy. Select the code and copy it manually.");
+    }
+  };
 
   useEffect(() => {
     onPendingChange?.(pendingSub != null || selectedItem != null);
@@ -579,6 +588,7 @@ export const AdminUserEntitlements = forwardRef<
             purchases.map((row) => {
               const source = entitlementSourceLabel(row.system);
               const active = row.status === 1;
+              const purchaseCode = row.purchaseCode;
               return (
                 <TableRow key={row.id}>
                   <TableCell>
@@ -586,7 +596,22 @@ export const AdminUserEntitlements = forwardRef<
                     <p className="text-xs text-muted-foreground">#{row.itemId}</p>
                   </TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">
-                    {row.purchaseCode ?? "—"}
+                    {purchaseCode ? (
+                      <div className="flex items-center gap-2">
+                        <span className="select-all">{purchaseCode}</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="size-7 text-muted-foreground hover:text-foreground"
+                          title="Copy purchase code"
+                          aria-label="Copy purchase code"
+                          onClick={() => void copyPurchaseCode(purchaseCode)}
+                        >
+                          <Copy className="size-3.5" />
+                        </Button>
+                      </div>
+                    ) : "—"}
                   </TableCell>
                   <TableCell>
                     <Badge variant={source === "admin" ? "secondary" : "outline"}>

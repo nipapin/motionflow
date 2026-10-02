@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import type { RowDataPacket } from "mysql2";
 import { getPool } from "@/lib/db";
+import { withAccountAudit } from "@/lib/account-audit";
 import { oauthPasswordOnlyFromGoogleId } from "@/lib/auth/users-table";
 import {
   deletePasswordResetToken,
@@ -117,9 +118,11 @@ export async function POST(req: NextRequest) {
     }
 
     const hashed = await bcrypt.hash(password, 10);
-    await pool.execute(
-      "UPDATE users SET password = ?, email_verified_at = COALESCE(email_verified_at, NOW()), updated_at = NOW() WHERE id = ?",
-      [hashed, user.id],
+    await withAccountAudit({ actorUserId: user.id, source: "password_reset" }, (conn) =>
+      conn.execute(
+        "UPDATE users SET password = ?, email_verified_at = COALESCE(email_verified_at, NOW()), updated_at = NOW() WHERE id = ?",
+        [hashed, user.id],
+      ),
     );
     await deletePasswordResetToken(normalizedEmail);
     await deleteEmailVerificationToken(normalizedEmail);

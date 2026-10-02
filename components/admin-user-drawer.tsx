@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { CreditCard, Loader2, Trash2, User } from "lucide-react";
+import { CreditCard, History, Loader2, Trash2, User } from "lucide-react";
+import { AdminUserHistory } from "@/components/admin-user-history";
 import type {
   AdminUserDetail,
   AdminUserPurchaseRow,
@@ -39,7 +40,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
-type DrawerTab = "profile" | "access";
+type DrawerTab = "profile" | "access" | "history";
 
 const drawerTabTriggerClass =
   "h-8 flex-none cursor-pointer justify-start gap-2 rounded-lg px-2.5 text-sm font-medium shadow-none " +
@@ -91,6 +92,7 @@ export function AdminUserDrawer({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<DrawerTab>("profile");
+  const [historyRevision, setHistoryRevision] = useState(0);
   const [profileDirty, setProfileDirty] = useState(false);
   const [entitlementsPending, setEntitlementsPending] = useState(false);
   const settingsRef = useRef<AdminUserSettingsHandle>(null);
@@ -214,13 +216,13 @@ export function AdminUserDrawer({
         <Tabs
           value={tab}
           onValueChange={(value) => {
-            if (value === "profile" || value === "access") setTab(value);
+            if (value === "profile" || value === "access" || value === "history") setTab(value);
           }}
           className="flex min-h-0 flex-1 flex-col gap-0"
         >
           {user && payload ? (
             <div className="shrink-0 px-4 pt-3">
-              <TabsList className="h-auto w-fit gap-1 rounded-none border-0 bg-transparent p-0">
+              <TabsList className="h-auto w-fit flex-wrap gap-1 rounded-none border-0 bg-transparent p-0">
                 <TabsTrigger value="profile" className={drawerTabTriggerClass}>
                   <User className="h-4 w-4" />
                   Profile
@@ -230,6 +232,10 @@ export function AdminUserDrawer({
                   <CreditCard className="h-4 w-4" />
                   Subscriptions & purchases
                   <TabDot show={entitlementsPending} onActive={tab === "access"} />
+                </TabsTrigger>
+                <TabsTrigger value="history" className={drawerTabTriggerClass}>
+                  <History className="h-4 w-4" />
+                  History
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -262,6 +268,7 @@ export function AdminUserDrawer({
                   onDirtyChange={setProfileDirty}
                   onSaved={(next) => {
                     setPayload((prev) => (prev ? { ...prev, user: next } : prev));
+                    setHistoryRevision((prev) => prev + 1);
                     onUserUpdated(next);
                   }}
                 />
@@ -280,9 +287,13 @@ export function AdminUserDrawer({
                   disabled={saving || deleting}
                   onPendingChange={setEntitlementsPending}
                   onChanged={() => {
+                    setHistoryRevision((prev) => prev + 1);
                     if (userId != null) void load(userId);
                   }}
                 />
+              </TabsContent>
+              <TabsContent value="history" className="min-h-0 flex-1 overflow-y-auto p-4">
+                <AdminUserHistory key={user.id} userId={user.id} revision={historyRevision} />
               </TabsContent>
             </>
           ) : null}

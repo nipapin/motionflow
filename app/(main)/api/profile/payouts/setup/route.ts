@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getPool } from "@/lib/db";
+import { withAccountAudit } from "@/lib/account-audit";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { isPartner } from "@/lib/auth/access-control";
 
@@ -53,9 +54,11 @@ export async function POST(req: Request) {
   }
 
   const pool = getPool();
-  await pool.execute(
-    `UPDATE users SET withdraw_method = ?, withdraw_account = ?, withdraw_min_amount = ? WHERE id = ?`,
-    [v.paymentMethod, withdrawAccount, v.paymentMinWithdraw, user.id],
+  await withAccountAudit({ actorUserId: user.id, source: "profile" }, (conn) =>
+    conn.execute(
+      `UPDATE users SET withdraw_method = ?, withdraw_account = ?, withdraw_min_amount = ? WHERE id = ?`,
+      [v.paymentMethod, withdrawAccount, v.paymentMinWithdraw, user.id],
+    ),
   );
 
   await pool.execute(`UPDATE payouts SET method = ? WHERE recipient_id = ? AND status = 0`, [

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import type { RowDataPacket } from "mysql2";
 import { getPool } from "@/lib/db";
+import { withAccountAudit } from "@/lib/account-audit";
 import {
   SESSION_COOKIE_NAME,
   LARAVEL_COOKIE_NAME,
@@ -137,10 +138,9 @@ export async function PATCH(req: NextRequest) {
           { status: 422 },
         );
       }
-      await pool.execute("UPDATE users SET name = ?, updated_at = NOW() WHERE id = ?", [
-        name,
-        userId,
-      ]);
+      await withAccountAudit({ actorUserId: userId, source: "profile" }, (conn) =>
+        conn.execute("UPDATE users SET name = ?, updated_at = NOW() WHERE id = ?", [name, userId]),
+      );
       nextName = name;
     }
 
@@ -189,10 +189,9 @@ export async function PATCH(req: NextRequest) {
           { status: 422 },
         );
       }
-      await pool.execute("UPDATE users SET email = ?, updated_at = NOW() WHERE id = ?", [
-        email.toLowerCase(),
-        userId,
-      ]);
+      await withAccountAudit({ actorUserId: userId, source: "profile" }, (conn) =>
+        conn.execute("UPDATE users SET email = ?, updated_at = NOW() WHERE id = ?", [email.toLowerCase(), userId]),
+      );
       nextEmail = email.toLowerCase();
     }
 
@@ -242,10 +241,9 @@ export async function PATCH(req: NextRequest) {
         );
       }
       const hashed = await bcrypt.hash(newPassword, 10);
-      await pool.execute("UPDATE users SET password = ?, updated_at = NOW() WHERE id = ?", [
-        hashed,
-        userId,
-      ]);
+      await withAccountAudit({ actorUserId: userId, source: "profile" }, (conn) =>
+        conn.execute("UPDATE users SET password = ?, updated_at = NOW() WHERE id = ?", [hashed, userId]),
+      );
     }
 
     const newToken = await signSessionToken({

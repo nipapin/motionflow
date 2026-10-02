@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
 import { getPool } from "@/lib/db";
+import { withAccountAudit } from "@/lib/account-audit";
 import {
   SESSION_COOKIE_NAME,
   LARAVEL_COOKIE_NAME,
@@ -95,9 +96,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await pool.execute(
-      "UPDATE users SET email_verified_at = COALESCE(email_verified_at, NOW()), updated_at = NOW() WHERE id = ?",
-      [user.id],
+    await withAccountAudit({ actorUserId: user.id, source: "email_verification" }, (conn) =>
+      conn.execute(
+        "UPDATE users SET email_verified_at = COALESCE(email_verified_at, NOW()), updated_at = NOW() WHERE id = ?",
+        [user.id],
+      ),
     );
     await deleteEmailVerificationToken(email);
 

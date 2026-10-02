@@ -32,12 +32,19 @@ function loader(mocks) {
 function fixture({ exists = true, tables = [], failOn, affectedRows = 1 } = {}) {
   const events = [];
   const queries = [];
+  const contexts = [];
   const conn = {
     beginTransaction: async () => { events.push("begin"); },
     commit: async () => { events.push("commit"); },
     rollback: async () => { events.push("rollback"); },
     release: () => { events.push("release"); },
+    destroy: () => { events.push("destroy"); },
+    query: async () => { contexts.push(null); return [[]]; },
     execute: async (sql, params = []) => {
+      if (sql.startsWith("SET @account_audit_actor_id")) {
+        contexts.push(params);
+        return [[]];
+      }
       queries.push({ sql, params });
       if (failOn && sql.includes(failOn)) throw new Error("DATABASE_FAILURE");
       if (sql.startsWith("SELECT email")) return [exists ? [{ email: "user@example.test" }] : []];
@@ -47,7 +54,7 @@ function fixture({ exists = true, tables = [], failOn, affectedRows = 1 } = {}) 
   };
   const pool = { getConnection: async () => { events.push("connect"); return conn; } };
   const load = loader({ "@/lib/db": { getPool: () => pool } });
-  return { ...load("@/lib/admin-user-deletion"), events, queries, load };
+  return { ...load("@/lib/admin-user-deletion"), events, queries, contexts, load };
 }
 
 test("self-deletion is rejected before acquiring a connection", async () => {
@@ -80,6 +87,7 @@ test("deletion removes account access and preserves financial history", async ()
     "sold_items", "subscription_systems", "subscription_payments", "affiliate_commissions",
   ] });
   await f.deleteAdminUser(42, 7);
+  assert.deepEqual(f.contexts, [[7, "admin.users"], null]);
   assert.deepEqual(f.events, ["connect", "begin", "commit", "release"]);
   assert.equal(f.queries[0].sql, "SELECT email FROM users WHERE id = ? FOR UPDATE");
   assert.ok(f.queries.some(q => q.sql.includes("device.id = child.device_id") && q.params[0] === 42));

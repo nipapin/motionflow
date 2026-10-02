@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { getPool } from "@/lib/db";
+import { withAccountAudit } from "@/lib/account-audit";
 import {
   GOOGLE_OAUTH_NEXT_COOKIE,
   GOOGLE_OAUTH_STATE_COOKIE,
@@ -146,7 +147,9 @@ export async function GET(req: NextRequest) {
 
     if (existingRows[0]) {
       user = existingRows[0];
-      await pool.execute("UPDATE users SET google_id = ? WHERE id = ?", [googleId, user.id]);
+      await withAccountAudit({ actorUserId: user.id, source: "google_oauth" }, (conn) =>
+        conn.execute("UPDATE users SET google_id = ? WHERE id = ?", [googleId, user.id]),
+      );
     } else {
       const googleName = profile.name ?? email.split("@")[0];
       const passwordPlain = `${googleName}@${googleId}`;
@@ -154,10 +157,12 @@ export async function GET(req: NextRequest) {
       let name = suggestedUsername(email, googleId);
       name = await ensureUniqueName(pool, name);
 
-      await pool.execute<ResultSetHeader>(
-        `INSERT INTO users (name, email, password, google_id, email_verified_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, NOW(), NOW(), NOW())`,
-        [name, email, hashed, googleId],
+      await withAccountAudit({ source: "google_oauth" }, (conn) =>
+        conn.execute<ResultSetHeader>(
+          `INSERT INTO users (name, email, password, google_id, email_verified_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?, NOW(), NOW(), NOW())`,
+          [name, email, hashed, googleId],
+        ),
       );
 
       const [inserted] = await pool.execute<UserRow[]>(

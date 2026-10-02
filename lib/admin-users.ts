@@ -3,6 +3,7 @@ import "server-only";
 import bcrypt from "bcryptjs";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
+import { withAccountAudit } from "@/lib/account-audit";
 import { getExtraBalance, adminApplyCreditChanges } from "@/lib/user-generation-credits";
 import {
   EXTRA_GEN_PACKS,
@@ -528,15 +529,19 @@ export async function updateAdminUser(
 
   if (sets.length > 0) {
     sets.push("updated_at = NOW()");
-    await pool.execute<ResultSetHeader>(
-      `UPDATE \`${USERS_TABLE}\` SET ${sets.join(", ")} WHERE id = ?`,
-      [...params, id],
+    await withAccountAudit(
+      { actorUserId: opts?.adminUserId, source: "admin.users" },
+      (conn) => conn.execute<ResultSetHeader>(
+        `UPDATE \`${USERS_TABLE}\` SET ${sets.join(", ")} WHERE id = ?`,
+        [...params, id],
+      ),
     );
   }
 
   if (patch.extraGenerations !== undefined) {
     const result = await adminApplyCreditChanges({
       userId: id,
+      adminUserId: opts?.adminUserId,
       setExtraBalance: patch.extraGenerations,
       note: opts?.adminUserId
         ? `admin_users patch by ${opts.adminUserId}`

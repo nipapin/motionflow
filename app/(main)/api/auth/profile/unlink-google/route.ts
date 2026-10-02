@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
 import { getPool } from "@/lib/db";
+import { withAccountAudit } from "@/lib/account-audit";
 import { resolveAuthUserFlags } from "@/lib/auth/google-account";
 import { oauthPasswordOnlyFromGoogleId } from "@/lib/auth/users-table";
 import {
@@ -74,9 +75,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await pool.execute(
-      "UPDATE users SET google_id = NULL, updated_at = NOW() WHERE id = ?",
-      [userId],
+    await withAccountAudit({ actorUserId: userId, source: "profile" }, (conn) =>
+      conn.execute("UPDATE users SET google_id = NULL, updated_at = NOW() WHERE id = ?", [userId]),
     );
 
     const flagsAfter = await resolveAuthUserFlags({
