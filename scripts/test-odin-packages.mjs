@@ -139,6 +139,39 @@ test("Odin writes behind the custom server proxy accept only the public origin a
   assert.equal(forwarded.length, accepted);
 });
 
+test("Odin subscription writes validate local IDs and retry keys and never trust client actor or billing IDs", async () => {
+  const forwarded = [];
+  let failure;
+  const route = loader({
+    "@/lib/auth/get-session-user": { getSessionUser: async () => ({ email: "admin@example.test" }) },
+    "@/lib/packages-admin": { isPackagesAdmin: () => true },
+    "@/lib/odin-management": { odinManagementRequest: async (_query, body) => { if (failure) throw new Error(failure); forwarded.push(body); return { ok: true }; } },
+  })("@/app/(main)/api/odin/users/route");
+  const { NextRequest } = require("next/server");
+  const post = body => new NextRequest("https://motionflow.test/api/odin/users", {
+    method: "POST", headers: { origin: "https://motionflow.test", "Content-Type": "application/json" },
+    body: JSON.stringify({ user_id: "owner", actor: "forged", remote_subscription_id: 9999, ...body }),
+  });
+  const issue = { action: "subscription_issue", plan_name: "Odin Pro", expires_at: "2099-01-01T00:00:00Z", request_id: "00000000-0000-4000-8000-000000000001" };
+  for (const input of [issue, { ...issue, action: "subscription_update", subscription_id: 107 }, { action: "subscription_disable", subscription_id: 107 }, { action: "subscription_enable", subscription_id: 107, reason: "" }]) {
+    assert.equal((await route.POST(post(input))).status, 200);
+    assert.equal(forwarded.at(-1).actor, "admin@example.test");
+    assert.equal(forwarded.at(-1).remote_subscription_id, undefined);
+    assert.ok(forwarded.at(-1).reason);
+  }
+  assert.equal(forwarded[0].request_id, issue.request_id);
+  assert.equal(forwarded[1].subscription_id, 107);
+  const accepted = forwarded.length;
+  for (const input of [{ ...issue, request_id: undefined }, { ...issue, request_id: "retry" }, { ...issue, plan_name: " " }, { ...issue, expires_at: "2000-01-01" }, { action: "subscription_disable", subscription_id: "107" }, { action: "subscription_enable", subscription_id: -107 }, { action: "subscription_update", subscription_id: 107 }]) assert.equal((await route.POST(post(input))).status, 400);
+  assert.equal(forwarded.length, accepted);
+  for (const [code, status] of [["SUBSCRIPTION_BUSY", 409], ["MANUAL_SUBSCRIPTION_REQUIRED", 400], ["PAYPRO_UNAVAILABLE", 503], ["PAYPRO_CANNOT_RENEW", 503], ["secret database error", 503]]) {
+    failure = code;
+    const response = await route.POST(post({ action: "subscription_disable", subscription_id: 107 }));
+    assert.equal(response.status, status);
+    assert.equal((await response.json()).error, code === "secret database error" ? "ODIN_UNAVAILABLE" : code);
+  }
+});
+
 test("Odin bridge classifies configuration and upstream errors without exposing remote details", async () => {
   const savedOrigin = process.env.ODIN_MANAGEMENT_ORIGIN;
   const savedSecret = process.env.ODIN_MANAGEMENT_SECRET;
@@ -157,6 +190,8 @@ test("Odin bridge classifies configuration and upstream errors without exposing 
       [400, "INVALID_INPUT", "INVALID_INPUT"], [404, "NOT_FOUND", "NOT_FOUND"],
       [401, "UNAUTHORIZED", "ODIN_UNAUTHORIZED"], [403, "UNAUTHORIZED", "ODIN_UNAUTHORIZED"],
       [503, "MANAGEMENT_DISABLED", "ODIN_MANAGEMENT_DISABLED"], [500, "private database details", "ODIN_UNAVAILABLE"],
+      [409, "SUBSCRIPTION_BUSY", "SUBSCRIPTION_BUSY"], [400, "MANUAL_SUBSCRIPTION_REQUIRED", "MANUAL_SUBSCRIPTION_REQUIRED"],
+      [503, "PAYPRO_UNAVAILABLE", "PAYPRO_UNAVAILABLE"], [503, "PAYPRO_NOT_CONFIGURED", "PAYPRO_NOT_CONFIGURED"], [503, "PAYPRO_CANNOT_RENEW", "PAYPRO_CANNOT_RENEW"],
     ]) {
       response = Response.json({ error }, { status });
       await assert.rejects(api.odinManagementRequest(new URLSearchParams()), new RegExp(`^Error: ${expected}$`));

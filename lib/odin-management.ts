@@ -14,13 +14,14 @@ export async function odinManagementRequest(query: URLSearchParams, body?: Recor
   const response = await fetch(url, {
     method: body ? "POST" : "GET", cache: "no-store", redirect: "error",
     headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(15000),
+    body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(body ? 30000 : 15000),
   });
   if (!response.ok) {
     if (response.status === 404) throw new Error("NOT_FOUND");
-    if (response.status === 400) throw new Error("INVALID_INPUT");
     if (response.status === 401 || response.status === 403) throw new Error("ODIN_UNAUTHORIZED");
     const data = await response.json().catch(() => null);
+    if (["MANUAL_SUBSCRIPTION_REQUIRED", "SUBSCRIPTION_BUSY", "PAYPRO_NOT_CONFIGURED", "PAYPRO_CANNOT_RENEW", "PAYPRO_UNAVAILABLE"].includes(data?.error)) throw new Error(data.error);
+    if (response.status === 400) throw new Error("INVALID_INPUT");
     if (data?.error === "MANAGEMENT_DISABLED") throw new Error("ODIN_MANAGEMENT_DISABLED");
     throw new Error("ODIN_UNAVAILABLE");
   }
