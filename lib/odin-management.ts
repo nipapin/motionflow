@@ -4,7 +4,9 @@ export async function odinManagementRequest(query: URLSearchParams, body?: Recor
   const origin = process.env.ODIN_MANAGEMENT_ORIGIN?.trim();
   const secret = process.env.ODIN_MANAGEMENT_SECRET;
   if (!origin || !secret || secret.length < 32) throw new Error("ODIN_NOT_CONFIGURED");
-  const base = new URL(origin);
+  let base: URL;
+  try { base = new URL(origin); }
+  catch { throw new Error("ODIN_NOT_CONFIGURED"); }
   // Both sites may run on one host. HTTP is permitted only on loopback.
   if (base.username || base.password || (base.protocol !== "https:" && !(base.protocol === "http:" && ["localhost", "127.0.0.1"].includes(base.hostname)))) throw new Error("ODIN_NOT_CONFIGURED");
   const url = new URL("/api/integrations/motionflow/users", base);
@@ -17,7 +19,11 @@ export async function odinManagementRequest(query: URLSearchParams, body?: Recor
   if (!response.ok) {
     if (response.status === 404) throw new Error("NOT_FOUND");
     if (response.status === 400) throw new Error("INVALID_INPUT");
+    if (response.status === 401 || response.status === 403) throw new Error("ODIN_UNAUTHORIZED");
+    const data = await response.json().catch(() => null);
+    if (data?.error === "MANAGEMENT_DISABLED") throw new Error("ODIN_MANAGEMENT_DISABLED");
     throw new Error("ODIN_UNAVAILABLE");
   }
-  return response.json();
+  try { return await response.json(); }
+  catch { throw new Error("ODIN_UNAVAILABLE"); }
 }

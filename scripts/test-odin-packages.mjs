@@ -75,6 +75,115 @@ test("Odin management proxy rejects non-admins and cross-origin writes; actor co
   assert.equal(forwarded[0].body.actor, user.email);
 });
 
+test("Odin writes behind the custom server proxy accept only the public origin and supply optional audit reasons", async () => {
+  const forwarded = [];
+  const load = loader({
+    "@/lib/auth/get-session-user": { getSessionUser: async () => ({ email: "admin@example.test" }) },
+    "@/lib/packages-admin": { isPackagesAdmin: () => true },
+    "@/lib/odin-management": { odinManagementRequest: async (_query, body) => { forwarded.push(body); return { ok: true }; } },
+  });
+  const { NextRequest } = require("next/server");
+  const route = load("@/app/(main)/api/odin/users/route");
+  const post = (body, headers = {}) => new NextRequest("https://0.0.0.0:3000/api/odin/users", {
+    method: "POST",
+    headers: { host: "motionflow.pro", "x-forwarded-proto": "https", origin: "https://motionflow.pro", "Content-Type": "application/json", ...headers },
+    body: JSON.stringify({ user_id: "uuid", actor: "forged", ...body }),
+  });
+
+  // Same public browser origin, different internal Next hostname and port.
+  for (const [action, extra, expectedReason] of [
+    ["grant", { expires_at: "2099-01-01T00:00:00.000Z" }, "Grant extension access from Motionflow"],
+    ["revoke", { reason: "" }, "Block extension access from Motionflow"],
+    ["reset", { reason: "   " }, "Follow Odin subscription from Motionflow"],
+    ["revoke_device", { device_id: "device" }, "Revoke CEP device from Motionflow"],
+  ]) {
+    assert.equal((await route.POST(post({ action, ...extra }))).status, 200);
+    assert.equal(forwarded.at(-1).reason, expectedReason);
+    assert.equal(forwarded.at(-1).actor, "admin@example.test");
+    if (action === "grant") assert.equal(forwarded.at(-1).expires_at, extra.expires_at);
+    if (action === "revoke_device") assert.equal(forwarded.at(-1).device_id, extra.device_id);
+  }
+  assert.equal((await route.POST(post({ action: "revoke", reason: "  Support request  " }))).status, 200);
+  assert.equal(forwarded.at(-1).reason, "Support request");
+  // Public local development hosts retain their port and protocol.
+  assert.equal((await route.POST(post({ action: "reset" }, { host: "localhost:3000", "x-forwarded-proto": "http", origin: "http://localhost:3000" }))).status, 200);
+
+  const accepted = forwarded.length;
+  for (const headers of [
+    { origin: "https://evil.test" },
+    { origin: "https://0.0.0.0:3000" },
+    { origin: "http://motionflow.pro" },
+    { origin: "null" },
+    { origin: "" },
+    { origin: "https://evil.test", "x-forwarded-host": "evil.test" },
+  ]) {
+    const response = await route.POST(post({ action: "revoke" }, headers));
+    assert.equal(response.status, 403);
+    assert.equal((await response.json()).error, "INVALID_ORIGIN");
+  }
+  for (const body of [
+    { action: "revoke", reason: {} },
+    { action: "revoke", reason: "x".repeat(501) },
+    { action: "__proto__" },
+    { action: ["revoke"] },
+    { action: "revoke", user_id: {} },
+    { action: "revoke", user_id: " " },
+    { action: "grant" },
+    { action: "grant", expires_at: "invalid" },
+    { action: "grant", expires_at: "2000-01-01T00:00:00Z" },
+    { action: "grant", expires_at: {} },
+    { action: "revoke_device" },
+    { action: "revoke_device", device_id: " " },
+    { action: "revoke_device", device_id: "x".repeat(129) },
+  ]) assert.equal((await route.POST(post(body))).status, 400);
+  assert.equal(forwarded.length, accepted);
+});
+
+test("Odin bridge classifies configuration and upstream errors without exposing remote details", async () => {
+  const savedOrigin = process.env.ODIN_MANAGEMENT_ORIGIN;
+  const savedSecret = process.env.ODIN_MANAGEMENT_SECRET;
+  const fetcher = globalThis.fetch;
+  const api = loader()("@/lib/odin-management");
+  let response;
+  globalThis.fetch = async () => response;
+  try {
+    process.env.ODIN_MANAGEMENT_SECRET = "x".repeat(32);
+    for (const origin of ["invalid", "https://user:password@odin.test", "http://odin.test"]) {
+      process.env.ODIN_MANAGEMENT_ORIGIN = origin;
+      await assert.rejects(api.odinManagementRequest(new URLSearchParams()), /ODIN_NOT_CONFIGURED/);
+    }
+    process.env.ODIN_MANAGEMENT_ORIGIN = "https://odin.test";
+    for (const [status, error, expected] of [
+      [400, "INVALID_INPUT", "INVALID_INPUT"], [404, "NOT_FOUND", "NOT_FOUND"],
+      [401, "UNAUTHORIZED", "ODIN_UNAUTHORIZED"], [403, "UNAUTHORIZED", "ODIN_UNAUTHORIZED"],
+      [503, "MANAGEMENT_DISABLED", "ODIN_MANAGEMENT_DISABLED"], [500, "private database details", "ODIN_UNAVAILABLE"],
+    ]) {
+      response = Response.json({ error }, { status });
+      await assert.rejects(api.odinManagementRequest(new URLSearchParams()), new RegExp(`^Error: ${expected}$`));
+    }
+    for (const status of [200, 502]) {
+      response = new Response("<html>Gateway error</html>", { status });
+      await assert.rejects(api.odinManagementRequest(new URLSearchParams()), /ODIN_UNAVAILABLE/);
+    }
+    response = Response.json({ ok: true });
+    assert.deepEqual(await api.odinManagementRequest(new URLSearchParams()), { ok: true });
+    globalThis.fetch = async () => { throw new Error("network failure"); };
+    const load = loader({
+      "@/lib/auth/get-session-user": { getSessionUser: async () => ({ email: "admin@example.test" }) },
+      "@/lib/packages-admin": { isPackagesAdmin: () => true },
+    });
+    const route = load("@/app/(main)/api/odin/users/route");
+    const { NextRequest } = require("next/server");
+    const result = await route.GET(new NextRequest("https://motionflow.test/api/odin/users"));
+    assert.equal(result.status, 503);
+    assert.deepEqual(await result.json(), { error: "ODIN_UNAVAILABLE" });
+  } finally {
+    globalThis.fetch = fetcher;
+    if (savedOrigin === undefined) delete process.env.ODIN_MANAGEMENT_ORIGIN; else process.env.ODIN_MANAGEMENT_ORIGIN = savedOrigin;
+    if (savedSecret === undefined) delete process.env.ODIN_MANAGEMENT_SECRET; else process.env.ODIN_MANAGEMENT_SECRET = savedSecret;
+  }
+});
+
 test("managed catalog preserves legacy IDs, excludes hidden/admin packs, and isolates downloads", async () => {
   const saved = { map: process.env.ODIN_CATALOG_PACK_MAP, secret: process.env.ODIN_CATALOG_SECRET };
   process.env.ODIN_CATALOG_PACK_MAP = JSON.stringify({ 542: 7, 543: 8 });
