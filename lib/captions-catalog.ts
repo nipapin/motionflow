@@ -83,11 +83,12 @@ export type CaptionTree = {
  * Previews live in the public CDN bucket; mogrt/aep/definition in the private
  * bucket under the same key prefix (see migrate-captions-to-r2.mjs).
  */
-export type CaptionsBrand = "gal" | "spunkram";
+export type CaptionsBrand = "gal" | "spunkram" | "odin";
 
 const CAPTIONS_BRAND_PREFIXES: Record<CaptionsBrand, string> = {
   gal: "Gal Captions",
   spunkram: "Spunkram Captions",
+  odin: "Odin Pro Captions",
 };
 
 export const DEFAULT_CAPTIONS_BRAND: CaptionsBrand = "gal";
@@ -95,7 +96,7 @@ export const DEFAULT_CAPTIONS_BRAND: CaptionsBrand = "gal";
 /** Parse a `brand` query/body param, defaulting to `"gal"` for backward compat. */
 export function parseCaptionsBrand(raw: unknown): CaptionsBrand {
   const v = typeof raw === "string" ? raw.trim().toLowerCase() : "";
-  if (v === "gal" || v === "spunkram") return v;
+  if (v === "gal" || v === "spunkram" || v === "odin") return v;
   return DEFAULT_CAPTIONS_BRAND;
 }
 

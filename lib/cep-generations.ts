@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import type { ResolvedCaptionsUser } from "@/lib/auth/resolve-captions-user";
+import { consumeOdinAi, odinAiStatus, type OdinAiUser } from "@/lib/odin-ai";
 import {
   getCepClientConfig,
   requireCepClientConfig,
@@ -35,11 +36,17 @@ function emptyStatus(): GenerationStatus {
   };
 }
 
-/** Real DB user id — required for any metered CEP AI call. */
+/** Real Motionflow DB user id — Odin uses isMeteredCaptionsUser instead. */
 export function isBillableCepUser(
   user: ResolvedCaptionsUser,
 ): user is ResolvedCaptionsUser & { id: number } {
   return typeof user.id === "number";
+}
+
+/** Verified external Odin accounts are metered in their own ledger. */
+export function isMeteredCaptionsUser(user: ResolvedCaptionsUser):
+  user is (ResolvedCaptionsUser & { id: number }) | OdinAiUser {
+  return user.source === "odin-bearer" || isBillableCepUser(user);
 }
 
 export function billableAccountRequiredResponse(): NextResponse {
@@ -71,6 +78,7 @@ async function cepQuota(user: ResolvedCaptionsUser & { id: number }) {
 export async function generationsStatusForResolvedUser(
   user: ResolvedCaptionsUser,
 ): Promise<GenerationStatus> {
+  if (user.source === "odin-bearer") return odinAiStatus(user);
   // Non-numeric ids are never billable — report zero so clients cannot
   // treat them as unlimited.
   if (!isBillableCepUser(user)) return emptyStatus();
@@ -99,6 +107,12 @@ export async function consumeGenerationForResolvedUser(
   tool: GenerationTool,
   amount: number = 1,
 ): Promise<ConsumeResult> {
+  if (user.source === "odin-bearer") {
+    if (tool !== "captions" && tool !== "chapters") {
+      return { ok: false, reason: "limit_reached", status: emptyStatus() };
+    }
+    return consumeOdinAi(user, amount);
+  }
   if (!isBillableCepUser(user)) {
     return { ok: false, reason: "limit_reached", status: emptyStatus() };
   }

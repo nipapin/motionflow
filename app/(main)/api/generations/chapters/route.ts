@@ -11,7 +11,7 @@ import {
   consumeGenerationForResolvedUser,
   generationsStatusForResolvedUser,
   billableAccountRequiredResponse,
-  isBillableCepUser,
+  isMeteredCaptionsUser,
 } from "@/lib/cep-generations";
 import {
   durationGenerationsCost,
@@ -474,7 +474,7 @@ export async function POST(req: NextRequest) {
         });
         if (!access.ok) return access.response;
         const user = access.user;
-        if (!isBillableCepUser(user)) return billableAccountRequiredResponse();
+        if (!isMeteredCaptionsUser(user)) return billableAccountRequiredResponse();
 
         if (!process.env.REPLICATE_API_TOKEN) {
             console.error("[chapters generation] REPLICATE_API_TOKEN is not configured");
@@ -551,7 +551,7 @@ export async function POST(req: NextRequest) {
         const receiptToken = (body as { chaptersReceipt?: unknown } | null)
             ?.chaptersReceipt;
         const receiptOk =
-            typeof user.id === "number" &&
+            isMeteredCaptionsUser(user) &&
             verifyCaptionsChaptersReceipt(receiptToken, user.id).ok;
         const clientDuration = parseDurationSeconds(
             (body as { durationSeconds?: unknown } | null)?.durationSeconds,

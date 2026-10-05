@@ -36,7 +36,7 @@ function fromB64url(s: string): Buffer {
 }
 
 export type CaptionsChaptersReceiptPayload = {
-  uid: number;
+  uid: number | string;
   /** Metered duration used for the captions charge (seconds). */
   dur: number;
   /** Cost already charged on captions. */
@@ -45,7 +45,7 @@ export type CaptionsChaptersReceiptPayload = {
 };
 
 export function issueCaptionsChaptersReceipt(opts: {
-  userId: number;
+  userId: number | string;
   durationSeconds: number;
   cost: number;
   ttlSec?: number;
@@ -70,7 +70,7 @@ export function issueCaptionsChaptersReceipt(opts: {
 
 export function verifyCaptionsChaptersReceipt(
   token: unknown,
-  userId: number,
+  userId: number | string,
 ): { ok: true; payload: CaptionsChaptersReceiptPayload } | { ok: false } {
   if (typeof token !== "string" || !token.includes(".")) return { ok: false };
   const [body, sig] = token.split(".");
@@ -104,7 +104,7 @@ export function verifyCaptionsChaptersReceipt(
   }
 
   if (
-    typeof payload.uid !== "number" ||
+    (typeof payload.uid !== "number" && typeof payload.uid !== "string") ||
     payload.uid !== userId ||
     typeof payload.exp !== "number" ||
     payload.exp < Math.floor(Date.now() / 1000)

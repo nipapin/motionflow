@@ -14,7 +14,7 @@ import {
   generationsStatusForResolvedUser,
   consumeGenerationForResolvedUser,
   billableAccountRequiredResponse,
-  isBillableCepUser,
+  isMeteredCaptionsUser,
 } from "@/lib/cep-generations";
 import { uploadBufferToR2 } from "@/lib/r2-storage";
 import { issueCaptionsChaptersReceipt } from "@/lib/captions-chapters-receipt";
@@ -342,7 +342,7 @@ export async function POST(req: NextRequest) {
       bearer: bearerFromRequest(req),
     });
     if (!access.ok) return access.response;
-    if (!isBillableCepUser(access.user)) return billableAccountRequiredResponse();
+    if (!isMeteredCaptionsUser(access.user)) return billableAccountRequiredResponse();
 
     console.info(
       "[captions generation] user",
@@ -522,7 +522,7 @@ export async function POST(req: NextRequest) {
 
     let chaptersReceipt: string | undefined;
     try {
-      if (typeof access.user.id === "number") {
+      if (isMeteredCaptionsUser(access.user)) {
         chaptersReceipt = issueCaptionsChaptersReceipt({
           userId: access.user.id,
           durationSeconds: meterSeconds,

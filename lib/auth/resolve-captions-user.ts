@@ -8,6 +8,7 @@ import {
   requireCepClientConfig,
 } from "@/lib/cep-client-registry";
 import { getActiveAuthorSubscription } from "@/lib/cep-entitlements";
+import { resolveOdinAiUser, type OdinAiUser } from "@/lib/odin-ai";
 
 export const SUBSCRIPTION_REQUIRED_CODE = "SUBSCRIPTION_REQUIRED" as const;
 export const UNAUTHORIZED_CODE = "UNAUTHORIZED" as const;
@@ -15,11 +16,11 @@ export const UNAUTHORIZED_CODE = "UNAUTHORIZED" as const;
 export type CaptionsIdentityInput = {
   email?: string | null;
   userId?: string | null;
-  /** Raw `Authorization` header — CEP panels send `Bearer mfcep_…` device tokens. */
+  /** Raw `Authorization` header — Motionflow or Odin CEP device tokens. */
   bearer?: string | null;
 };
 
-export type ResolvedCaptionsUser = {
+export type ResolvedCaptionsUser = OdinAiUser | {
   /** Numeric DB id for real sessions; string only if a legacy path remains. */
   id: number | string;
   email: string;
@@ -36,7 +37,7 @@ export type ResolvedCaptionsUser = {
 
 /**
  * Resolve caller for captions CEP / web:
- * 1) CEP Bearer device token (`Authorization: Bearer mfcep_…`, see lib/cep-auth.ts)
+ * 1) Verified Odin or Motionflow CEP Bearer device token
  * 2) Motion Flow session cookie
  *
  * Body email/userId are NOT trusted for identity.
@@ -45,6 +46,8 @@ export async function resolveCaptionsUser(
   identity: CaptionsIdentityInput = {},
 ): Promise<ResolvedCaptionsUser | null> {
   if (identity.bearer) {
+    // Invalid/revoked Odin tokens must never fall back to a Motionflow cookie.
+    if (identity.bearer.startsWith("Bearer odincep_")) return resolveOdinAiUser(identity.bearer);
     const bearerUser = await resolveCepBearerUser(identity.bearer);
     if (bearerUser) {
       return {
@@ -147,6 +150,10 @@ export async function requireCaptionsAuth(
 export async function userCanDownloadCaptionProject(
   user: ResolvedCaptionsUser,
 ): Promise<boolean> {
+  if (user.source === "odin-bearer") {
+    return user.odinSubscriptionActive && (!user.odinSubscriptionExpiresAt ||
+      Date.parse(user.odinSubscriptionExpiresAt) > Date.now());
+  }
   if (typeof user.id !== "number") return false;
 
   if (user.source === "cep-bearer") {

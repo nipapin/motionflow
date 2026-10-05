@@ -20,6 +20,7 @@ import {
 import {
   billableAccountRequiredResponse,
   isBillableCepUser,
+  generationsStatusForResolvedUser,
 } from "@/lib/cep-generations";
 
 export const runtime = "nodejs";
@@ -54,6 +55,10 @@ async function handleStatus(req: NextRequest) {
       );
     }
 
+    if (user.source === "odin-bearer") {
+      return NextResponse.json({ authenticated: true, source: user.source,
+        ...await generationsStatusForResolvedUser(user) }, { headers: { "Cache-Control": "no-store" } });
+    }
     if (typeof user.id !== "number") {
       // Non-numeric ids are not billable — do not report fake unlimited credits.
       return billableAccountRequiredResponse();

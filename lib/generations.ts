@@ -51,7 +51,7 @@ export interface GenerationStatus {
   /** True when the user has Creator or Creator + AI (paid monthly quota). */
   hasSubscription: boolean;
   /** Plan that sets the limit and whether usage is monthly or lifetime. */
-  plan: MotionflowGenerationPlan;
+  plan: MotionflowGenerationPlan | "odin";
   /** Generations remaining from the monthly subscription quota. */
   subscription_generations_left: number;
   /** Purchased extra generations (never expire) for this author scope. */
