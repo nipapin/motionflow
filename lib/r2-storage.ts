@@ -23,6 +23,7 @@ import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client
  */
 
 let cachedClient: S3Client | null = null;
+let cachedUploadSigningClient: S3Client | null = null;
 
 function readEnv(name: string): string {
     const v = process.env[name];
@@ -81,6 +82,25 @@ export function getR2Client(): S3Client {
         forcePathStyle: false,
     });
     return cachedClient;
+}
+
+/** A presigned PUT has no Body here: the default SDK checksum would sign an
+ * empty CRC32, rejecting the real bytes uploaded later. Keep this setting
+ * scoped to URL signing; ordinary server-side uploads retain their behavior. */
+export function getR2UploadSigningClient(): S3Client {
+    if (!cachedUploadSigningClient) {
+        cachedUploadSigningClient = new S3Client({
+            region: readEnvOptional("R2_REGION") ?? "auto",
+            endpoint: getR2Endpoint(),
+            credentials: {
+                accessKeyId: readEnv("R2_ACCESS_KEY_ID"),
+                secretAccessKey: readEnv("R2_SECRET_ACCESS_KEY"),
+            },
+            forcePathStyle: false,
+            requestChecksumCalculation: "WHEN_REQUIRED",
+        });
+    }
+    return cachedUploadSigningClient;
 }
 
 /** Build a `cdn.motionflow.pro/<key>` URL for a given object key. */

@@ -223,7 +223,7 @@ export async function readBetaManifestFromR2(
   return { ...m, channel: m.channel ?? "beta", product };
 }
 
-function compareVersionsAsc(a: string, b: string): number {
+export function compareVersionsAsc(a: string, b: string): number {
   const parse = (v: string) => {
     const clean = v.replace(/^v/i, "");
     const dash = clean.indexOf("-");
