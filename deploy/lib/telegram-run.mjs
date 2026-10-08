@@ -1,6 +1,7 @@
 import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 
+const projects = { motionflow: "Motion Flow", "ione-premiere-basics": "Odin Pro", aniomLaravelSite: "Laravel" };
 const titles = {
   started: "⏳ Motion Flow: сборка в GitHub Actions началась",
   deploying: "⏳ Motion Flow: сборка готова, обновляем сервер",
@@ -16,12 +17,12 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 export function formatRunNotification(payload) {
   if (!titles[payload.status]) throw new Error("Invalid notification status");
   const url = new URL(payload.url);
-  const match = url.pathname.match(/^\/nipapin\/motionflow\/actions\/runs\/(\d+)\/attempts\/(\d+)\/?$/);
-  if (url.origin !== "https://github.com" || !match || url.search || url.hash) throw new Error("Invalid run URL");
+  const match = url.pathname.match(/^\/nipapin\/([^/]+)\/actions\/runs\/(\d+)\/attempts\/(\d+)\/?$/);
+  if (url.origin !== "https://github.com" || !match || !Object.hasOwn(projects, match[1]) || url.search || url.hash) throw new Error("Invalid run URL");
   return {
-    key: `${match[1]}-${match[2]}`,
+    key: `${match[2]}-${match[3]}`,
     body: {
-      text: [titles[payload.status], `Commit: <code>${escape(payload.sha?.slice(0, 7))}</code>`, escape(payload.detail), escape(url.href)].filter(Boolean).join("\n"),
+      text: [titles[payload.status].replace("Motion Flow", projects[match[1]]), `Commit: <code>${escape(payload.sha?.slice(0, 7))}</code>`, escape(payload.detail), escape(url.href)].filter(Boolean).join("\n"),
       parse_mode: "HTML", disable_web_page_preview: true,
     },
   };

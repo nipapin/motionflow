@@ -15,6 +15,12 @@ const api = async (url, request) => {
   return response({ ok: true, result: { message_id: method === "sendMessage" ? nextId++ : body.message_id } });
 };
 try {
+  for (const [repo, label] of [["ione-premiere-basics", "Odin Pro"], ["aniomLaravelSite", "Laravel"]]) {
+    const formatted = formatRunNotification({ ...payload, url: payload.url.replace("/motionflow/", `/${repo}/`) });
+    assert.equal(formatted.key, "123-1");
+    assert.ok(formatted.body.text.includes(label));
+  }
+  assert.throws(() => formatRunNotification({ ...payload, url: payload.url.replace("/motionflow/", "/other/") }), /Invalid run URL/);
   assert.deepEqual(await updateRunNotification(options, api), { sent: 3, edited: 0, failed: 0, skipped: false });
   const initial = JSON.parse(readFileSync(join(root, "123-1.json"), "utf8")).messages;
   for (const status of ["deploying", "success"]) {
