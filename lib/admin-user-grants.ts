@@ -3,6 +3,7 @@ import "server-only";
 import crypto from "node:crypto";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
+import { soldItemAccessCondition } from "@/lib/campaigns/core.mjs";
 import { marketplaceItemsTable } from "@/lib/author/marketplace-table";
 import { getMarketItemsByIds } from "@/lib/market-items";
 import { EXTRA_GEN_PACKS } from "@/lib/extra-generation-packs";
@@ -445,12 +446,12 @@ export async function grantAdminUserPurchase(opts: {
     system: string | null;
   };
   const [existing] = await pool.execute<SoldRow[]>(
-    `SELECT id, status, \`system\` FROM \`${SOLD_TABLE}\`
+    `SELECT id, status, \`system\`, (${soldItemAccessCondition()}) AS access_active FROM \`${SOLD_TABLE}\`
       WHERE buyer_id = ? AND item_id = ?
       ORDER BY id DESC`,
     [opts.userId, opts.itemId],
   );
-  const active = existing.find((r) => Number(r.status) === 1);
+  const active = existing.find((r) => Number(r.access_active) === 1);
   if (active) {
     return { soldItemId: Number(active.id), restored: false, skipped: true };
   }

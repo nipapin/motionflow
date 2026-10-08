@@ -180,12 +180,27 @@ export interface PaddleApiPrice {
 
 export async function getSubscription(
   id: string,
-  options: { account?: PaddleApiAccount } = {},
+  options: { account?: PaddleApiAccount; signal?: AbortSignal } = {},
 ): Promise<PaddleApiSubscription> {
   return paddleFetch<PaddleApiSubscription>(
     `/subscriptions/${encodeURIComponent(id)}?include=next_transaction`,
-    { account: options.account },
+    { account: options.account, signal: options.signal },
   );
+}
+
+/** Complimentary campaign extension: move renewal without a charge or credit. */
+export async function moveCampaignBillingDate(
+  id: string,
+  nextBilledAt: string,
+  options: { account?: PaddleApiAccount } = {},
+): Promise<PaddleApiSubscription> {
+  if (!/^sub_[a-z0-9]{26}$/.test(id) || !Number.isFinite(Date.parse(nextBilledAt))) throw new Error("Invalid campaign billing date");
+  return paddleFetch<PaddleApiSubscription>(`/subscriptions/${id}`, {
+    account: options.account,
+    method: "PATCH",
+    signal: AbortSignal.timeout(30_000),
+    body: JSON.stringify({next_billed_at:nextBilledAt,proration_billing_mode:"do_not_bill"}),
+  });
 }
 
 /**

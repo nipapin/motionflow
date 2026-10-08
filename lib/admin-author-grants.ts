@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
+import { soldItemAccessCondition } from "@/lib/campaigns/core.mjs";
 import {
   generatePasswordResetToken,
   storePasswordResetToken,
@@ -526,7 +527,7 @@ export async function grantAdminAuthorPacks(opts: {
     const itemId = resolveSoldItemId(project);
     const [dup] = await pool.execute<RowDataPacket[]>(
       `SELECT id FROM \`${SOLD_TABLE}\`
-       WHERE buyer_id = ? AND item_id = ? AND status = 1 LIMIT 1`,
+       WHERE buyer_id = ? AND item_id = ? AND ${soldItemAccessCondition()} LIMIT 1`,
       [opts.userId, itemId],
     );
     if (dup.length > 0) {
@@ -536,7 +537,7 @@ export async function grantAdminAuthorPacks(opts: {
     if (itemId !== project.id) {
       const [dupProj] = await pool.execute<RowDataPacket[]>(
         `SELECT id FROM \`${SOLD_TABLE}\`
-         WHERE buyer_id = ? AND item_id = ? AND status = 1 LIMIT 1`,
+         WHERE buyer_id = ? AND item_id = ? AND ${soldItemAccessCondition()} LIMIT 1`,
         [opts.userId, project.id],
       );
       if (dupProj.length > 0) {

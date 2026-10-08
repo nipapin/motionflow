@@ -16,6 +16,7 @@ import {
   Handshake,
   Share2,
   UserRound,
+  Mail,
 } from "lucide-react";
 import { PACKAGES_AUTHORS, packagesAuthorLogoUrl } from "@/lib/packages-admin-client";
 import { cn } from "@/lib/utils";
@@ -234,7 +235,7 @@ export function AccountSidebar({
               ? ([{ href: "/profile/partners", label: "Partners", icon: Handshake }] as const)
               : []),
             ...(showUsers
-              ? ([{ href: "/profile/users", label: "Users", icon: UserRound }] as const)
+              ? ([{ href: "/profile/users", label: "Users", icon: UserRound }, { href: "/profile/campaigns", label: "Campaigns", icon: Mail }] as const)
               : []),
           ].map(({ href, label, icon: Icon }) => {
             const active = isActive(normalized, href);

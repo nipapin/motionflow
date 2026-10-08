@@ -69,9 +69,9 @@ const nextConfig = {
         //
         // Allowlist: downloads|purchases|subscriptions|favorites|generations|
         //            dashboard|upload|items|earnings|payouts|packages|extensions|
-        //            partners|affiliate|users
+        //            partners|affiliate|users|campaigns
         source:
-          '/profile/:slug((?!downloads|purchases|subscriptions|favorites|generations|dashboard|upload|items|earnings|payouts|packages|extensions|partners|affiliate|users)[^/]+)',
+          '/profile/:slug((?!downloads|purchases|subscriptions|favorites|generations|dashboard|upload|items|earnings|payouts|packages|extensions|partners|affiliate|users|campaigns)[^/]+)',
         destination: '/profile',
         permanent: false,
       },

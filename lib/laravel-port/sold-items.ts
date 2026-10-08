@@ -1,6 +1,7 @@
 import "server-only";
 import type { RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
+import { soldItemAccessCondition } from "@/lib/campaigns/core.mjs";
 
 /**
  * Native port of Laravel `App\Models\SoldItems` — only the API-facing helpers
@@ -79,7 +80,7 @@ export async function apiCheckPurchaseByCode(
             `SELECT sold_items.*, users.name AS buyer_name
              FROM sold_items
              LEFT JOIN users ON users.id = sold_items.buyer_id
-             WHERE sold_items.status = 1 AND sold_items.purchase_code = ?
+             WHERE ${soldItemAccessCondition("sold_items")} AND sold_items.purchase_code = ?
              LIMIT 1`,
             [code],
         );

@@ -4,6 +4,7 @@ import { EXTRA_GEN_PACKS } from "@/lib/extra-generation-packs";
 import { getPool } from "@/lib/db";
 import { getMarketItemsByIds } from "@/lib/market-items";
 import type { Product } from "@/lib/product-types";
+import { soldItemAccessCondition } from "@/lib/campaigns/core.mjs";
 
 const TABLE = "sold_items";
 const EXTRA_GEN_CREDIT_EVENTS_TABLE = "paddle_extra_generation_credit_events";
@@ -126,7 +127,7 @@ export async function getPurchasesForUser(userId: number): Promise<PurchaseWithP
   const [rows] = await pool.execute<SoldRow[]>(
     `SELECT id, item_id, sold_price, license, purchase_code, \`system\`, created_at
      FROM \`${TABLE}\`
-     WHERE buyer_id = ? AND status = 1
+     WHERE buyer_id = ? AND ${soldItemAccessCondition()}
      ORDER BY id DESC`,
     [userId],
   );
@@ -155,7 +156,7 @@ export async function getPurchasesForUser(userId: number): Promise<PurchaseWithP
 export async function userOwnsItem(userId: number, itemId: number): Promise<boolean> {
   const pool = getPool();
   const [rows] = await pool.execute<RowDataPacket[]>(
-    `SELECT 1 FROM \`${TABLE}\` WHERE buyer_id = ? AND item_id = ? AND status = 1 LIMIT 1`,
+    `SELECT 1 FROM \`${TABLE}\` WHERE buyer_id = ? AND item_id = ? AND ${soldItemAccessCondition()} LIMIT 1`,
     [userId, itemId],
   );
   return rows.length > 0;
@@ -172,7 +173,7 @@ export async function getOwnedItemIdSet(
   const placeholders = unique.map(() => "?").join(",");
   const [rows] = await pool.execute<RowDataPacket[]>(
     `SELECT DISTINCT item_id FROM \`${TABLE}\`
-     WHERE buyer_id = ? AND status = 1 AND item_id IN (${placeholders})`,
+     WHERE buyer_id = ? AND ${soldItemAccessCondition()} AND item_id IN (${placeholders})`,
     [userId, ...unique],
   );
   return new Set(rows.map((r) => Number(r.item_id)));
@@ -186,7 +187,7 @@ export async function getPurchaseCodeForOwnedItem(
   const pool = getPool();
   const [rows] = await pool.execute<RowDataPacket[]>(
     `SELECT purchase_code FROM \`${TABLE}\`
-     WHERE buyer_id = ? AND item_id = ? AND status = 1
+     WHERE buyer_id = ? AND item_id = ? AND ${soldItemAccessCondition()}
      ORDER BY id DESC
      LIMIT 1`,
     [userId, itemId],

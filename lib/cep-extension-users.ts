@@ -1,4 +1,5 @@
 import "server-only";
+import { soldItemAccessCondition } from "@/lib/campaigns/core.mjs";
 
 import type { RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
@@ -188,7 +189,7 @@ async function loadOwnedItemIdsByUser(
   type Row = RowDataPacket & { buyer_id: number; item_id: number };
   const [rows] = await pool.execute<Row[]>(
     `SELECT DISTINCT buyer_id, item_id FROM \`${SOLD_TABLE}\`
-     WHERE status = 1
+     WHERE ${soldItemAccessCondition()}
        AND buyer_id IN (${userPh})
        AND item_id IN (${itemPh})`,
     [...uniqueUsers, ...uniqueItems],
@@ -225,7 +226,7 @@ export async function listExtensionUsersForAuthor(opts: {
   const pool = getPool();
   const unionParts: string[] = [
     `SELECT buyer_id AS user_id FROM \`${SUB_TABLE}\` WHERE author_id = ?`,
-    `SELECT buyer_id AS user_id FROM \`${SOLD_TABLE}\` WHERE author_id = ? AND status = 1`,
+    `SELECT buyer_id AS user_id FROM \`${SOLD_TABLE}\` WHERE author_id = ? AND ${soldItemAccessCondition()}`,
   ];
   const unionParams: Array<string | number> = [opts.authorId, opts.authorId];
   if (client) {
