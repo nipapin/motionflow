@@ -11,8 +11,8 @@ for (const file of files) {
   if (file.split("/").some(p => /^\.env(?:\.|$)/.test(p))) continue;
   cpSync(file, join(".release", file), { recursive: true });
 }
-cpSync(".next", ".release/.next", { recursive: true, filter: p => !p.replaceAll("\\", "/").startsWith(".next/cache") });
-cpSync("node_modules", ".release/node_modules", { recursive: true });
+cpSync(".next", ".release/.next", { recursive: true, verbatimSymlinks: true, filter: p => !p.replaceAll("\\", "/").startsWith(".next/cache") });
+cpSync("node_modules", ".release/node_modules", { recursive: true, verbatimSymlinks: true });
 cpSync("deploy/ecosystem.release.config.cjs", ".release/ecosystem.release.config.cjs");
 writeFileSync(".release/release.json", JSON.stringify({ releaseId, commit, platform: process.platform, arch: process.arch, nodeMajor: Number(process.versions.node.split(".")[0]) }));
 function check(root) {
