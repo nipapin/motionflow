@@ -76,6 +76,7 @@ export function PackagesProjectEditor({
   itemId: number;
 }) {
   const author = getPackagesAuthorPublicById(authorId);
+  const spunkramAuthor = author?.slug === "spunkram";
   const internalAuthor = isInternalPackagesAuthor({ id: authorId });
   const [project, setProject] = useState<Project | null>(null);
   const [authorBucket, setAuthorBucket] = useState<string | null>(null);
@@ -465,9 +466,11 @@ export function PackagesProjectEditor({
           </div>}
 
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="details-url">Package page</Label>
+            <Label htmlFor="details-url">{spunkramAuthor ? "Extension button URL" : "Package page"}</Label>
             <Input
               id="details-url"
+              aria-describedby="details-url-help"
+              maxLength={1024}
               value={detailsUrl}
               onChange={(e) => setDetailsUrl(e.target.value)}
               onBlur={() => {
@@ -477,8 +480,8 @@ export function PackagesProjectEditor({
               }}
               placeholder={internalAuthor ? "https://odin-pro.com" : "https://motionflow.pro/item/{id}"}
             />
-            <p className="text-[12px] text-muted-foreground">
-              {internalAuthor ? "Optional package page on odin-pro.com. This author is only managed in Packages and is not listed on the Motionflow site." : <>Next.js on the main site:{" "}
+            <p id="details-url-help" className="text-[12px] text-muted-foreground">
+              {spunkramAuthor ? "Get Now opens this URL in the extension for paid packs. Free packs and packs the user already has access to use Download to install directly. If empty, the linked marketplace page or subscription page is used." : internalAuthor ? "Optional package page on odin-pro.com. This author is only managed in Packages and is not listed on the Motionflow site." : <>Next.js on the main site:{" "}
               <code className="text-[11px]">/item/{"{id}"}</code>. Laravel catalog
               stays on author subdomains (
               <code className="text-[11px]">spunkram.motionflow.pro/item/…</code>

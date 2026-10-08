@@ -170,7 +170,7 @@ Only packs that are **visible** in admin (`In CEP = On`), match `host`, and belo
 | `action` | What the UI should do (see below). |
 | `install_url` | Authenticated download entry when install is allowed. |
 | `buy_url` | Open in browser when user must purchase / subscribe. |
-| `details_url` | Optional marketing / pricing page. |
+| `details_url` | Package page / extension button URL configured in Packages admin. Spunkram opens it with **Get Now**; its cards have no separate Details button. |
 | `min_extension_version` | Oldest panel build that may install this pack. |
 | `min_host_version` | Oldest Premiere / AE version supported. |
 
@@ -178,9 +178,9 @@ Only packs that are **visible** in admin (`In CEP = On`), match `host`, and belo
 
 | `action` | Meaning | Panel behavior |
 |----------|---------|----------------|
-| `install` | User has author subscription (or equivalent entitlement). | Show **Install**. Call `install_url` with Bearer (see §3). |
-| `get_free` | Pack price is free; no paid sub required. | Show **Get free** / Install. Same download flow as install. |
-| `buy` | Paid pack, no active author subscription. | Show **Buy** / Subscribe. Open `buy_url` (or `subscribe_url` from the root payload). Do **not** call download. |
+| `install` | User has author subscription (or equivalent entitlement). | Spunkram shows **Download**, other panels **Install**. Call `install_url` with Bearer (see §3). |
+| `get_free` | Pack price is free; no paid sub required. | Spunkram shows **Download**, other panels **Get free** / Install. Same download flow as install. |
+| `buy` | Paid pack, no active author subscription. | Spunkram shows **Get Now**, other panels **Buy** / Subscribe. Open `details_url`, then `buy_url`, then root `subscribe_url` as fallbacks. Do **not** call download. |
 
 `subscription_active` on the root object mirrors author subscription for the signed-in user.
 
