@@ -25,7 +25,10 @@ fs.appendFileSync(process.env.MOCK_LOG,action+':'+(config||'')+'\\n');
 let state=JSON.parse(fs.readFileSync(process.env.MOCK_STATE));
 if(action==='describe')process.exit(state.release==='stopped'?1:0);
 if(action==='delete')state={release:'stopped'};
-if(action==='start')state={release:config.endsWith('ecosystem.release.cjs')?JSON.parse(fs.readFileSync(path.join(path.dirname(config),'release.json'))).releaseId:'legacy'};
+if(action==='start'){
+ if(!config.endsWith('.config.cjs'))process.exit(1);
+ state={release:config.endsWith('ecosystem.release.config.cjs')?JSON.parse(fs.readFileSync(path.join(path.dirname(config),'release.json'))).releaseId:'legacy'};
+}
 fs.writeFileSync(process.env.MOCK_STATE,JSON.stringify(state));
 `, 0o755);
   write(join(bin, "curl"), `#!/usr/bin/env node
@@ -41,7 +44,7 @@ process.stdout.write(JSON.stringify({status:'ok',release,database:true,redis:tru
   function archive(n) {
     const source = join(temporary, `source-${n}`), incoming = join(root, "incoming", id(n));
     mkdirSync(incoming, { recursive: true });
-    for (const file of [".next/BUILD_ID", "server.mjs", "server/cep-ws-hub.mjs", "server/deploy-health.mjs", "ecosystem.release.cjs", "public/asset.txt", "db/migrations/test.sql"]) write(join(source, file), "fixture");
+    for (const file of [".next/BUILD_ID", "server.mjs", "server/cep-ws-hub.mjs", "server/deploy-health.mjs", "ecosystem.release.config.cjs", "public/asset.txt", "db/migrations/test.sql"]) write(join(source, file), "fixture");
     for (const module of ["next", "mysql2/promise", "ioredis", "ws", "sharp"]) write(join(source, "node_modules", module, "index.js"), "module.exports={};");
     write(join(source, "release.json"), JSON.stringify({ releaseId: id(n), commit, platform: "linux", arch: "x64", nodeMajor: 20 }));
     for (const script of ["verify-ci-release.mjs", "check-ci-health.mjs", "prune-ci-releases.mjs"]) write(join(source, "scripts", script), readFileSync(join(repo, "scripts", script), "utf8"));

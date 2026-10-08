@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 const manifest = JSON.parse(readFileSync("release.json", "utf8"));
 if (manifest.releaseId !== process.argv[2] || manifest.platform !== process.platform || manifest.arch !== process.arch || manifest.nodeMajor !== Number(process.versions.node.split(".")[0])) throw new Error("Release identity or runtime mismatch");
-for (const file of [".next/BUILD_ID", "server.mjs", "server/cep-ws-hub.mjs", "server/deploy-health.mjs", "public", "db/migrations", "ecosystem.release.cjs"]) if (!existsSync(file)) throw new Error(`Missing ${file}`);
+for (const file of [".next/BUILD_ID", "server.mjs", "server/cep-ws-hub.mjs", "server/deploy-health.mjs", "public", "db/migrations", "ecosystem.release.config.cjs"]) if (!existsSync(file)) throw new Error(`Missing ${file}`);
 function check(root) {
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     if (/^\.env(?:\.|$)/.test(entry.name)) throw new Error("Environment file in release");

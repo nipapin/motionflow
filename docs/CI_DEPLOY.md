@@ -73,11 +73,11 @@ ssh motionflow 'flock -n /root/motionflow-deploy/deploy.lock bash -c '\''
 set -e
 root=/root/motionflow-deploy
 previous=$(readlink -f "$root/previous")
-test -f "$previous/ecosystem.release.cjs"
+test -f "$previous/ecosystem.release.config.cjs"
 ln -s "$previous" "$root/.manual-rollback"
 mv -Tf "$root/.manual-rollback" "$root/current"
 pm2 delete motionflow
-pm2 start "$previous/ecosystem.release.cjs" --only motionflow
+pm2 start "$previous/ecosystem.release.config.cjs" --only motionflow
 pm2 save
 '\'''
 ```

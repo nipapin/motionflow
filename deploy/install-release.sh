@@ -20,8 +20,8 @@ previous=""
 config="$legacy/ecosystem.config.cjs"
 if [[ -L "$root/current" ]]; then
   previous=$(readlink -f "$root/current")
-  [[ "$previous" == "$root/releases/"* && -f "$previous/ecosystem.release.cjs" ]]
-  config="$previous/ecosystem.release.cjs"
+  [[ "$previous" == "$root/releases/"* && -f "$previous/ecosystem.release.config.cjs" ]]
+  config="$previous/ecosystem.release.config.cjs"
 fi
 [[ ! -e "$release" ]] || { echo 'Release exists; rerun all jobs with a new attempt' >&2; exit 1; }
 stage=$(mktemp -d "$root/releases/.staging-$id-XXXXXX")
@@ -59,7 +59,7 @@ mv "$stage" "$release"
 ln -s "$release" "$root/.current-$id"
 mv -Tf "$root/.current-$id" "$root/current"
 switched=1
-start_app "$release/ecosystem.release.cjs"
+start_app "$release/ecosystem.release.config.cjs"
 healthy=0
 for attempt in $(seq 1 25); do
   if curl --fail --silent --max-time 10 http://127.0.0.1:3000/api/deploy-health | node "$release/scripts/check-ci-health.mjs" "$id"; then

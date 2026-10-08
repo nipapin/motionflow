@@ -13,7 +13,7 @@ for (const file of files) {
 }
 cpSync(".next", ".release/.next", { recursive: true, filter: p => !p.replaceAll("\\", "/").startsWith(".next/cache") });
 cpSync("node_modules", ".release/node_modules", { recursive: true });
-cpSync("deploy/ecosystem.release.cjs", ".release/ecosystem.release.cjs");
+cpSync("deploy/ecosystem.release.config.cjs", ".release/ecosystem.release.config.cjs");
 writeFileSync(".release/release.json", JSON.stringify({ releaseId, commit, platform: process.platform, arch: process.arch, nodeMajor: Number(process.versions.node.split(".")[0]) }));
 function check(root) {
   for (const entry of readdirSync(root, { withFileTypes: true })) {
