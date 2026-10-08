@@ -61,6 +61,7 @@ jobs:
       - name: Check deployment scripts and build
         run: |
           for script in deploy/install-release.sh deploy/ci-ssh.sh; do bash -n "$script"; done
+          node scripts/test-ci-notifications.mjs
           node scripts/test-ci-installer.mjs
           npm exec --yes --package=pm2@7.0.1 -- node scripts/test-ci-pm2.mjs
           npm run build
@@ -98,6 +99,14 @@ jobs:
         with:
           name: motionflow-${{ needs.build.outputs.release_id }}
           path: release-artifacts
+      - name: Update Telegram message before deployment
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          NOTIFY_STATUS: deploying
+        run: bash deploy/ci-ssh.sh notify
       - name: Deliver release without building on VPS
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
