@@ -7,6 +7,7 @@ import {
   Bookmark,
   CreditCard,
   Download,
+  FileText,
   Handshake,
   LayoutDashboard,
   LogOut,
@@ -169,6 +170,7 @@ export function ProfileHeader({
                       ? ([
                           { icon: UserRound, label: "Users", href: "/profile/users" },
                           { icon: Mail, label: "Campaigns", href: "/profile/campaigns" },
+                          { icon: FileText, label: "PDF Links", href: "https://motionflow.pro/pdf-link" },
                         ] as const)
                       : []),
                     ...(Number(user?.access) >= 1
