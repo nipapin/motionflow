@@ -1,0 +1,40 @@
+name: Motion Flow release notifications
+on:
+  workflow_run:
+    workflows: [Motion Flow build and deploy]
+    types: [completed]
+    branches: [main]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  telegram:
+    if: github.event.workflow_run.event != 'pull_request'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Report build and deployment result through the existing bot
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          SOURCE_RUN: ${{ github.event.workflow_run.id }}
+          SOURCE_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        run: |
+          export GITHUB_RUN_ID="$SOURCE_RUN" GITHUB_RUN_ATTEMPT="$SOURCE_ATTEMPT" RELEASE_COMMIT="$SOURCE_SHA"
+          export NOTIFY_STATUS=failure NOTIFY_DETAIL="Workflow: $SOURCE_CONCLUSION"
+          jobs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN/attempts/$SOURCE_ATTEMPT/jobs")
+          export NOTIFY_DETAIL=$(printf '%s' "$jobs" | jq -r '[.jobs[] | "\(.name): \(.conclusion)"] | join("; ")')
+          if [[ "$SOURCE_CONCLUSION" == cancelled ]]; then export NOTIFY_STATUS=cancelled;
+          elif [[ "$SOURCE_CONCLUSION" == success ]]; then
+            if printf '%s' "$jobs" | jq -e '.jobs[] | select(.name == "deploy" and .conclusion == "success")' >/dev/null; then export NOTIFY_STATUS=success;
+            else export NOTIFY_STATUS=built; fi
+          fi
+          bash deploy/ci-ssh.sh notify

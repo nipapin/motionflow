@@ -6,6 +6,7 @@ import { createServer } from "http";
 import { parse } from "url";
 import next from "next";
 import { attachCepWebSocket } from "./server/cep-ws-hub.mjs";
+import { deploymentHealth } from "./server/deploy-health.mjs";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME || "0.0.0.0";
@@ -19,6 +20,14 @@ await app.prepare();
 const server = createServer(async (req, res) => {
   try {
     const parsedUrl = parse(req.url, true);
+    if (parsedUrl.pathname === "/api/deploy-health") {
+      const health = await deploymentHealth();
+      res.statusCode = health.status === "ok" ? 200 : 503;
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader("Cache-Control", "no-store");
+      res.end(JSON.stringify(health));
+      return;
+    }
     await handle(req, res, parsedUrl);
   } catch (err) {
     console.error("[server] request error", err);
