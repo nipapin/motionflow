@@ -90,9 +90,9 @@ test('MySQL campaign integration in temporary tables',{skip:!process.argv.includ
       if(existing)await conn.execute("INSERT INTO users (id,name,email,password,first_name,last_name,mailing,created_at,updated_at) VALUES (101,'fixture',?,'discarded','Alex','Example',0,UTC_TIMESTAMP(),UTC_TIMESTAMP())",[recipient().email]);
     };
     const seedSub=async()=>conn.execute("INSERT INTO subscription_systems (id,buyer_id,subscription_id,payment_id,status,amount,amount_summary,price,system_tax,`system`,type,plan,paddle_price_id,paddle_product_name,count,ends_at,paddle_billing_period_ends_at,author_id,author_earn,created_at,updated_at) VALUES (10,101,?,'fixture',1,0,0,0,0,'paddle','personal','monthly','pri_gal','Gal Toolkit MAX',1,'2030-11-08 12:00:00','2030-11-08 12:00:00',4141,0,UTC_TIMESTAMP(),UTC_TIMESTAMP())",[subId]);
-    let live,moves,sends,loseMove,loseMail;
-    const services=()=>({catalog:()=>catalog,item:{id:99,author_id:4141,name:'Item'},from:'Test <test@example.invalid>',paddle:{get:async()=>structuredClone(live),move:async(id,target)=>{moves++;live.next_billed_at=target;live.current_billing_period.ends_at=target;if(loseMove){loseMove=false;throw new Error('Fixture lost Paddle response');}return structuredClone(live);}},mail:{emails:{send:async(payload,options)=>{sends.push({payload:structuredClone(payload),options});if(loseMail){loseMail=false;throw new Error('Fixture lost Resend response');}return {data:{id:'fixture-email'},error:null};}}}});
-    const init=async(existing=false)=>{await reset(existing);live=paddle();moves=0;sends=[];loseMove=false;loseMail=false;};
+    let live,reads,moves,sends,loseMove,loseMail;
+    const services=()=>({catalog:()=>catalog,item:{id:99,author_id:4141,name:'Item'},from:'Test <test@example.invalid>',paddle:{get:async()=>{reads++;return structuredClone(live);},move:async(id,target)=>{moves++;live.next_billed_at=target;live.current_billing_period.ends_at=target;if(loseMove){loseMove=false;throw new Error('Fixture lost Paddle response');}return structuredClone(live);}},mail:{emails:{send:async(payload,options)=>{sends.push({payload:structuredClone(payload),options});if(loseMail){loseMail=false;throw new Error('Fixture lost Resend response');}return {data:{id:'fixture-email'},error:null};}}}});
+    const init=async(existing=false)=>{await reset(existing);live=paddle();reads=0;moves=0;sends=[];loseMove=false;loseMail=false;};
     const failOnce=fragment=>{
       let fail=true;
       return {beginTransaction:()=>conn.beginTransaction(),commit:()=>conn.commit(),rollback:()=>conn.rollback(),execute:(sql,params)=>{
@@ -134,9 +134,38 @@ test('MySQL campaign integration in temporary tables',{skip:!process.argv.includ
       const svc={...services(),catalog:()=>({...catalog,allPriceIds:['pri_gal','pri_ai']})};
       await assert.rejects(applyRecipient(conn,campaign(),await read(),svc,now),/different tier/);assert.equal(moves,0);assert.equal((await read()).state,'pending');
     });
-    await t.test('lifetime access with continuing billing requires manual resolution',async()=>{
+    await t.test('lifetime access skips grants, Paddle and emails even with a subscription ID',async()=>{
       await init(true);await seedSub();await conn.query("UPDATE subscription_systems SET plan='lifetime' WHERE id=10");
-      await assert.rejects(applyRecipient(conn,campaign(),await read(),services(),now),/lifetime account/);assert.equal(moves,0);
+      await applyRecipient(conn,campaign(),await read(),services(),now);await sendRecipient(conn,campaign(),await read(),services(),now);
+      assert.equal((await read()).state,'skipped');assert.equal(reads,0);assert.equal(moves,0);assert.equal(sends.length,0);
+      assert.equal(Number((await conn.query('SELECT COUNT(*) n FROM subscription_systems'))[0][0].n),1);
+    });
+    await t.test('one-time lifetime Paddle purchase skips without requiring a recurring ID',async()=>{
+      await init(true);await seedSub();await conn.query("UPDATE subscription_systems SET plan='lifetime',subscription_id='txn_fixture',paddle_price_id=NULL,ends_at=NULL,paddle_billing_period_ends_at=NULL WHERE id=10");
+      await conn.query("UPDATE admin_campaign_recipients SET last_error='Legacy Paddle subscription needs manual review' WHERE id=1");
+      const plan=await inspectRecipient(conn,campaign(),await read(),services(),now);assert.equal(plan.action,'skip_lifetime');assert.deepEqual(plan.billing,[]);
+      await applyRecipient(conn,campaign(),await read(),services(),now);await applyRecipient(conn,campaign(),await read(),services(),now);
+      await sendRecipient(conn,campaign(),await read(),services(),now);
+      const row=await read();assert.equal(row.state,'skipped');assert.equal(row.action,'skip_lifetime');assert.equal(row.last_error,null);assert.equal(row.entitlement_id,null);
+      assert.equal(reads,0);assert.equal(moves,0);assert.equal(sends.length,0);
+      assert.equal(Number((await conn.query('SELECT COUNT(*) n FROM subscription_systems'))[0][0].n),1);
+      assert.equal(Number((await conn.query('SELECT COUNT(*) n FROM password_reset_tokens'))[0][0].n),0);
+    });
+    await t.test('lifetime access to another author does not skip the selected subscription',async()=>{
+      await init(true);await seedSub();await conn.query("UPDATE subscription_systems SET plan='lifetime',author_id=1691,subscription_id='txn_fixture' WHERE id=10");
+      await applyRecipient(conn,campaign(),await read(),services(),now);
+      assert.equal((await read()).state,'ready');assert.equal((await read()).action,'grant_access');assert.equal(reads,0);assert.equal(moves,0);
+    });
+    await t.test('finite Paddle access with a missing recurring ID still blocks issuance',async()=>{
+      await init(true);await seedSub();await conn.query("UPDATE subscription_systems SET subscription_id='txn_fixture' WHERE id=10");
+      await assert.rejects(applyRecipient(conn,campaign(),await read(),services(),now),/Cannot verify recurring Paddle billing/);
+      assert.equal((await read()).state,'pending');assert.equal(reads,0);assert.equal(moves,0);
+      assert.equal(Number((await conn.query('SELECT COUNT(*) n FROM subscription_systems'))[0][0].n),1);
+    });
+    await t.test('previously prepared keep-existing email is skipped without being sent',async()=>{
+      await init(true);await conn.query("UPDATE admin_campaign_recipients SET state='ready',action='keep_existing',user_id=101 WHERE id=1");
+      await sendRecipient(conn,campaign(),await read(),services(),now);
+      assert.equal((await read()).state,'skipped');assert.equal(reads,0);assert.equal(sends.length,0);
     });
     await t.test('new account uses a genuine hashed token and stable retry payload',async()=>{
       await init();const c={...campaign(),grant:{...campaign().grant,kind:'invite'}};
@@ -174,6 +203,15 @@ test('MySQL campaign integration in temporary tables',{skip:!process.argv.includ
       assert.equal(Number((await conn.query('SELECT COUNT(*) n FROM sold_items WHERE '+soldItemAccessCondition()))[0][0].n),0);
       await conn.query("UPDATE sold_items SET arguments=JSON_OBJECT('access_expires_at',NULL)");
       assert.equal(Number((await conn.query('SELECT COUNT(*) n FROM sold_items WHERE '+soldItemAccessCondition()))[0][0].n),1);
+    });
+    await t.test('permanent product ownership skips timed grants and emails',async()=>{
+      await init(true);const permanent={...campaign(),grant:{...campaign().grant,kind:'item',itemId:99,duration:'unlimited'}};
+      await applyRecipient(conn,permanent,await read(),services(),now);
+      await conn.query("UPDATE admin_campaign_recipients SET state='pending',action=NULL,entitlement_id=NULL WHERE id=1");
+      const timed={...permanent,grant:{...permanent.grant,duration:'year'}};
+      await applyRecipient(conn,timed,await read(),services(),now);await sendRecipient(conn,timed,await read(),services(),now);
+      assert.equal((await read()).state,'skipped');assert.equal((await read()).action,'skip_owned_item');
+      assert.equal(Number((await conn.query('SELECT COUNT(*) n FROM sold_items'))[0][0].n),1);assert.equal(sends.length,0);assert.equal(reads,0);
     });
   } finally {await conn.end();}
 });

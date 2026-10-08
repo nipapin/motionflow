@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { motionflowMainSiteUrl, motionflowSiteOrigin } from "@/lib/motionflow-urls";
 import { SEARCH_CATEGORY_OPTIONS, searchCategoryHref, type SearchCategory } from "@/lib/search-categories";
 import { cn } from "@/lib/utils";
-import { Bookmark, ChevronDown, CreditCard, Download, Handshake, LayoutDashboard, LogOut, Search, Share2, ShoppingBag, Sparkles, User, UserRound, Users, X } from "lucide-react";
+import { Bookmark, ChevronDown, CreditCard, Download, Handshake, LayoutDashboard, LogOut, Mail, Search, Share2, ShoppingBag, Sparkles, User, UserRound, Users, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -303,7 +303,10 @@ export function Header({
                     ? [{ icon: Handshake, label: "Partners", href: "/profile/partners" }]
                     : []),
                   ...(showUsers
-                    ? [{ icon: UserRound, label: "Users", href: "/profile/users" }]
+                    ? [
+                        { icon: UserRound, label: "Users", href: "/profile/users" },
+                        { icon: Mail, label: "Campaigns", href: "/profile/campaigns" },
+                      ]
                     : []),
                   ...(Number(user?.access) >= 1
                     ? [{ icon: LayoutDashboard, label: "Dashboard", href: "https://authors.motionflow.pro" }]

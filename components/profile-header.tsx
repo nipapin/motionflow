@@ -10,6 +10,7 @@ import {
   Handshake,
   LayoutDashboard,
   LogOut,
+  Mail,
   Share2,
   ShoppingBag,
   Sparkles,
@@ -165,7 +166,10 @@ export function ProfileHeader({
                       ? ([{ icon: Handshake, label: "Partners", href: "/profile/partners" }] as const)
                       : []),
                     ...(usersVisible
-                      ? ([{ icon: UserRound, label: "Users", href: "/profile/users" }] as const)
+                      ? ([
+                          { icon: UserRound, label: "Users", href: "/profile/users" },
+                          { icon: Mail, label: "Campaigns", href: "/profile/campaigns" },
+                        ] as const)
                       : []),
                     ...(Number(user?.access) >= 1
                       ? ([{ icon: LayoutDashboard, label: "Dashboard", href: "https://authors.motionflow.pro" }] as const)

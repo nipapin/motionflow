@@ -12,7 +12,7 @@ import { ensurePasswordResetTokensTable } from "@/lib/auth/password-reset";
 import { PREMIERE_GAL_PRICE_IDS } from "@/lib/premiere-gal-paddle-config";
 import { SPUNKRAM_LIBRARY_SUBSCRIPTION_PRICE_IDS, SPUNKRAM_AI_TOOLKIT_SUBSCRIPTION_PRICE_IDS, getSpunkramExtraGenPacks } from "@/lib/spunkram-paddle-config";
 import { getExtraGenPacks } from "@/lib/extra-generation-packs";
-import { parseRecipients, validateTemplate, renderCampaignEmail } from "./core.mjs";
+import { parseRecipients, validateTemplate, renderCampaignEmail, skipsAccess } from "./core.mjs";
 import { decode, inspectRecipient, applyRecipient, sendRecipient } from "./engine.mjs";
 import type { Campaign, CampaignDraft } from "./shared";
 
@@ -137,7 +137,7 @@ export async function prepareCampaign(id:string) {
     const [recipients] = await conn.execute<DbRecipient[]>("SELECT * FROM admin_campaign_recipients WHERE campaign_id=? ORDER BY id",[id]);
     if (!["draft","preparing","prepared"].includes(campaign.status)) throw new Error("A launched campaign already has a fixed recipient list");
     if (campaign.status === "draft") await conn.execute("UPDATE admin_campaigns SET status='preparing',last_error=NULL,updated_at=UTC_TIMESTAMP() WHERE id=?",[id]);
-    const unchecked = recipients.find(r => !r.plan_json);
+    const unchecked = recipients.find(r => !r.plan_json || decode(r.plan_json)?.action === "keep_existing");
     if (unchecked) {
       try {
         const plan = await inspectRecipient(conn,campaign,unchecked,services);
@@ -159,6 +159,7 @@ export async function prepareCampaign(id:string) {
       if (plan.user_id) seen.add(plan.user_id);
       const publicPlan = plan;
       plans.push(publicPlan);
+      if (skipsAccess(plan.action)) continue;
       const previewKind = plan.created_user ? "new" : plan.action === "extend_access" ? "extended" : "existing";
       if (!previews.some(p => p.kind === previewKind)) {
         const setup = plan.created_user ? `${campaign.site_origin}/reset-password?email=${encodeURIComponent(recipient.account_email)}&token=PREVIEW_ONLY&source=invite` : "";
@@ -166,7 +167,7 @@ export async function prepareCampaign(id:string) {
       }
     }
     await conn.execute("UPDATE admin_campaigns SET status='prepared',last_error=NULL,updated_at=UTC_TIMESTAMP() WHERE id=?",[id]);
-    return {done:true,total:plans.length,newAccounts:plans.filter(p => p.created_user).length,extensions:plans.filter(p => p.action === "extend_access").length,billingChanges:plans.reduce((n,p) => n+p.billing_count,0),previews};
+    return {done:true,total:plans.length,skipped:plans.filter(p => skipsAccess(p.action)).length,newAccounts:plans.filter(p => p.created_user).length,extensions:plans.filter(p => p.action === "extend_access").length,billingChanges:plans.reduce((n,p) => n+p.billing_count,0),previews};
   });
 }
 
