@@ -61,6 +61,7 @@ jobs:
       - name: Check deployment scripts and build
         run: |
           for script in deploy/install-release.sh deploy/ci-ssh.sh; do bash -n "$script"; done
+          node scripts/test-ci-installer.mjs
           npm run build
       - name: Package Linux runtime and verify WebSocket server
         id: package

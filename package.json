@@ -12,7 +12,7 @@
     "start:next": "next start",
     "deploy:swap": "node scripts/swap-next-build.mjs",
     "deploy:pm2": "pm2 reload ecosystem.config.cjs --update-env || pm2 start ecosystem.config.cjs",
-    "deploy": "git pull && npm ci && npm run build:staging && npm run deploy:swap && npm run deploy:pm2"
+    "deploy": "gh workflow run release.yml --repo nipapin/motionflow --ref main -f deploy=true"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1034.0",

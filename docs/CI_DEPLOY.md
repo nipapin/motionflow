@@ -6,6 +6,10 @@ Push в `main` запускает **Motion Flow build and deploy**. Для ру�
 gh workflow run release.yml -R nipapin/motionflow --ref main -f deploy=true
 ```
 
+На компьютере с авторизованным GitHub CLI также можно выполнить `npm run deploy`.
+В интерфейсе GitHub: **Actions → Motion Flow build and deploy → Run workflow**,
+ветка `main`, параметр `deploy=true`.
+
 CI на Ubuntu x64 с Node 20.20.2 устанавливает зависимости, собирает Next,
 удаляет devDependencies и упаковывает готовый runtime. Сохраняется собственный
 `server.mjs` с `/api/cep/ws`; он проверяется запуском упакованного приложения
