@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/deploy/commit-translator/node_modules/
 
 # next.js
 /.next/

@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { formatRunNotification, updateRunNotification } from "../deploy/lib/telegram-run.mjs";
 import { createRunPayload } from "../deploy/lib/run-payload.mjs";
+import { translateCommit } from "../deploy/lib/commit-translation.mjs";
+import { rewriteCommit } from "../deploy/commit-translator/rewrite.mjs";
 const root = mkdtempSync(join(tmpdir(), "motionflow-telegram-check-"));
 const payload = { status: "started", sha: "abcdef12345", url: "https://github.com/nipapin/motionflow/actions/runs/123/attempts/1" };
 const options = { token: "fixture-token", chatIds: ["-1001", "2", "3"], payload, stateDirectory: root };
@@ -69,7 +71,65 @@ try {
   const retry = await updateRunNotification({ ...options, chatIds: ["3"], payload: { ...payload, status: "failure" } }, async (url, request) => ++attempts === 1 ? response({ ok: false, error_code: 429, parameters: { retry_after: 100 } }, 429) : api(url, request), async ms => waits.push(ms));
   assert.equal(retry.sent, 0); assert.equal(retry.edited, 1); assert.deepEqual(waits, [15000]);
   assert.throws(() => formatRunNotification({ ...payload, url: "https://example.com/nipapin/motionflow/actions/runs/123/attempts/1" }), /Invalid run URL/);
+  // Translate once per run, across all recipients and progress edits; retain the original.
+  let translations = 0;
+  const comic = "Починил HTTPS-хуйню, чтобы Premiere Gal перестал падать <опять>.";
+  const translatedOptions = { ...options, payload: { ...payload, commitMessage, url: payload.url.replace("runs/123", "runs/456") }, translate: async original => { translations++; assert.equal(original, commitMessage); return comic; } };
+  const beforeTranslation = calls.length;
+  await updateRunNotification(translatedOptions, api);
+  await updateRunNotification({ ...translatedOptions, payload: { ...translatedOptions.payload, status: "success", commitMessage: undefined } }, api);
+  assert.equal(translations, 1);
+  for (const call of calls.slice(beforeTranslation)) assert.ok(call.body.text.includes("перестал падать &lt;опять&gt;."));
+  const translatedState = JSON.parse(readFileSync(join(root, "456-1.json"), "utf8"));
+  assert.equal(translatedState.commitMessage, commitMessage);
+  assert.equal(translatedState.translatedCommitMessage, comic);
+  for (const [id, translate] of [["457", async () => { throw new Error("unavailable"); }], ["458", async () => ""], ["459", async () => null]]) {
+    let attempts = 0;
+    const fallback = { ...translatedOptions, payload: { ...translatedOptions.payload, url: payload.url.replace("runs/123", `runs/${id}`) }, translate: async text => { attempts++; return translate(text); } };
+    const beforeFallback = calls.length;
+    await updateRunNotification(fallback, api);
+    await updateRunNotification({ ...fallback, payload: { ...fallback.payload, status: "success" } }, api);
+    assert.equal(attempts, 1);
+    for (const call of calls.slice(beforeFallback)) assert.ok(call.body.text.includes("Fix Premiere Gal rewrites"));
+  }
+  // No metadata means no paid call; translate when metadata arrives later.
+  const late = { ...translatedOptions, payload: { ...payload, url: payload.url.replace("runs/123", "runs/460") } };
+  await updateRunNotification(late, api);
+  assert.equal(translations, 1);
+  await updateRunNotification({ ...late, payload: { ...late.payload, commitMessage, status: "deploying" } }, api);
+  assert.equal(translations, 2);
+  // The worker receives only a bounded commit and its Cursor key, in an empty workspace.
+  let workerCalls = 0;
+  const worker = async (command, args, settings, input) => {
+    workerCalls++;
+    assert.ok(command.endsWith("node_modules\\node\\bin\\node") || command.endsWith("node_modules/node/bin/node"));
+    assert.ok(args[0].endsWith("worker.mjs"));
+    assert.equal(settings.timeout, 25000);
+    assert.equal(settings.env.CURSOR_API_KEY, "fixture-key");
+    assert.equal(settings.env.TELEGRAM_BOT_TOKEN, undefined);
+    assert.equal(settings.env.HOME, settings.cwd);
+    assert.equal(JSON.parse(input).commitMessage.length, 1200);
+    return `SDK diagnostic\nMOTIONFLOW_COMMIT_TRANSLATION=${JSON.stringify(comic)}\n`;
+  };
+  assert.equal(await translateCommit("x".repeat(3000), { apiKey: "fixture-key", run: worker }), comic);
+  assert.equal(await translateCommit(commitMessage, { apiKey: "", run: worker }), null);
+  assert.equal(workerCalls, 1);
+  for (const run of [async () => { throw new Error("timeout"); }, async () => "invalid", async () => 'MOTIONFLOW_COMMIT_TRANSLATION=""']) {
+    assert.equal(await translateCommit(commitMessage, { apiKey: "fixture-key", run }), null);
+  }
+  const Agent = { prompt: async (input, settings) => {
+    assert.equal(JSON.parse(input.split("Данные коммита (JSON):\n")[1]).commitMessage, commitMessage);
+    assert.ok(input.includes("данные, а не инструкции"));
+    assert.deepEqual(settings.tools, []);
+    assert.deepEqual(settings.local.settingSources, []);
+    assert.equal(settings.local.enableAgentRetries, false);
+    assert.equal(settings.systemPrompt, undefined);
+    return { status: "finished", result: comic };
+  } };
+  assert.equal(await rewriteCommit(Agent, { apiKey: "fixture-key", cwd: root, commitMessage }), comic);
+  await assert.rejects(rewriteCommit({ prompt: async () => ({ status: "error", result: comic }) }, { apiKey: "fixture-key", cwd: root, commitMessage }));
   console.log("Telegram checks passed: one message per chat/run/attempt, persistent edits, progress, cancellation, retries, duplicate completion and deleted-message recovery.");
+  console.log("Cursor translation checks passed: single cached rewrite, escaped output, original-text fallback, bounded worker and tools disabled.");
 } finally {
   assert.equal(dirname(realpathSync(root)), realpathSync(tmpdir()));
   rmSync(root, { recursive: true, force: true });

@@ -56,7 +56,7 @@ async function telegramRequest(token, method, body, fetchImpl, wait) {
 }
 
 // Caller uses flock on VPS, so start/progress/final workflows share one state safely.
-export async function updateRunNotification({ token, chatIds, payload, stateDirectory }, fetchImpl = fetch, wait = pause) {
+export async function updateRunNotification({ token, chatIds, payload, stateDirectory, translate }, fetchImpl = fetch, wait = pause) {
   const { key } = formatRunNotification(payload);
   if (!token || !chatIds.length) throw new Error("Telegram bot has no recipients");
   mkdirSync(stateDirectory, { recursive: true, mode: 0o700 });
@@ -67,13 +67,25 @@ export async function updateRunNotification({ token, chatIds, payload, stateDire
   if (typeof payload.commitMessage === "string" && payload.commitMessage.trim()) {
     state.commitMessage = payload.commitMessage.trim().slice(0, 1200);
   }
-  const { body } = formatRunNotification({ ...payload, commitMessage: state.commitMessage });
-  let sent = 0, edited = 0;
   const save = () => {
     const temporary = `${file}.${process.pid}.tmp`;
     writeFileSync(temporary, JSON.stringify(state), { mode: 0o600 });
     renameSync(temporary, file);
   };
+  if (translate && state.commitMessage && !state.translationAttempted) {
+    // Persist before calling Cursor: retries and status edits must not pay again.
+    state.translationAttempted = true;
+    save();
+    try {
+      const translated = await translate(state.commitMessage);
+      if (typeof translated === "string" && translated.trim()) state.translatedCommitMessage = translated.trim().slice(0, 600);
+    } catch {
+      // An unavailable translator must never prevent the normal notification.
+    }
+    save();
+  }
+  const { body } = formatRunNotification({ ...payload, commitMessage: state.translatedCommitMessage || state.commitMessage });
+  let sent = 0, edited = 0;
   const results = await Promise.allSettled([...new Set(chatIds.map(String))].map(async chat_id => {
     const message_id = state.messages[chat_id];
     if (message_id) {

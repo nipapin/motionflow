@@ -1,0 +1,9 @@
+{
+  "name": "motionflow-commit-translator",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@cursor/sdk": "1.0.37",
+    "node": "22.23.3"
+  }
+}
