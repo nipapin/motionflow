@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { formatRunNotification, updateRunNotification } from "../deploy/lib/telegram-run.mjs";
+import { createRunPayload } from "../deploy/lib/run-payload.mjs";
 const root = mkdtempSync(join(tmpdir(), "motionflow-telegram-check-"));
 const payload = { status: "started", sha: "abcdef12345", url: "https://github.com/nipapin/motionflow/actions/runs/123/attempts/1" };
 const options = { token: "fixture-token", chatIds: ["-1001", "2", "3"], payload, stateDirectory: root };
+const commitMessage = "Fix Premiere Gal rewrites\n\nPreserve <HTTPS> & storefront navigation.";
 const calls = [];
 let nextId = 10;
 const response = (body, status=200) => ({ ok: status===200, status, json: async () => body });
@@ -15,13 +17,28 @@ const api = async (url, request) => {
   return response({ ok: true, result: { message_id: method === "sendMessage" ? nextId++ : body.message_id } });
 };
 try {
+  const eventPath = join(root, "event.json"), sha = "a".repeat(40);
+  const env = { GITHUB_EVENT_PATH: eventPath, RELEASE_COMMIT: sha, GITHUB_SHA: "b".repeat(40), GITHUB_REPOSITORY: "nipapin/motionflow", GITHUB_RUN_ID: "123", GITHUB_RUN_ATTEMPT: "1", NOTIFY_STATUS: "success" };
+  for (const event of [{ head_commit: { id: sha, message: commitMessage } }, { workflow_run: { head_commit: { id: sha, message: commitMessage } }, head_commit: { id: "b".repeat(40), message: "Unrelated commit" } }]) {
+    writeFileSync(eventPath, JSON.stringify(event));
+    const run = createRunPayload(env);
+    assert.equal(run.commitMessage, commitMessage);
+    assert.equal(run.sha, sha);
+    assert.equal(run.url, payload.url);
+  }
+  const manual = createRunPayload({ ...env, GITHUB_EVENT_PATH: join(root, "missing.json"), RELEASE_COMMIT: undefined, GITHUB_SHA: "HEAD" });
+  assert.equal(manual.commitMessage, "");
+  const formattedCommit = formatRunNotification({ ...payload, commitMessage }).body.text;
+  assert.ok(formattedCommit.includes("Fix Premiere Gal rewrites\n\nPreserve &lt;HTTPS&gt; &amp; storefront navigation."));
+  assert.ok(!formattedCommit.includes("<HTTPS>"));
+  assert.ok(formatRunNotification({ ...payload, commitMessage: "x".repeat(5000) }).body.text.length < 4096);
   for (const [repo, label] of [["ione-premiere-basics", "Odin Pro"], ["aniomLaravelSite", "Laravel"]]) {
     const formatted = formatRunNotification({ ...payload, url: payload.url.replace("/motionflow/", `/${repo}/`) });
     assert.equal(formatted.key, "123-1");
     assert.ok(formatted.body.text.includes(label));
   }
   assert.throws(() => formatRunNotification({ ...payload, url: payload.url.replace("/motionflow/", "/other/") }), /Invalid run URL/);
-  assert.deepEqual(await updateRunNotification(options, api), { sent: 3, edited: 0, failed: 0, skipped: false });
+  assert.deepEqual(await updateRunNotification({ ...options, payload: { ...payload, commitMessage } }, api), { sent: 3, edited: 0, failed: 0, skipped: false });
   const initial = JSON.parse(readFileSync(join(root, "123-1.json"), "utf8")).messages;
   for (const status of ["deploying", "success"]) {
     const result = await updateRunNotification({ ...options, payload: { ...payload, status } }, api);
@@ -29,6 +46,8 @@ try {
   }
   assert.equal(calls.filter(call => call.method === "sendMessage").length, 3);
   for (const call of calls.filter(call => call.method === "editMessageText")) assert.equal(call.body.message_id, initial[call.body.chat_id]);
+  for (const call of calls) assert.ok(call.body.text.includes("Fix Premiere Gal rewrites"));
+  assert.equal(JSON.parse(readFileSync(join(root, "123-1.json"), "utf8")).commitMessage, commitMessage);
   const count = calls.length;
   assert.equal((await updateRunNotification(options, api)).skipped, true);
   assert.equal(calls.length, count);

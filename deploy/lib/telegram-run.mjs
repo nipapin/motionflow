@@ -11,7 +11,7 @@ const titles = {
   built: "✅ Motion Flow: сборка готова, сервер не обновлялся",
 };
 const terminal = new Set(["success", "failure", "cancelled", "built"]);
-const escape = value => String(value ?? "").slice(0, 250).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+const escape = (value, limit = 250) => String(value ?? "").slice(0, limit).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 export function formatRunNotification(payload) {
@@ -22,7 +22,7 @@ export function formatRunNotification(payload) {
   return {
     key: `${match[2]}-${match[3]}`,
     body: {
-      text: [titles[payload.status].replace("Motion Flow", projects[match[1]]), `Commit: <code>${escape(payload.sha?.slice(0, 7))}</code>`, escape(payload.detail), escape(url.href)].filter(Boolean).join("\n"),
+      text: [titles[payload.status].replace("Motion Flow", projects[match[1]]), `Commit: <code>${escape(payload.sha?.slice(0, 7))}</code>`, escape(payload.commitMessage?.trim(), 1200), escape(payload.detail), escape(url.href)].filter(Boolean).join("\n"),
       parse_mode: "HTML", disable_web_page_preview: true,
     },
   };
@@ -57,13 +57,17 @@ async function telegramRequest(token, method, body, fetchImpl, wait) {
 
 // Caller uses flock on VPS, so start/progress/final workflows share one state safely.
 export async function updateRunNotification({ token, chatIds, payload, stateDirectory }, fetchImpl = fetch, wait = pause) {
-  const { key, body } = formatRunNotification(payload);
+  const { key } = formatRunNotification(payload);
   if (!token || !chatIds.length) throw new Error("Telegram bot has no recipients");
   mkdirSync(stateDirectory, { recursive: true, mode: 0o700 });
   const file = join(stateDirectory, `${key}.json`);
   const state = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : { messages: {}, status: null };
   const stage = status => terminal.has(status) ? 2 : status === "deploying" ? 1 : 0;
   if (stage(state.status) > stage(payload.status)) return { sent: 0, edited: 0, failed: 0, skipped: true };
+  if (typeof payload.commitMessage === "string" && payload.commitMessage.trim()) {
+    state.commitMessage = payload.commitMessage.trim().slice(0, 1200);
+  }
+  const { body } = formatRunNotification({ ...payload, commitMessage: state.commitMessage });
   let sent = 0, edited = 0;
   const save = () => {
     const temporary = `${file}.${process.pid}.tmp`;
