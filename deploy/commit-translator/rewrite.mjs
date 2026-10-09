@@ -11,7 +11,10 @@ export async function rewriteCommit(Agent, { apiKey, cwd, commitMessage }) {
   // with ordinary user API keys. Keep commit data separate from instructions.
   const result = await Agent.prompt(`${rewriteInstructions}\n\nДанные коммита (JSON):\n${JSON.stringify({ commitMessage: commitMessage.slice(0, 1200) })}`, {
     apiKey,
-    model: { id: "composer-2.5" },
+    model: {
+      id: "composer-2.5",
+      params: [{ id: "fast", value: "false" }],
+    },
     tools: [],
     local: { cwd, settingSources: [], enableAgentRetries: false },
   });
