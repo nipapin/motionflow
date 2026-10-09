@@ -22,7 +22,7 @@ export function formatRunNotification(payload) {
   return {
     key: `${match[2]}-${match[3]}`,
     body: {
-      text: [titles[payload.status].replace("Motion Flow", projects[match[1]]), `Commit: <code>${escape(payload.sha?.slice(0, 7))}</code>`, escape(payload.commitMessage?.trim(), 1200), escape(payload.detail), escape(url.href)].filter(Boolean).join("\n"),
+      text: [titles[payload.status].replace("Motion Flow", projects[match[1]]), `Commit: <code>${escape(payload.sha?.slice(0, 7))}</code>`, escape(payload.commitMessage?.trim(), 1200), escape(payload.detail), `<a href="${escape(url.href)}">Сборка и логи</a>`].filter(Boolean).join("\n"),
       parse_mode: "HTML", disable_web_page_preview: true,
     },
   };
