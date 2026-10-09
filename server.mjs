@@ -12,7 +12,10 @@ const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME || "0.0.0.0";
 const port = Number(process.env.PORT) || 3000;
 
-const app = next({ dev, hostname, port });
+// NextURL normalizes loopback IPs to localhost. Match that origin so an
+// internal rewrite stays internal behind an HTTPS reverse proxy.
+const nextHostname = hostname === "127.0.0.1" || hostname === "::1" ? "localhost" : hostname;
+const app = next({ dev, hostname: nextHostname, port });
 const handle = app.getRequestHandler();
 
 await app.prepare();
