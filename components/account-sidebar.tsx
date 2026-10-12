@@ -20,6 +20,8 @@ import {
   FileText,
   Plus,
   ExternalLink,
+  Settings2,
+  Wrench,
   type LucideIcon,
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -68,8 +70,9 @@ function NavLink({ href, label, icon: Icon, normalized }: {
   );
 }
 
-function NavGroup({ label, active, normalized, children }: {
+function NavGroup({ label, icon: Icon, active, normalized, children }: {
   label: string;
+  icon: LucideIcon;
   active: boolean;
   normalized: string;
   children: ReactNode;
@@ -82,9 +85,10 @@ function NavGroup({ label, active, normalized, children }: {
   return (
     <li>
       <Collapsible open={open} onOpenChange={setOpen}>
-        <CollapsibleTrigger className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-xs font-medium uppercase tracking-wide text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          {label}
-          <ChevronDown aria-hidden className={cn("h-4 w-4 transition-transform", open && "rotate-180")} />
+        <CollapsibleTrigger className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-xs font-medium uppercase tracking-wide text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Icon aria-hidden className="h-5 w-5 shrink-0 text-blue-400" />
+          <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+          <ChevronDown aria-hidden className={cn("h-4 w-4 shrink-0 transition-transform", open && "rotate-180")} />
         </CollapsibleTrigger>
         <CollapsibleContent>
           <ul className="mb-1 flex flex-col gap-0.5">{children}</ul>
@@ -266,7 +270,7 @@ export function AccountSidebar({
           Account
         </p> : null}
         <ul className="flex flex-col gap-0.5">
-          {adminMenu ? <NavGroup label="Account" normalized={normalized} active={accountNav.some(({ href }) => isActive(normalized, href)) || isActive(normalized, "/profile/affiliate")}>
+          {adminMenu ? <NavGroup label="Account" icon={UserRound} normalized={normalized} active={accountNav.some(({ href }) => isActive(normalized, href)) || isActive(normalized, "/profile/affiliate")}>
             {accountLinks}
           </NavGroup> : accountLinks}
           {showPackages ? (
@@ -277,10 +281,10 @@ export function AccountSidebar({
               onToggle={() => setPackagesManualOpen((v) => !v)}
             />
           ) : null}
-          {managementNav.length ? <NavGroup label="Management" normalized={normalized} active={managementNav.some(({ href }) => isActive(normalized, href))}>
+          {managementNav.length ? <NavGroup label="Management" icon={Settings2} normalized={normalized} active={managementNav.some(({ href }) => isActive(normalized, href))}>
             {managementNav.map((item) => <NavLink key={item.href} {...item} normalized={normalized} />)}
           </NavGroup> : null}
-          {showUsers ? <NavGroup label="Tools" normalized={normalized} active={false}>
+          {showUsers ? <NavGroup label="Tools" icon={Wrench} normalized={normalized} active={false}>
             <NavLink href="https://motionflow.pro/pdf-link" label="PDF Links" icon={FileText} normalized={normalized} />
           </NavGroup> : null}
           {adminMenu && access >= 1 ? <li>

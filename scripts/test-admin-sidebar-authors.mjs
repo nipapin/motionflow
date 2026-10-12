@@ -130,9 +130,11 @@ function sidebar(pathname, props = {}) {
 
 test("admin menu opens the active group and keeps Dashboard as the last external link", () => {
   const html = sidebar("/profile/users");
-  assert.match(html, /aria-expanded="false"[^>]*>Account/);
-  assert.match(html, /aria-expanded="true"[^>]*>Management/);
-  assert.match(html, /aria-expanded="false"[^>]*>Tools/);
+  const buttons = [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].map(match => match[0]);
+  const groupButton = label => buttons.find(button => button.replace(/<[^>]*>/g, "") === label);
+  assert.match(groupButton("Account"), /aria-expanded="false"/);
+  assert.match(groupButton("Management"), /aria-expanded="true"/);
+  assert.match(groupButton("Tools"), /aria-expanded="false"/);
   for (const href of ["/profile/partners", "/profile/users", "/profile/campaigns"]) assert.ok(html.includes(`href="${href}"`));
   assert.match(html, /<a\b(?=[^>]*href="\/profile\/users")(?=[^>]*aria-current="page")[^>]*>/);
   assert.ok(!html.includes("Author area"));
