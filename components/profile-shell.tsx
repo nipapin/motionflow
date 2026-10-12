@@ -10,11 +10,13 @@ export function ProfileShell({
   showPartners,
   showUsers,
   showAffiliate,
+  admin = false,
 }: {
   children: React.ReactNode;
   showPartners?: boolean;
   showUsers?: boolean;
   showAffiliate?: boolean;
+  admin?: boolean;
 }) {
   const pathname = usePathname();
   return (
@@ -23,8 +25,9 @@ export function ProfileShell({
         showPartners={showPartners}
         showUsers={showUsers}
         showAffiliate={showAffiliate}
+        admin={admin}
       />
-      <main className={cn(profilePageClassForPath(pathname), "relative pt-22 pb-10")}>
+      <main className={cn(profilePageClassForPath(pathname, admin), "relative pt-22 pb-10")}>
         {children}
       </main>
     </div>

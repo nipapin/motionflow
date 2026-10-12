@@ -2,17 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Users } from "lucide-react";
+import { Plus } from "lucide-react";
 import { packagesAuthorLogoUrl } from "@/lib/packages-admin-client";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+import { ProfileNavigationCard, PROFILE_CARD_GRID } from "@/components/profile-navigation-card";
 
-type AuthorCard = {
-  id: number;
-  slug: string;
-  label: string;
-  logoUrl?: string;
-};
+type AuthorCard = { id: number; slug: string; label: string; logoUrl?: string };
 
 export function PackagesAuthorsHome() {
   const [authors, setAuthors] = useState<AuthorCard[]>([]);
@@ -24,98 +20,47 @@ export function PackagesAuthorsHome() {
     setError(null);
     try {
       const res = await fetch("/api/packages/authors");
-      if (!res.ok) throw new Error(await res.text());
-      const data = (await res.json()) as { authors: AuthorCard[] };
+      if (!res.ok) throw new Error("Could not load authors. Try again.");
+      const data = await res.json() as { authors: AuthorCard[] };
       setAuthors(data.authors || []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load authors");
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load authors");
+    } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
   return (
-    <div className="w-full space-y-10">
-      <header className="space-y-2">
-        <p className="text-[13px] text-muted-foreground">Admin</p>
-        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-          Authors
-        </h1>
-        <p className="max-w-xl text-[15px] leading-relaxed text-muted-foreground">
-          Pick an author to manage CEP packs and see who is using their extension.
-        </p>
+    <div className="w-full space-y-8">
+      <header className="flex flex-wrap items-start justify-between gap-5">
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-wider text-blue-400">Workspace</p>
+          <h1 className="text-3xl font-semibold tracking-tight">Authors</h1>
+          <p className="max-w-2xl text-[15px] leading-relaxed text-muted-foreground">Manage author libraries, CEP packages and extension users.</p>
+        </div>
+        <Button asChild className="gap-2"><Link href="/profile/packages/authors/new"><Plus className="h-4 w-4" /> Add Author</Link></Button>
       </header>
 
-      {error ? (
-        <div
-          role="alert"
-          className="rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive"
-        >
-          {error}
-        </div>
-      ) : null}
+      {error ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-destructive/10 px-5 py-4 text-sm text-destructive">
+        {error}<Button type="button" variant="outline" size="sm" onClick={() => void load()}>Retry</Button>
+      </div> : null}
 
-      {loading ? (
-        <ul className="divide-y divide-border/60 rounded-xl border border-border/50">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <li key={i} className="flex items-center gap-4 px-5 py-4">
-              <Skeleton className="h-12 w-12 rounded-lg" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-4 w-36" />
-                <Skeleton className="h-3 w-24" />
-              </div>
-            </li>
-          ))}
-        </ul>
-      ) : authors.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/70 px-6 py-16 text-center">
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-            <Users className="h-5 w-5 text-muted-foreground" />
-          </div>
-          <p className="text-sm font-medium text-foreground">No authors yet</p>
-          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-            Authors will appear here once they are available for your account.
-          </p>
-        </div>
-      ) : (
-        <ul className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border/50">
-          {authors.map((a) => (
-            <li key={a.id}>
-              <Link
-                href={`/profile/packages/${a.id}`}
-                className={cn(
-                  "group flex items-center gap-4 px-5 py-4 transition-colors",
-                  "hover:bg-foreground/3 focus-visible:bg-foreground/3",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-                )}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={a.logoUrl || packagesAuthorLogoUrl(a.slug)}
-                  alt=""
-                  className="h-12 w-12 shrink-0 rounded-lg bg-muted/60 object-contain p-1.5"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[15px] font-medium tracking-tight text-foreground">
-                    {a.label}
-                  </p>
-                  <p className="mt-0.5 truncate text-[13px] text-muted-foreground">
-                    {a.slug}
-                  </p>
-                </div>
-                <ArrowRight
-                  className="h-4 w-4 shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5 group-hover:text-foreground"
-                  aria-hidden
-                />
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
+      {loading ? <div className={PROFILE_CARD_GRID} aria-label="Loading authors">
+        {Array.from({ length: 4 }).map((_, index) => <div key={index} className="min-h-60 space-y-5 rounded-2xl border border-border/60 p-6">
+          <Skeleton className="h-14 w-14 rounded-xl" /><Skeleton className="h-5 w-3/4" /><Skeleton className="h-4 w-1/2" /><Skeleton className="h-4 w-full" />
+        </div>)}
+      </div> : <div className={PROFILE_CARD_GRID}>
+        {authors.map((author) => <ProfileNavigationCard key={author.id}
+          href={`/profile/packages/${author.id}`} label={author.label}
+          logoUrl={author.logoUrl || packagesAuthorLogoUrl(author.slug)} meta={author.slug}
+          description="Manage CEP packages and the users of this author’s extension."
+          action="Manage author"
+        />)}
+        <ProfileNavigationCard href="/profile/packages/authors/new" label="Add Author" icon={Plus}
+          description="Connect a user account and configure storage for a new author library."
+          action="Create author" create
+        />
+      </div>}
     </div>
   );
 }

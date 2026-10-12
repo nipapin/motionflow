@@ -46,6 +46,7 @@ const ACCOUNT_LINKS = [
 ] as const;
 
 interface ProfileHeaderProps {
+  admin?: boolean;
   /** Admin: subscription affiliates. Resolved server-side in the profile layout. */
   showPartners?: boolean;
   /** Admin: user search and grants. Same gate as Partners. */
@@ -58,6 +59,7 @@ export function ProfileHeader({
   showPartners,
   showUsers,
   showAffiliate,
+  admin = false,
 }: ProfileHeaderProps = {}) {
   const pathname = usePathname();
   const { user, signOut } = useAuth();
@@ -97,7 +99,7 @@ export function ProfileHeader({
   return (
     <>
       <header className="fixed top-0 right-0 left-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
-        <div className={cn(profilePageClassForPath(pathname), "flex h-16 items-center justify-between gap-4")}>
+        <div className={cn(profilePageClassForPath(pathname, admin), "flex h-16 items-center justify-between gap-4")}>
           <Link href="/" className="group flex min-w-0 items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center smooth group-hover:scale-105">
               <Image
