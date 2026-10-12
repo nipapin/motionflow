@@ -212,3 +212,112 @@ test("Resend retries preserve the original idempotency key and personalized payl
   assert.equal(fixture.recipient.state, "sent");
   assert.deepEqual(keys[0], keys[1]);
 });
+
+const testEmailInput = () => ({
+  to: " QA@Example.test ", key: "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa",
+  delivery: { provider: "resend", from_name: "Motion Flow", from_email: "hello@example.test", mailing_list: "campaign-fixture@mail.example.test" },
+  site_origin: "https://motionflow.pro", product_name: "Creator & AI",
+  grant: { kind: "subscription", subscription: "motionflow_creator_ai", duration: "year", itemId: null },
+  kind: "welcome", template: {
+    subject: "Hello {{first_name}} — {{product_name}}",
+    text: "{{email}} {{account_email}} {{last_name}} {{account_instructions}} {{access_url}} {{setup_password_url}} {{starts_at}} {{expires_at}} {{duration}}",
+    html: "<p>{{product_name}} {{access_summary}}</p><a href='{{access_url}}'>{{access_label}}</a>",
+  },
+});
+
+function testEmailFixture(send) {
+  const calls = [];
+  const service = loader({
+    "./mail": {
+      validateCampaignDelivery: delivery => calls.push({ validate: delivery }),
+      assertCampaignMailConfigured: provider => calls.push({ configured: provider }),
+      campaignMailClient: provider => ({ emails: { send: async (payload, options) => {
+        calls.push({ provider, payload, options });
+        return send ? send(payload, options) : { data: { id: "fixture-test-message" }, error: null };
+      } } }),
+    },
+    "@/lib/db": { getPool: () => { throw new Error("Test email must never access campaign or user tables"); } },
+    "@/lib/paddle-api": new Proxy({}, { get: () => { throw new Error("Test email must never change billing"); } }),
+  })("@/lib/campaigns/test-send");
+  return { service, calls };
+}
+
+test("campaign test sends only to the explicit email through the selected provider and sender without access changes", async () => {
+  for (const provider of ["resend", "mailgun"]) {
+    const { service, calls } = testEmailFixture();
+    const input = testEmailInput(); input.delivery.provider = provider;
+    const result = await service.sendCampaignTest(input);
+    assert.deepEqual(result, { provider, to: "qa@example.test", id: "fixture-test-message" });
+    const sent = calls.find(call => call.payload);
+    assert.equal(sent.provider, provider);
+    assert.equal(sent.payload.to, "qa@example.test");
+    assert.equal(sent.payload.from, "Motion Flow <hello@example.test>");
+    assert.equal(sent.payload.subject, "[Test] Hello Alex — Creator & AI");
+    assert.match(sent.payload.text, /qa@example.test qa@example.test Example/);
+    assert.match(sent.payload.text, /January 15, 2028/);
+    assert.match(sent.payload.html, /Creator &amp; AI/);
+    assert.match(sent.payload.html, /https:\/\/motionflow.pro\/\?campaign_test=1/);
+    assert.doesNotMatch(JSON.stringify(sent.payload), /\{\{|PREVIEW_ONLY|reset-password|token=/);
+    assert.match(sent.options.idempotencyKey, /^admin-campaign-test\//);
+  }
+});
+
+test("campaign tests render extension and unlimited samples, keep retries stable and isolate test idempotency", async () => {
+  const { service, calls } = testEmailFixture();
+  const input = testEmailInput(); input.kind = "extension"; input.grant.duration = "unlimited";
+  await service.sendCampaignTest(input); await service.sendCampaignTest(input);
+  const sent = calls.filter(call => call.payload);
+  assert.deepEqual(sent[0], sent[1]);
+  assert.match(sent[0].payload.text, /Sign in to your existing account/);
+  assert.match(sent[0].payload.html, /no expiration date/);
+  assert.doesNotMatch(sent[0].payload.text, /campaign_test|Set your password/);
+  input.template.subject = "Changed subject";
+  await service.sendCampaignTest(input);
+  assert.notEqual(calls.filter(call => call.payload)[2].options.idempotencyKey, sent[0].options.idempotencyKey);
+});
+
+test("campaign tests reject multiple or invalid emails, untrusted origins, invalid templates and mailing list destinations before send", async () => {
+  const { service, calls } = testEmailFixture();
+  for (const to of ["", "invalid", "one@example.test,two@example.test", "one@example.test\r\nBcc:two@example.test"]) {
+    await assert.rejects(service.sendCampaignTest({ ...testEmailInput(), to }));
+  }
+  await assert.rejects(service.sendCampaignTest({ ...testEmailInput(), site_origin: "https://evil.test" }));
+  await assert.rejects(service.sendCampaignTest({ ...testEmailInput(), to: "campaign-fixture@mail.example.test" }), /individual email/);
+  for (const subject of ["{{unknown_variable}}", "PREVIEW_ONLY", "Hello\r\nBcc:two@example.test"]) {
+    const input = testEmailInput(); input.template.subject = subject;
+    await assert.rejects(service.sendCampaignTest(input));
+  }
+  assert.equal(calls.filter(call => call.payload).length, 0);
+});
+
+test("campaign tests return provider errors and do not claim delivery without a provider receipt", async () => {
+  const rejected = testEmailFixture(() => ({ error: { message: "Sender is not verified" }, data: null }));
+  await assert.rejects(rejected.service.sendCampaignTest(testEmailInput()), /Resend: Sender is not verified/);
+  const noReceipt = testEmailFixture(() => ({ error: null, data: {} }));
+  await assert.rejects(noReceipt.service.sendCampaignTest(testEmailInput()), /did not confirm receipt/);
+  const lost = testEmailFixture(() => { throw new Error("Mailgun connection lost"); });
+  await assert.rejects(lost.service.sendCampaignTest(testEmailInput()), /connection lost/);
+});
+
+test("test-send API enforces admin and origin checks and accepts unsaved draft samples without recipients", async () => {
+  let user = null; const sent = [];
+  const apiLoad = loader({
+    "@/lib/auth/get-session-user": { getSessionUser: async () => user },
+    "@/lib/affiliate/admin": { isAffiliateAdmin: user => user.access === 100 },
+    "@/lib/campaigns/test-send": { sendCampaignTest: async input => { sent.push(input); return { provider: input.delivery.provider, to: input.to, id: "test-id" }; } },
+  });
+  const { NextRequest } = require("next/server");
+  const route = apiLoad("@/app/(main)/api/admin/campaigns/test-send/route");
+  const post = (body, origin = "https://motionflow.test") => route.POST(new NextRequest("https://motionflow.test/api/admin/campaigns/test-send", { method: "POST", headers: { host: "motionflow.test", origin, "Content-Type": "application/json" }, body: JSON.stringify(body) }));
+  assert.equal((await post(testEmailInput())).status, 403);
+  user = { access: 0 }; assert.equal((await post(testEmailInput())).status, 403);
+  user = { access: 100 };
+  assert.equal((await post(testEmailInput(), "https://evil.test")).status, 403);
+  assert.equal((await post({ ...testEmailInput(), to: "invalid" })).status, 400);
+  const response = await post(testEmailInput());
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("cache-control"), /no-store/);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].to, "qa@example.test");
+  assert.equal(sent[0].recipients_source, undefined);
+});

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CampaignTestSend } from "@/components/campaign-test-send";
 import type { CampaignDraft } from "@/lib/campaigns/shared";
 import { AUDIENCE_OPERATORS, AUDIENCE_OPERATOR_LABELS, emptyCampaignAudience, type AudienceField, type AudiencePreview, type CampaignAudience, type CampaignDelivery, type CampaignMailOptions } from "@/lib/campaigns/audience-shared";
 
@@ -19,8 +20,8 @@ const filters = [
   { key: "role", label: "Account role", values: [["all", "Any"], ["buyer", "Buyer"], ["partner", "Partner"], ["author", "Author"], ["admin", "Admin"]] },
 ] as const;
 
-export function CampaignDeliveryAudience({ draft, disabled, onChange, onBusyChange }: {
-  draft: CampaignDraft; disabled: boolean; onChange: (draft: CampaignDraft) => void; onBusyChange: (busy: boolean) => void;
+export function CampaignDeliveryAudience({ draft, productName, disabled, testDisabled, onChange, onBusyChange }: {
+  draft: CampaignDraft; productName: string; disabled: boolean; testDisabled: boolean; onChange: (draft: CampaignDraft) => void; onBusyChange: (busy: boolean) => void;
 }) {
   const [options, setOptions] = useState<Options | null>(null);
   const [optionsError, setOptionsError] = useState("");
@@ -83,6 +84,7 @@ export function CampaignDeliveryAudience({ draft, disabled, onChange, onBusyChan
         <label className="space-y-2 text-xs text-muted-foreground">From email<Input type="email" list="campaign-sender-addresses" value={delivery.from_email} maxLength={254} onChange={e => setDelivery({ from_email: e.target.value })} placeholder="hello@example.com" /><datalist id="campaign-sender-addresses">{options?.mail[delivery.provider].addresses.map(address => <option key={address} value={address} />)}</datalist></label>
       </fieldset>
       {options ? <p className="text-xs text-muted-foreground">{options.mail[delivery.provider].configured ? `Sending domains: ${options.mail[delivery.provider].domains.join(", ")}. Choose a suggested address or enter an address on these domains.` : `${delivery.provider === "mailgun" ? "Mailgun" : "Resend"} credentials are not configured on this server.`}</p> : <p className="text-xs text-muted-foreground">Loading sender options…</p>}
+      <CampaignTestSend draft={draft} delivery={delivery} productName={productName} disabled={testDisabled || !options?.mail[delivery.provider].configured} onBusyChange={onBusyChange} />
     </section>
     <section className={panelClass}>
       <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">Audience</h2><p className="mt-1 text-xs text-muted-foreground">Choose recipients using account fields and access filters.</p></div>
