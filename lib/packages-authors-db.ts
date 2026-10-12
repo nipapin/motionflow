@@ -2,6 +2,7 @@ import "server-only";
 
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { getPool } from "@/lib/db";
+import type { NewPackagesAuthorInput } from "@/lib/packages-author-input";
 import { PREMIERE_GAL_AUTHOR_ID } from "@/lib/premiere-gal-paddle-config";
 import { SPUNKRAM_AUTHOR_ID } from "@/lib/spunkram-paddle-config";
 import { ODIN_PACKAGES_AUTHOR_ID, ODIN_PACKAGES_SLUG, ODIN_PACKAGES_BUCKET } from "@/lib/odin-packages";
@@ -212,6 +213,23 @@ export type PackagesAuthorPatch = {
   label?: string;
   r2_bucket?: string | null;
 };
+
+export async function createPackagesAuthorRow(
+  input: NewPackagesAuthorInput,
+): Promise<PackagesAuthorRow> {
+  await seedPackagesAuthors();
+  const pool = getPool();
+  // IDs also identify authors in extension access and sales; the admin chooses
+  // the corresponding author ID rather than assigning a new marketplace user.
+  await pool.query<ResultSetHeader>(
+    `INSERT INTO \`${AUTHORS_TABLE}\` (id, slug, label, r2_bucket, r2_prefix)
+     VALUES (?, ?, ?, ?, ?)`,
+    [input.id, input.slug, input.label, input.r2_bucket || null, `public/downloads/${input.slug}/`],
+  );
+  const author = await getPackagesAuthorRow(input.id);
+  if (!author) throw new Error("CREATE_FAILED");
+  return author;
+}
 
 export async function updatePackagesAuthorRow(
   id: number,

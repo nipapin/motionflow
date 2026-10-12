@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   User,
   ShoppingBag,
@@ -18,7 +18,11 @@ import {
   UserRound,
   Mail,
   FileText,
+  Plus,
+  ExternalLink,
+  type LucideIcon,
 } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { PACKAGES_AUTHORS, packagesAuthorLogoUrl } from "@/lib/packages-admin-client";
 import { cn } from "@/lib/utils";
 
@@ -40,7 +44,55 @@ function isActive(normalized: string, href: string): boolean {
 }
 
 const navItemBase =
-  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium smooth";
+  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium smooth focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+function NavLink({ href, label, icon: Icon, normalized }: {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  normalized: string;
+}) {
+  const active = isActive(normalized, href);
+  return (
+    <li>
+      <Link href={href} aria-current={active ? "page" : undefined} className={cn(
+        navItemBase,
+        active
+          ? "bg-linear-to-r from-blue-600 to-blue-500 text-white shadow-md shadow-blue-500/20"
+          : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+      )}>
+        <Icon className={cn("h-5 w-5 shrink-0", active ? "text-white" : "text-blue-400")} />
+        <span className="truncate">{label}</span>
+      </Link>
+    </li>
+  );
+}
+
+function NavGroup({ label, active, normalized, children }: {
+  label: string;
+  active: boolean;
+  normalized: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(active);
+  useEffect(() => {
+    if (active) setOpen(true);
+  }, [active, normalized]);
+
+  return (
+    <li>
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-xs font-medium uppercase tracking-wide text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          {label}
+          <ChevronDown aria-hidden className={cn("h-4 w-4 transition-transform", open && "rotate-180")} />
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <ul className="mb-1 flex flex-col gap-0.5">{children}</ul>
+        </CollapsibleContent>
+      </Collapsible>
+    </li>
+  );
+}
 
 type SidebarAuthor = { id: number; label: string; slug?: string };
 
@@ -102,6 +154,8 @@ function AuthorSubmenu({
         <button
           type="button"
           aria-label={open ? "Collapse Authors" : "Expand Authors"}
+          aria-expanded={open}
+          aria-controls="account-sidebar-authors"
           className={cn(
             "shrink-0 rounded-r-lg px-2.5 py-2.5",
             onSection ? "text-white/80 hover:text-white" : "hover:text-foreground",
@@ -118,7 +172,7 @@ function AuthorSubmenu({
         </button>
       </div>
       {open ? (
-        <ul className="mt-0.5 flex flex-col gap-0.5 pl-2">
+        <ul id="account-sidebar-authors" className="mt-0.5 flex flex-col gap-0.5 pl-2">
           {authors.map((a) => {
             const href = `/profile/packages/${a.id}`;
             const active = activeAuthorId === a.id;
@@ -144,6 +198,7 @@ function AuthorSubmenu({
               </li>
             );
           })}
+          <NavLink href="/profile/packages/authors/new" label="Add Author" icon={Plus} normalized={normalized} />
         </ul>
       ) : null}
     </li>
@@ -172,7 +227,7 @@ export function AccountSidebar({
   useEffect(() => {
     if (!showPackages) return;
     let cancelled = false;
-    void (async () => {
+    const loadAuthors = async () => {
       try {
         const res = await fetch("/api/packages/authors");
         if (!res.ok) return;
@@ -181,45 +236,39 @@ export function AccountSidebar({
       } catch {
         /* keep seed */
       }
-    })();
+    };
+    void loadAuthors();
+    window.addEventListener("packages-authors-changed", loadAuthors);
     return () => {
       cancelled = true;
+      window.removeEventListener("packages-authors-changed", loadAuthors);
     };
   }, [showPackages]);
 
   const packagesOpen = onPackages || packagesManualOpen;
+  const adminMenu = Boolean(showPackages || showPartners || showUsers);
+  const managementNav = [
+    ...(showPartners ? [{ href: "/profile/partners", label: "Partners", icon: Handshake }] : []),
+    ...(showUsers ? [
+      { href: "/profile/users", label: "Users", icon: UserRound },
+      { href: "/profile/campaigns", label: "Campaigns", icon: Mail },
+    ] : []),
+  ];
+  const accountLinks = <>
+    {accountNav.map((item) => <NavLink key={item.href} {...item} normalized={normalized} />)}
+    {showAffiliate ? <NavLink href="/profile/affiliate" label="Affiliate" icon={Share2} normalized={normalized} /> : null}
+  </>;
 
   return (
-    <nav className="flex flex-col gap-4">
+    <nav aria-label="Account navigation" className="flex flex-col gap-4">
       <div className="rounded-xl border border-blue-500/30 bg-card/40 backdrop-blur-sm p-2 glow">
-        <p className="px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {!adminMenu ? <p className="px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Account
-        </p>
+        </p> : null}
         <ul className="flex flex-col gap-0.5">
-          {accountNav.map(({ href, label, icon: Icon }) => {
-            const active = isActive(normalized, href);
-            return (
-              <li key={href}>
-                <Link
-                  href={href}
-                  className={cn(
-                    navItemBase,
-                    active
-                      ? "bg-linear-to-r from-blue-600 to-blue-500 text-white shadow-md shadow-blue-500/20"
-                      : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-                  )}
-                >
-                  <Icon
-                    className={cn(
-                      "h-5 w-5 shrink-0",
-                      active ? "text-white" : "text-blue-400",
-                    )}
-                  />
-                  {label}
-                </Link>
-              </li>
-            );
-          })}
+          {adminMenu ? <NavGroup label="Account" normalized={normalized} active={accountNav.some(({ href }) => isActive(normalized, href)) || isActive(normalized, "/profile/affiliate")}>
+            {accountLinks}
+          </NavGroup> : accountLinks}
           {showPackages ? (
             <AuthorSubmenu
               authors={authors}
@@ -228,45 +277,24 @@ export function AccountSidebar({
               onToggle={() => setPackagesManualOpen((v) => !v)}
             />
           ) : null}
-          {[
-            ...(showAffiliate
-              ? ([{ href: "/profile/affiliate", label: "Affiliate", icon: Share2 }] as const)
-              : []),
-            ...(showPartners
-              ? ([{ href: "/profile/partners", label: "Partners", icon: Handshake }] as const)
-              : []),
-            ...(showUsers
-              ? ([
-                  { href: "/profile/users", label: "Users", icon: UserRound },
-                  { href: "/profile/campaigns", label: "Campaigns", icon: Mail },
-                  { href: "https://motionflow.pro/pdf-link", label: "PDF Links", icon: FileText },
-                ] as const)
-              : []),
-          ].map(({ href, label, icon: Icon }) => {
-            const active = isActive(normalized, href);
-            return (
-              <li key={href}>
-                <Link
-                  href={href}
-                  className={cn(
-                    navItemBase,
-                    active
-                      ? "bg-linear-to-r from-blue-600 to-blue-500 text-white shadow-md shadow-blue-500/20"
-                      : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-                  )}
-                >
-                  <Icon
-                    className={cn("h-5 w-5 shrink-0", active ? "text-white" : "text-blue-400")}
-                  />
-                  {label}
-                </Link>
-              </li>
-            );
-          })}
+          {managementNav.length ? <NavGroup label="Management" normalized={normalized} active={managementNav.some(({ href }) => isActive(normalized, href))}>
+            {managementNav.map((item) => <NavLink key={item.href} {...item} normalized={normalized} />)}
+          </NavGroup> : null}
+          {showUsers ? <NavGroup label="Tools" normalized={normalized} active={false}>
+            <NavLink href="https://motionflow.pro/pdf-link" label="PDF Links" icon={FileText} normalized={normalized} />
+          </NavGroup> : null}
+          {adminMenu && access >= 1 ? <li>
+            <a href="https://authors.motionflow.pro" target="_blank" rel="noopener noreferrer" className={cn(navItemBase, "text-muted-foreground hover:bg-foreground/5 hover:text-foreground")}>
+              <LayoutDashboard className="h-5 w-5 shrink-0 text-blue-400" />
+              <span className="min-w-0 flex-1 truncate">Dashboard</span>
+              <ExternalLink aria-hidden className="h-3.5 w-3.5 shrink-0" />
+              <span className="sr-only">(opens in a new tab)</span>
+            </a>
+          </li> : null}
         </ul>
       </div>
 
-      {access >= 1 ? (
+      {!adminMenu && access >= 1 ? (
         <div className="rounded-xl border border-blue-500/20 bg-card/30 p-2">
           <p className="px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Author area
