@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { PoolConnection, RowDataPacket } from "mysql2/promise";
-import { Resend } from "resend";
+import { assertCampaignMailConfigured, campaignListMemberSubscribed, campaignMailClient, validateCampaignDelivery } from "./mail";
 import { getPool } from "@/lib/db";
 import { marketplaceItemsTable } from "@/lib/author/marketplace-table";
 import { getSubscription, moveCampaignBillingDate } from "@/lib/paddle-api";
@@ -60,7 +60,11 @@ async function servicesFor(campaign: CampaignDraft & {environment?:string|null})
     },
     paddle:{get:(id:string,account:"default"|"spunkram") => getSubscription(id,{account,signal:AbortSignal.timeout(30_000)}),move:(id:string,target:string,account:"default"|"spunkram") => moveCampaignBillingDate(id,target,{account})},
     from:mailFromAddress(new URL(campaign.site_origin).hostname === "premieregal.motionflow.pro" ? "Premiere Gal" : "Motion Flow"),
-    get mail() { return new Resend(process.env.RESEND_API_KEY); },
+    provider:campaign.delivery?.provider || "resend",
+    mailingListSubscribed:campaign.delivery?.provider === "mailgun" && campaign.delivery.mailing_list
+      ? (email:string) => campaignListMemberSubscribed(campaign.delivery!.mailing_list!,email) : null,
+    ...(campaign.delivery ? {from:`${campaign.delivery.from_name} <${campaign.delivery.from_email}>`} : {}),
+    get mail() { return campaignMailClient(campaign.delivery?.provider || "resend"); },
   };
 }
 
@@ -108,6 +112,7 @@ export async function getCampaign(id:string): Promise<Campaign> {
 }
 
 export async function saveCampaign(draft:CampaignDraft,adminId:number,id:string=randomUUID()) {
+  if (draft.delivery) validateCampaignDelivery(draft.delivery);
   validateTemplate(draft.template);
   if (draft.extension_template) validateTemplate(draft.extension_template);
   const parsed = parseRecipients(draft.recipients_source);
@@ -178,7 +183,7 @@ export async function processCampaign(id:string,action:"apply"|"send",adminId:nu
     if (action === "apply" && !["prepared","applying"].includes(campaign.status)) throw new Error("Complete campaign checks before issuing access");
     if (action === "send" && !["applied","sending","completed"].includes(campaign.status)) throw new Error("Finish issuing access before sending emails");
     const services = await servicesFor(campaign);
-    if (action === "send" && !process.env.RESEND_API_KEY?.trim()) throw new Error("Resend API key is missing");
+    if (action === "send") { assertCampaignMailConfigured(services.provider); if (campaign.delivery) validateCampaignDelivery(campaign.delivery); }
     if (action === "send") await ensurePasswordResetTokensTable();
     const where = action === "apply" ? "state IN ('pending','applied')" : "state IN ('ready','sending')";
     const [rows] = await conn.execute<DbRecipient[]>(`SELECT * FROM admin_campaign_recipients WHERE campaign_id=? AND ${where} ORDER BY id LIMIT 1`,[id]);
