@@ -75,7 +75,7 @@ export function UserCsvExport({ endpoint, params, disabled }: {
         {format === "mailgun" ? "Mailgun CSV" : "Download CSV"}
       </Button>)}
     </div>
-    <p className="text-[11px] text-muted-foreground">All filtered users · Mailgun: unique addresses</p>
+    <p className="text-[11px] text-muted-foreground">All filtered users · Mailgun: one unique email per line, no header</p>
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </div>;
 }

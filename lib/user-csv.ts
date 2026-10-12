@@ -10,17 +10,18 @@ export function csvCell(value: unknown): string {
 export function makeCsv(headers: string[], rows: unknown[][]): string {
   return [headers, ...rows].map(row => row.map(csvCell).join(",")).join("\r\n") + "\r\n";
 }
-export function makeMailgunCsv(users: { email: string; name: string }[]): string {
+export function makeMailgunCsv(users: { email: string }[]): string {
   const seen = new Set<string>();
-  const rows: string[][] = [];
+  const rows: string[] = [];
   for (const user of users) {
     const email = user.email.trim().toLowerCase();
-    if (!/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(email) || seen.has(email)) continue;
+    if (!/^[^\s@,;<>"\\]+@[^\s@,;<>"\\]+\.[^\s@,;<>"\\]+$/.test(email) || seen.has(email)) continue;
     seen.add(email);
-    rows.push([email, user.name]);
+    rows.push(email);
   }
-  // Addresses must stay exact for Mailgun, including valid +tag/local prefixes.
-  return "address,name\r\n" + rows.map(([email, name]) => `${quoteCsvCell(email)},${csvCell(name)}\r\n`).join("");
+  // Mailgun's dashboard accepts one address per line, without a header.
+  // Keep addresses exact, including valid +tag/local prefixes.
+  return rows.length ? rows.join("\r\n") + "\r\n" : "";
 }
 export function userCsvResponse(csv: string, filename: string): Response {
   return new Response(csv, { headers: {

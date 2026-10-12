@@ -43,14 +43,16 @@ test("Mailgun CSV normalizes and deduplicates addresses, skips empty/invalid ema
     { email: " ALEX@example.invalid ", name: "Alex" }, { email: "alex@example.invalid", name: "Duplicate" },
     { email: "", name: "Empty" }, { email: "invalid", name: "Bad" },
     { email: "+tag@example.invalid", name: 'Иван, "Editor"' },
-  ]), 'address,name\r\nalex@example.invalid,Alex\r\n+tag@example.invalid,"Иван, ""Editor"""\r\n');
+  ]), 'alex@example.invalid\r\n+tag@example.invalid\r\n');
+  assert.equal(csv.makeMailgunCsv([]), "");
+  assert.equal(csv.makeMailgunCsv([{ email: "Doe <doe@example.invalid>" }, { email: '"bob"@example.invalid' }]), "");
 });
 test("CSV download is an attachment and cannot be cached", async () => {
-  const response = csv.userCsvResponse("address,name\r\n", "users-mailgun.csv");
+  const response = csv.userCsvResponse("user@example.invalid\r\n", "users-mailgun.csv");
   assert.equal(response.headers.get("content-type"), "text/csv; charset=utf-8");
   assert.equal(response.headers.get("cache-control"), "private, no-store");
   assert.match(response.headers.get("content-disposition"), /attachment; filename="users-mailgun.csv"/);
-  assert.equal(await response.text(), "address,name\r\n");
+  assert.equal(await response.text(), "user@example.invalid\r\n");
 });
 test("filters reject impossible dates and reversed ranges, handle leap years, and normalize unknown values", () => {
   for (const date of ["2026-02-29", "2026-04-31", "2026-13-01", "garbage"]) {
@@ -108,7 +110,7 @@ test("authorized exports pass filters to the selection and reject invalid dates 
     const get = query => routeLoad(route).GET({ nextUrl: new URL(`https://example.invalid/?${query}`) }, { params: Promise.resolve({ authorId: "4141" }) });
     const response = await get("export=mailgun&mailing=opted_in&sub=active&q=user&page=2");
     assert.equal(response.status, 200);
-    assert.equal(await response.text(), "address,name\r\nuser@example.invalid,User\r\n");
+    assert.equal(await response.text(), "user@example.invalid\r\n");
     const options = calls.at(-1);
     assert.equal(options.q, "user");
     assert.equal(options.filters?.mailing ?? options.mailing, "opted_in");
