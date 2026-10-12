@@ -36,13 +36,13 @@ function NavLink({ href, label, icon: Icon, logoUrl, normalized, active: activeO
         "relative flex items-center gap-3 text-sm font-medium transition-colors", focusClass,
         flat ? "min-h-11 border-l-2 py-2.5 pr-5 pl-8" : "rounded-lg px-3 py-2.5",
         active
-          ? flat ? "border-blue-400 bg-blue-500/12 text-foreground" : "bg-linear-to-r from-blue-600 to-blue-500 text-white shadow-md shadow-blue-500/20"
+          ? flat ? "border-blue-400 bg-linear-to-r from-blue-600 to-blue-500 text-white" : "bg-linear-to-r from-blue-600 to-blue-500 text-white shadow-md shadow-blue-500/20"
           : "border-transparent text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
       )}>
         {logoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={logoUrl} alt="" className="h-5 w-5 shrink-0 rounded object-contain" />
-        ) : Icon ? <Icon aria-hidden className={cn("shrink-0", flat ? "h-4 w-4" : "h-5 w-5", active && !flat ? "text-white" : "text-blue-400")} /> : null}
+        ) : Icon ? <Icon aria-hidden className={cn("shrink-0", flat ? "h-4 w-4" : "h-5 w-5", active ? "text-white" : "text-blue-400")} /> : null}
         <span className="truncate">{label}</span>
       </Link>
     </li>
@@ -55,20 +55,21 @@ function NavGroup({ group, normalized, open, onOpenChange, children }: {
 }) {
   const { href, label, icon: Icon } = PROFILE_NAVIGATION_GROUPS[group];
   const active = profileNavigationGroupForPath(normalized) === group;
+  const selected = normalized === href;
   return (
     <li className="border-b border-border/40">
       <Collapsible open={open} onOpenChange={onOpenChange}>
-        <div className={cn("flex items-center transition-colors", active && "bg-blue-500/5")}>
+        <div className={cn("flex items-center transition-colors", selected ? "bg-linear-to-r from-blue-600 to-blue-500" : active && "bg-blue-500/5")}>
           <Link href={href} aria-current={normalized === href ? "page" : undefined}
             onClick={() => onOpenChange(true)}
-            className={cn("flex min-h-14 min-w-0 flex-1 items-center gap-3 py-4 pr-2 pl-6 text-xs font-semibold uppercase tracking-wider transition-colors hover:text-foreground", focusClass, active ? "text-blue-400" : "text-muted-foreground")}
+            className={cn("flex min-h-14 min-w-0 flex-1 items-center gap-3 py-4 pr-2 pl-6 text-xs font-semibold uppercase tracking-wider transition-colors hover:text-foreground", focusClass, selected ? "text-white hover:text-white" : active ? "text-blue-400" : "text-muted-foreground")}
           >
-            <Icon aria-hidden className="h-[18px] w-[18px] shrink-0 text-blue-400" />
+            <Icon aria-hidden className={cn("h-[18px] w-[18px] shrink-0", selected ? "text-white" : "text-blue-400")} />
             <span className="truncate">{label}</span>
           </Link>
           <CollapsibleTrigger asChild>
             <button type="button" aria-label={`${open ? "Collapse" : "Expand"} ${label}`}
-              className={cn("flex min-h-14 w-12 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground", focusClass)}
+              className={cn("flex min-h-14 w-12 shrink-0 items-center justify-center transition-colors", focusClass, selected ? "text-white/80 hover:bg-white/10 hover:text-white" : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground")}
             >
               <ChevronDown aria-hidden className={cn("h-4 w-4 transition-transform", open && "rotate-180")} />
             </button>
@@ -93,12 +94,12 @@ function AdminNavigation({ access, showPackages, showPartners, showUsers, showAf
   const groupProps = (group: ProfileNavigationGroup) => ({ group, normalized, open: openGroups.includes(group), onOpenChange: toggleGroup(group) });
 
   return (
-    <nav aria-label="Account navigation" className="flex flex-col py-4 lg:min-h-[calc(100dvh-8rem)]">
-      <div className="px-6 pt-2 pb-6">
+    <nav aria-label="Account navigation" className="flex h-full min-h-0 flex-col py-4">
+      <div className="shrink-0 px-6 pt-2 pb-6">
         <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">Motion Flow</p>
         <p className="mt-1.5 text-lg font-semibold tracking-tight">Admin workspace</p>
       </div>
-      <ul className="border-t border-border/40">
+      <ul aria-label="Workspace sections" className="min-h-0 flex-1 overflow-y-auto overscroll-contain border-t border-border/40">
         <NavGroup {...groupProps("account")}>
           {ACCOUNT_NAVIGATION.map((item) => <NavLink key={item.href} {...item} normalized={normalized} flat />)}
           {showAffiliate ? <NavLink {...AFFILIATE_NAVIGATION} normalized={normalized} flat /> : null}
@@ -116,7 +117,7 @@ function AdminNavigation({ access, showPackages, showPartners, showUsers, showAf
           {TOOLS_NAVIGATION.map((item) => <NavLink key={item.href} {...item} normalized={normalized} flat />)}
         </NavGroup> : null}
       </ul>
-      {access >= 1 ? <div className="mt-auto pt-6">
+      {access >= 1 ? <div className="shrink-0 border-t border-border/40 pt-4">
         <a href="https://authors.motionflow.pro" target="_blank" rel="noopener noreferrer"
           className={cn("flex min-h-12 items-center gap-3 px-6 text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground", focusClass)}
         >
