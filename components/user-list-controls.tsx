@@ -1,8 +1,16 @@
 "use client";
 import { useId, useState } from "react";
-import { CalendarIcon, Download, Loader2 } from "lucide-react";
+import { CalendarIcon, ChevronDown, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -68,16 +76,49 @@ export function UserCsvExport({ endpoint, params, disabled }: {
       setError(err instanceof Error ? err.message : "Export failed. Try again.");
     } finally { setBusy(null); }
   }
-  return <div className="space-y-1">
-    <div className="flex flex-wrap gap-2">
-      {(["csv", "mailgun"] as const).map(format => <Button key={format} type="button" size="sm" variant="outline" disabled={disabled || busy !== null} onClick={() => void download(format)} title="Download all users matching the current filters across every page">
-        {busy === format ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
-        {format === "mailgun" ? "Mailgun CSV" : "Download CSV"}
-      </Button>)}
+  return (
+    <div className="relative inline-flex shrink-0 items-center">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="gap-2"
+            disabled={disabled || busy !== null}
+            aria-label={busy ? "Downloading users" : "Choose download format"}
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            {busy ? "Downloading…" : "Download"}
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-64">
+          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+            All users matching your filters
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem className="cursor-pointer py-2.5" onSelect={() => void download("csv")}>
+            <div className="space-y-0.5">
+              <p className="font-medium">Users table · CSV</p>
+              <p className="text-xs text-muted-foreground">Email, name and account details</p>
+            </div>
+          </DropdownMenuItem>
+          <DropdownMenuItem className="cursor-pointer py-2.5" onSelect={() => void download("mailgun")}>
+            <div className="space-y-0.5">
+              <p className="font-medium">Email list · CSV</p>
+              <p className="text-xs text-muted-foreground">For Mailgun · one unique email per line</p>
+            </div>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {error && (
+        <p role="alert" className="absolute top-full right-0 z-20 mt-2 w-64 rounded-md border border-destructive/30 bg-popover p-3 text-xs text-destructive shadow-md">
+          {error}
+        </p>
+      )}
     </div>
-    <p className="text-[11px] text-muted-foreground">All filtered users · Mailgun: one unique email per line, no header</p>
-    {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-  </div>;
+  );
 }
 
 function parseYmd(value: string): Date | undefined {
