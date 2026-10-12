@@ -3,7 +3,7 @@ import { getSessionUser } from "@/lib/auth/get-session-user";
 import { isPackagesAdmin, listPackagesAuthors } from "@/lib/packages-admin";
 import { packagesAuthorLogoUrl } from "@/lib/packages-admin-client";
 import { newPackagesAuthorSchema } from "@/lib/packages-author-input";
-import { createPackagesAuthorRow } from "@/lib/packages-authors-db";
+import { createPackagesAuthorRow, PackagesAuthorCreationError } from "@/lib/packages-authors-db";
 import { listR2AccountBuckets, normalizePackagesBucketName } from "@/lib/packages-r2-buckets";
 
 export const runtime = "nodejs";
@@ -74,6 +74,11 @@ export async function POST(req: NextRequest) {
       logoUrl: packagesAuthorLogoUrl(author.slug),
     } }, { status: 201 });
   } catch (err) {
+    if (err instanceof PackagesAuthorCreationError) {
+      return NextResponse.json({ error: err.code, message: err.message }, {
+        status: err.code === "USER_NOT_FOUND" ? 404 : 409,
+      });
+    }
     if (err && typeof err === "object" && "code" in err && err.code === "ER_DUP_ENTRY") {
       return NextResponse.json({ error: "AUTHOR_EXISTS", message: "An author with this ID or slug already exists" }, { status: 409 });
     }

@@ -214,21 +214,72 @@ export type PackagesAuthorPatch = {
   r2_bucket?: string | null;
 };
 
+export class PackagesAuthorCreationError extends Error {
+  constructor(readonly code: "USER_NOT_FOUND" | "AUTHOR_EXISTS" | "SLUG_TAKEN", message: string) {
+    super(message);
+    this.name = "PackagesAuthorCreationError";
+  }
+}
+
+async function assertAuthorIdentityAvailable(input: NewPackagesAuthorInput): Promise<void> {
+  const [rows] = await getPool().query<RowDataPacket[]>(
+    `SELECT id, slug FROM \`${AUTHORS_TABLE}\` WHERE id = ? OR slug = ?`,
+    [input.id, input.slug],
+  );
+  if (rows.some((row) => Number(row.id) === input.id)) {
+    throw new PackagesAuthorCreationError("AUTHOR_EXISTS", "This user is already an author");
+  }
+  if (rows.length) {
+    throw new PackagesAuthorCreationError("SLUG_TAKEN", "This slug is already taken. Use a different display name.");
+  }
+}
+
 export async function createPackagesAuthorRow(
   input: NewPackagesAuthorInput,
 ): Promise<PackagesAuthorRow> {
   await seedPackagesAuthors();
   const pool = getPool();
-  // IDs also identify authors in extension access and sales; the admin chooses
-  // the corresponding author ID rather than assigning a new marketplace user.
-  await pool.query<ResultSetHeader>(
-    `INSERT INTO \`${AUTHORS_TABLE}\` (id, slug, label, r2_bucket, r2_prefix)
-     VALUES (?, ?, ?, ?, ?)`,
-    [input.id, input.slug, input.label, input.r2_bucket || null, `public/downloads/${input.slug}/`],
-  );
+  await assertAuthorIdentityAvailable(input);
+  try {
+    // Read the ID from users in the insert itself so a removed/nonexistent
+    // account cannot leave an author record with an unrelated ID.
+    const [result] = await pool.query<ResultSetHeader>(
+      `INSERT INTO \`${AUTHORS_TABLE}\` (id, slug, label, r2_bucket, r2_prefix)
+       SELECT id, ?, ?, ?, ? FROM users WHERE id = ?`,
+      [input.slug, input.label, input.r2_bucket || null, `public/downloads/${input.slug}/`, input.id],
+    );
+    if (!result.affectedRows) {
+      throw new PackagesAuthorCreationError("USER_NOT_FOUND", "The selected user no longer exists. Search by email again.");
+    }
+  } catch (err) {
+    // Unique constraints still catch simultaneous submissions after the check.
+    if (err && typeof err === "object" && "code" in err && err.code === "ER_DUP_ENTRY") {
+      await assertAuthorIdentityAvailable(input);
+    }
+    throw err;
+  }
   const author = await getPackagesAuthorRow(input.id);
   if (!author) throw new Error("CREATE_FAILED");
   return author;
+}
+
+export async function searchPackagesAuthorUsers(q: string): Promise<Array<{
+  id: number; name: string; email: string; authorExists: boolean;
+}>> {
+  await seedPackagesAuthors();
+  const contains = `%${q.replace(/[\\%_]/g, "\\$&")}%`;
+  const [rows] = await getPool().query<RowDataPacket[]>(
+    `SELECT u.id, u.name, u.email, a.id AS author_id
+     FROM users u LEFT JOIN \`${AUTHORS_TABLE}\` a ON a.id = u.id
+     WHERE u.email LIKE ? ESCAPE '\\\\'
+     ORDER BY CASE WHEN LOWER(u.email) = LOWER(?) THEN 0 ELSE 1 END, u.email ASC
+     LIMIT 10`,
+    [contains, q],
+  );
+  return rows.map((row) => ({
+    id: Number(row.id), name: String(row.name || ""), email: String(row.email),
+    authorExists: row.author_id != null,
+  }));
 }
 
 export async function updatePackagesAuthorRow(

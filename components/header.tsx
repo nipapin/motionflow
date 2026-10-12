@@ -306,7 +306,7 @@ export function Header({
                     ? [
                         { icon: UserRound, label: "Users", href: "/profile/users" },
                         { icon: Mail, label: "Campaigns", href: "/profile/campaigns" },
-                        { icon: FileText, label: "PDF Links", href: "https://motionflow.pro/pdf-link" },
+                        { icon: FileText, label: "PDF Links", href: "/profile/pdf-link" },
                       ]
                     : []),
                   ...(Number(user?.access) >= 1

@@ -284,8 +284,8 @@ export function AccountSidebar({
           {managementNav.length ? <NavGroup label="Management" icon={Settings2} normalized={normalized} active={managementNav.some(({ href }) => isActive(normalized, href))}>
             {managementNav.map((item) => <NavLink key={item.href} {...item} normalized={normalized} />)}
           </NavGroup> : null}
-          {showUsers ? <NavGroup label="Tools" icon={Wrench} normalized={normalized} active={false}>
-            <NavLink href="https://motionflow.pro/pdf-link" label="PDF Links" icon={FileText} normalized={normalized} />
+          {showUsers ? <NavGroup label="Tools" icon={Wrench} normalized={normalized} active={isActive(normalized, "/profile/pdf-link")}>
+            <NavLink href="/profile/pdf-link" label="PDF Links" icon={FileText} normalized={normalized} />
           </NavGroup> : null}
           {adminMenu && access >= 1 ? <li>
             <a href="https://authors.motionflow.pro" target="_blank" rel="noopener noreferrer" className={cn(navItemBase, "text-muted-foreground hover:bg-foreground/5 hover:text-foreground")}>

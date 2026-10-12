@@ -11,7 +11,8 @@ export function profilePageClassForPath(pathname: string | null | undefined): st
     pathname?.startsWith("/profile/packages") ||
     pathname?.startsWith("/profile/extensions") ||
     pathname?.startsWith("/profile/partners") ||
-    pathname?.startsWith("/profile/users")
+    pathname?.startsWith("/profile/users") ||
+    pathname?.startsWith("/profile/pdf-link")
   ) {
     return PROFILE_PAGE_CLASS_WIDE;
   }

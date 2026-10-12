@@ -1,6 +1,7 @@
 import "server-only";
 
-import { ListBucketsCommand } from "@aws-sdk/client-s3";
+import { CreateBucketCommand, ListBucketsCommand } from "@aws-sdk/client-s3";
+import { newPackagesBucketSchema } from "@/lib/packages-author-input";
 import { getR2Client } from "@/lib/r2-storage";
 
 /** Cloudflare R2 bucket names: letters, digits, dots, hyphens. */
@@ -36,4 +37,10 @@ export async function listR2AccountBuckets(): Promise<string[]> {
     .filter((n): n is string => Boolean(n));
   names.sort((a, b) => a.localeCompare(b));
   return names;
+}
+
+export async function createR2AccountBucket(name: string): Promise<string> {
+  const input = newPackagesBucketSchema.parse({ name });
+  await getR2Client().send(new CreateBucketCommand({ Bucket: input.name }));
+  return input.name;
 }
