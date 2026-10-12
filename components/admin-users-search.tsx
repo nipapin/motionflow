@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, CalendarIcon, Loader2, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, Search } from "lucide-react";
 import {
   accessRoleLabel,
   formatAdminDate,
@@ -24,22 +24,8 @@ import {
 import { AdminUserDrawer } from "@/components/admin-user-drawer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -48,6 +34,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { FilterSelect, DateFilter, UserCsvExport } from "@/components/user-list-controls";
+import { MAILING_FILTERS, validateUserDateRanges, type MailingFilter } from "@/lib/user-list-filters";
 import { cn } from "@/lib/utils";
 
 type SearchResponse = {
@@ -57,131 +45,6 @@ type SearchResponse = {
   pageSize: number;
   error?: string;
 };
-
-function FilterSelect<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: T;
-  options: readonly { value: T; label: string }[];
-  onChange: (value: T) => void;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <Label className="text-xs text-muted-foreground">{label}</Label>
-      <Select value={value} onValueChange={(next) => onChange(next as T)}>
-        <SelectTrigger size="sm" className="w-40">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  );
-}
-
-function parseYmd(value: string): Date | undefined {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, month - 1, day);
-}
-
-function toYmd(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function DateFilter({
-  id,
-  label,
-  value,
-  min,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  min?: string;
-  onChange: (value: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const selected = parseYmd(value);
-  const minDate = min ? parseYmd(min) : undefined;
-
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={id} className="text-xs text-muted-foreground">
-        {label}
-      </Label>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            id={id}
-            type="button"
-            variant="outline"
-            size="sm"
-            className={cn(
-              "w-40 justify-start font-normal dark:bg-input/30 dark:hover:bg-input/50",
-              !selected && "text-muted-foreground",
-            )}
-          >
-            <CalendarIcon className="size-3.5 text-muted-foreground" />
-            <span className="truncate">
-              {selected
-                ? selected.toLocaleDateString("en-GB", {
-                    day: "numeric",
-                    month: "short",
-                    year: "numeric",
-                  })
-                : "Any date"}
-            </span>
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent
-          align="start"
-          className="w-auto border-border bg-popover p-0"
-        >
-          <Calendar
-            mode="single"
-            selected={selected}
-            defaultMonth={selected ?? minDate ?? new Date()}
-            disabled={minDate ? { before: minDate } : undefined}
-            onSelect={(date) => {
-              onChange(date ? toYmd(date) : "");
-              setOpen(false);
-            }}
-          />
-          {value ? (
-            <div className="border-t border-border/60 p-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="w-full text-muted-foreground"
-                onClick={() => {
-                  onChange("");
-                  setOpen(false);
-                }}
-              >
-                Clear
-              </Button>
-            </div>
-          ) : null}
-        </PopoverContent>
-      </Popover>
-    </div>
-  );
-}
 
 function SortableHead({
   field,
@@ -238,6 +101,7 @@ export function AdminUsersSearch({ initial }: { initial: SearchResponse }) {
   const [verified, setVerified] = useState<AdminUserVerifiedFilter>("all");
   const [sold, setSold] = useState<AdminUserSoldFilter>("all");
   const [subscription, setSubscription] = useState<AdminUserSubFilter>("all");
+  const [mailing, setMailing] = useState<MailingFilter>("all");
   const [registeredFrom, setRegisteredFrom] = useState("");
   const [registeredTo, setRegisteredTo] = useState("");
   const [sort, setSort] = useState<AdminUserSortField>("id");
@@ -262,12 +126,27 @@ export function AdminUsersSearch({ initial }: { initial: SearchResponse }) {
     return () => window.clearTimeout(handle);
   }, [draft]);
 
+  function makeParams(search = q) {
+    const params = new URLSearchParams({ page: String(page), sort, dir });
+    if (search) params.set("q", search);
+    if (role !== "all") params.set("role", role);
+    if (google !== "all") params.set("google", google);
+    if (verified !== "all") params.set("verified", verified);
+    if (sold !== "all") params.set("sold", sold);
+    if (subscription !== "all") params.set("sub", subscription);
+    if (mailing !== "all") params.set("mailing", mailing);
+    if (registeredFrom) params.set("registeredFrom", registeredFrom);
+    if (registeredTo) params.set("registeredTo", registeredTo);
+    return params;
+  }
+
   useEffect(() => {
     if (
       skipInitialFetch.current &&
       q === "" &&
       page === 1 &&
       role === "all" &&
+      mailing === "all" &&
       google === "all" &&
       verified === "all" &&
       sold === "all" &&
@@ -284,15 +163,9 @@ export function AdminUsersSearch({ initial }: { initial: SearchResponse }) {
     const ac = new AbortController();
     setBusy(true);
     setError(null);
-    const params = new URLSearchParams({ page: String(page), sort, dir });
-    if (q) params.set("q", q);
-    if (role !== "all") params.set("role", role);
-    if (google !== "all") params.set("google", google);
-    if (verified !== "all") params.set("verified", verified);
-    if (sold !== "all") params.set("sold", sold);
-    if (subscription !== "all") params.set("sub", subscription);
-    if (registeredFrom) params.set("registeredFrom", registeredFrom);
-    if (registeredTo) params.set("registeredTo", registeredTo);
+    const params = makeParams();
+    const dateError = validateUserDateRanges(params);
+    if (dateError) { setError(dateError); setBusy(false); return; }
     void (async () => {
       try {
         const res = await fetch(`/api/admin/users?${params.toString()}`, {
@@ -318,6 +191,7 @@ export function AdminUsersSearch({ initial }: { initial: SearchResponse }) {
     q,
     page,
     role,
+    mailing,
     google,
     verified,
     sold,
@@ -374,6 +248,13 @@ export function AdminUsersSearch({ initial }: { initial: SearchResponse }) {
     setPage(1);
   };
 
+  const resetFilters = () => {
+    setDraft(""); setQ(""); qRef.current = ""; setPage(1);
+    setRole("all"); setGoogle("all"); setVerified("all"); setSold("all");
+    setSubscription("all"); setMailing("all"); setRegisteredFrom(""); setRegisteredTo("");
+    setSort("id"); setDir("desc");
+  };
+
   const openRow = (id: number) => setSelectedId(id);
 
   const onUserUpdated = (user: AdminUserDetail) => {
@@ -408,14 +289,25 @@ export function AdminUsersSearch({ initial }: { initial: SearchResponse }) {
   return (
     <div className="space-y-4">
       <div className="space-y-3">
-        <div className="relative w-full max-w-xl">
-          <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="Search by id, email, name, purchase code, subscription id…"
-            className="pl-9"
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative w-full max-w-xl">
+            <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              aria-label="Search users"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Search by id, email, name, purchase code, subscription id…"
+              className="pl-9"
+            />
+          </div>
+          <UserCsvExport
+            endpoint="/api/admin/users"
+            params={makeParams(draft.trim())}
+            disabled={busy || Boolean(validateUserDateRanges(makeParams()))}
           />
+          <Button type="button" size="sm" variant="ghost" onClick={resetFilters}>
+            Reset filters
+          </Button>
         </div>
         <div className="flex flex-wrap gap-3">
           <FilterSelect
@@ -447,6 +339,12 @@ export function AdminUsersSearch({ initial }: { initial: SearchResponse }) {
             value={subscription}
             options={ADMIN_USER_SUB_FILTERS}
             onChange={applySubscription}
+          />
+          <FilterSelect
+            label="Mailing consent"
+            value={mailing}
+            options={MAILING_FILTERS}
+            onChange={(next) => { setMailing(next); setPage(1); }}
           />
           <DateFilter
             id="admin-users-registered-from"

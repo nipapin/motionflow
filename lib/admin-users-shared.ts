@@ -152,7 +152,8 @@ export function parseAdminUserDateParam(
   raw: string | null | undefined,
 ): string | null {
   if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
-  return raw;
+  const date = new Date(`${raw}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === raw ? raw : null;
 }
 
 export type AdminUserListRow = {

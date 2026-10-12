@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
   Loader2,
@@ -39,6 +39,9 @@ import {
 } from "@/components/ui/table";
 import { ExtensionsGiveAccessDialog } from "@/components/extensions-give-access-dialog";
 import { cn } from "@/lib/utils";
+import { DateFilter, FilterSelect, UserCsvExport } from "@/components/user-list-controls";
+import { ADMIN_USER_SOLD_FILTERS, ADMIN_USER_SUB_FILTERS, ADMIN_USER_VERIFIED_FILTERS } from "@/lib/admin-users-shared";
+import { DEFAULT_EXTENSION_USER_FILTERS, DEVICE_FILTERS, MAILING_FILTERS, SUB_SOURCE_FILTERS, validateUserDateRanges, type ExtensionUserFilters } from "@/lib/user-list-filters";
 
 type PackChip = {
   pack_id: number;
@@ -345,6 +348,8 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
   const [extensionName, setExtensionName] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [qDraft, setQDraft] = useState("");
+  const [filters, setFilters] = useState<ExtensionUserFilters>(DEFAULT_EXTENSION_USER_FILTERS);
+  const requestRef = useRef<AbortController | null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [deviceTotal, setDeviceTotal] = useState(0);
@@ -362,17 +367,43 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
   const [giveAccessOpen, setGiveAccessOpen] = useState(false);
   const [manageEmail, setManageEmail] = useState<string | null>(null);
 
+  const filterParams = useMemo(() => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) {
+      if (value && value !== "all") params.set(key, value);
+    }
+    return params;
+  }, [filters]);
+  const dateError = validateUserDateRanges(filterParams);
+  const exportParams = new URLSearchParams(filterParams);
+  if (qDraft.trim()) exportParams.set("q", qDraft.trim());
+  function applyFilter<K extends keyof ExtensionUserFilters>(key: K, value: ExtensionUserFilters[K]) {
+    setFilters(previous => ({ ...previous, [key]: value }));
+    setPage(1);
+  }
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => { setQ(qDraft.trim()); setPage(1); }, 300);
+    return () => window.clearTimeout(handle);
+  }, [qDraft]);
+
   const load = useCallback(async () => {
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    if (dateError) { setLoading(false); return; }
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams(filterParams);
       if (q) params.set("q", q);
       params.set("page", String(page));
       const res = await fetch(
         `/api/extensions/${authorId}/users?${params.toString()}`,
+        { signal: controller.signal },
       );
       const data = (await res.json()) as ListResponse;
+      if (controller.signal.aborted) return;
       if (!res.ok) {
         throw new Error(data.message || data.error || "Failed to load");
       }
@@ -382,14 +413,16 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
       setPageSize(data.page_size ?? 50);
       setExtensionName(data.extension_name ?? null);
     } catch (e) {
+      if (controller.signal.aborted) return;
       setError(e instanceof Error ? e.message : "Failed to load users");
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
-  }, [authorId, page, q]);
+  }, [authorId, page, q, filterParams, dateError]);
 
   useEffect(() => {
     void load();
+    return () => requestRef.current?.abort();
   }, [load]);
 
   // Soft-refresh presence while the page is open
@@ -499,6 +532,7 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
         >
           <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
+            aria-label="Search author users"
             value={qDraft}
             onChange={(e) => setQDraft(e.target.value)}
             placeholder="Search email or name…"
@@ -549,14 +583,29 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
           <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
           Refresh
         </Button>
+        <UserCsvExport endpoint={`/api/extensions/${authorId}/users`} params={exportParams} disabled={loading || Boolean(dateError)} />
       </div>
 
-      {error ? (
+      <div className="flex flex-wrap items-end gap-3">
+        <FilterSelect label="Subscription" value={filters.sub} options={ADMIN_USER_SUB_FILTERS} onChange={value => applyFilter("sub", value)} />
+        <FilterSelect label="Subscription source" value={filters.source} options={SUB_SOURCE_FILTERS} onChange={value => applyFilter("source", value)} />
+        <FilterSelect label="Purchases" value={filters.sold} options={ADMIN_USER_SOLD_FILTERS} onChange={value => applyFilter("sold", value)} />
+        <FilterSelect label="Devices" value={filters.devices} options={DEVICE_FILTERS} onChange={value => applyFilter("devices", value)} />
+        <FilterSelect label="Mailing consent" value={filters.mailing} options={MAILING_FILTERS} onChange={value => applyFilter("mailing", value)} />
+        <FilterSelect label="Email verified" value={filters.verified} options={ADMIN_USER_VERIFIED_FILTERS} onChange={value => applyFilter("verified", value)} />
+        <DateFilter id={`author-${authorId}-registered-from`} label="Registered from" value={filters.registeredFrom} onChange={value => applyFilter("registeredFrom", value)} />
+        <DateFilter id={`author-${authorId}-registered-to`} label="Registered to" value={filters.registeredTo} min={filters.registeredFrom || undefined} onChange={value => applyFilter("registeredTo", value)} />
+        <DateFilter id={`author-${authorId}-seen-from`} label="Last seen from" value={filters.seenFrom} onChange={value => applyFilter("seenFrom", value)} />
+        <DateFilter id={`author-${authorId}-seen-to`} label="Last seen to" value={filters.seenTo} min={filters.seenFrom || undefined} onChange={value => applyFilter("seenTo", value)} />
+        <Button type="button" size="sm" variant="ghost" onClick={() => { setFilters(DEFAULT_EXTENSION_USER_FILTERS); setQDraft(""); setQ(""); setPage(1); }}>Reset filters</Button>
+      </div>
+
+      {error || dateError ? (
         <div
           role="alert"
           className="rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive"
         >
-          {error}
+          {dateError || error}
         </div>
       ) : null}
 
@@ -571,9 +620,9 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
             <Puzzle className="h-5 w-5 text-muted-foreground" />
           </div>
-          <p className="text-sm font-medium text-foreground">No users yet</p>
+          <p className="text-sm font-medium text-foreground">No matching users</p>
           <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-            Give access by email, or wait for someone to launch the extension.
+            Adjust the filters or give access by email.
           </p>
           <Button
             type="button"

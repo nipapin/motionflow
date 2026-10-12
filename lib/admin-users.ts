@@ -24,6 +24,7 @@ import {
   type AdminUserVerifiedFilter,
 } from "@/lib/admin-users-shared";
 import type { AdminUserPatchInput } from "@/lib/validations/admin-users";
+import { mailingFilterSql, type MailingFilter } from "@/lib/user-list-filters";
 
 const USERS_TABLE = "users";
 const SOLD_TABLE = "sold_items";
@@ -148,7 +149,7 @@ const SORT_SQL: Record<AdminUserSortField, string> = {
   createdAt: "u.created_at",
 };
 
-export async function searchAdminUsers(opts: {
+export type AdminUserSearchOptions = {
   q?: string;
   page?: number;
   role?: AdminUserRoleFilter;
@@ -160,7 +161,10 @@ export async function searchAdminUsers(opts: {
   registeredTo?: string | null;
   sort?: AdminUserSortField;
   dir?: AdminUserSortDir;
-}): Promise<{ users: AdminUserListRow[]; total: number; page: number; pageSize: number }> {
+  mailing?: MailingFilter;
+};
+
+function buildAdminUsersQuery(opts: AdminUserSearchOptions) {
   const q = (opts.q ?? "").trim();
   const role: AdminUserRoleFilter = opts.role ?? "all";
   const google: AdminUserGoogleFilter = opts.google ?? "all";
@@ -171,8 +175,6 @@ export async function searchAdminUsers(opts: {
   const registeredTo = opts.registeredTo ?? null;
   const sort: AdminUserSortField = opts.sort ?? "id";
   const dir: AdminUserSortDir = opts.dir ?? "desc";
-  const pageSize = ADMIN_USERS_PAGE_SIZE;
-  const page = Math.max(1, Math.floor(opts.page ?? 1));
   const asId = Number(q);
   const isNumericId = /^\d+$/.test(q) && Number.isFinite(asId) && asId > 0;
   const hasQuery = q.length > 0;
@@ -180,8 +182,6 @@ export async function searchAdminUsers(opts: {
   const isSubscriptionOrPaymentId = /^(?:sub|txn|admin)_[a-z0-9_]+$/i.test(q);
   const searchCodes = isPurchaseCode || isSubscriptionOrPaymentId;
 
-  const pool = getPool();
-  const offset = (page - 1) * pageSize;
   const clauses: string[] = [];
   const whereParams: Array<string | number> = [];
 
@@ -195,6 +195,8 @@ export async function searchAdminUsers(opts: {
   if (soldSql) clauses.push(soldSql);
   const subSql = subFilterSql(subscription);
   if (subSql) clauses.push(subSql);
+  const mailingSql = mailingFilterSql(opts.mailing ?? "all");
+  if (mailingSql) clauses.push(mailingSql);
   if (registeredFrom) {
     clauses.push("u.created_at >= ?");
     whereParams.push(`${registeredFrom} 00:00:00`);
@@ -272,6 +274,32 @@ export async function searchAdminUsers(opts: {
   const orderParams: Array<string | number> = useSearchRelevance
     ? [isNumericId ? asId : -1, q, q]
     : [];
+
+  return { whereSql, whereParams, orderSql, orderParams };
+}
+
+export async function exportAdminUsers(opts: AdminUserSearchOptions) {
+  const { whereSql, whereParams, orderSql, orderParams } = buildAdminUsersQuery(opts);
+  type ExportRow = RowDataPacket & { id: number; name: string; email: string; access: number; created_at: string | Date | null; mailing: number | null; email_verified_at: string | Date | null };
+  const [rows] = await getPool().execute<ExportRow[]>(
+    `SELECT u.id, u.name, u.email, u.access, u.created_at, u.mailing, u.email_verified_at
+     FROM \`${USERS_TABLE}\` u ${whereSql} ${orderSql}`,
+    [...whereParams, ...orderParams],
+  );
+  return rows.map(row => ({
+    id: Number(row.id), name: String(row.name ?? ""), email: String(row.email ?? ""),
+    access: Number(row.access ?? 0), createdAt: toIso(row.created_at),
+    mailingOptIn: row.mailing != null && Number(row.mailing) === 0,
+    emailVerified: row.email_verified_at != null,
+  }));
+}
+
+export async function searchAdminUsers(opts: AdminUserSearchOptions): Promise<{ users: AdminUserListRow[]; total: number; page: number; pageSize: number }> {
+  const { whereSql, whereParams, orderSql, orderParams } = buildAdminUsersQuery(opts);
+  const pool = getPool();
+  const pageSize = ADMIN_USERS_PAGE_SIZE;
+  const page = Math.max(1, Math.floor(opts.page ?? 1));
+  const offset = (page - 1) * pageSize;
 
   async function exec<T extends RowDataPacket[]>(
     sql: string,

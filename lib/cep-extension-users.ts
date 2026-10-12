@@ -30,6 +30,9 @@ import {
   SPUNKRAM_AUTHOR_ID,
 } from "@/lib/spunkram-paddle-config";
 
+import { activeAuthorSubscriptionSql, buildExtensionUsersQuery } from "@/lib/extension-users-query";
+import type { ExtensionUserFilters } from "@/lib/user-list-filters";
+
 const DEVICES_TABLE = "cep_devices";
 const SUB_TABLE = "subscription_systems";
 const SOLD_TABLE = "sold_items";
@@ -212,6 +215,7 @@ export async function listExtensionUsersForAuthor(opts: {
   authorId: number;
   q?: string;
   page?: number;
+  filters?: Partial<ExtensionUserFilters>;
 }): Promise<ListExtensionUsersResult> {
   await ensurePackagesProjectsTable();
 
@@ -221,74 +225,20 @@ export async function listExtensionUsersForAuthor(opts: {
 
   const page = Math.max(1, Math.floor(opts.page ?? 1));
   const offset = (page - 1) * PAGE_SIZE;
-  const q = opts.q?.trim() ?? "";
 
   const pool = getPool();
-  const unionParts: string[] = [
-    `SELECT buyer_id AS user_id FROM \`${SUB_TABLE}\` WHERE author_id = ?`,
-    `SELECT buyer_id AS user_id FROM \`${SOLD_TABLE}\` WHERE author_id = ? AND ${soldItemAccessCondition()}`,
-  ];
-  const unionParams: Array<string | number> = [opts.authorId, opts.authorId];
-  if (client) {
-    unionParts.unshift(
-      `SELECT user_id FROM \`${DEVICES_TABLE}\` WHERE client = ? AND revoked_at IS NULL`,
-    );
-    unionParams.unshift(client);
-  }
-
-  const entitled = unionParts.join(" UNION ");
-  const filterParams: Array<string | number> = [...unionParams];
-  let userFilter = "";
-  if (q) {
-    userFilter = ` AND (u.email LIKE ? OR u.name LIKE ?)`;
-    const like = `%${q.replace(/[%_]/g, "\\$&")}%`;
-    filterParams.push(like, like);
-  }
-
+  const query = buildExtensionUsersQuery({ ...opts, client });
   type CountRow = RowDataPacket & { cnt: number };
   const [countRows] = await pool.execute<CountRow[]>(
-    `SELECT COUNT(*) AS cnt FROM (
-       SELECT DISTINCT e.user_id
-       FROM (${entitled}) e
-       JOIN users u ON u.id = e.user_id
-       WHERE 1=1${userFilter}
-     ) t`,
-    filterParams,
+    `SELECT COUNT(*) AS cnt ${query.fromSql}`, query.params,
   );
   const total = Number(countRows[0]?.cnt ?? 0);
-
   type UserPageRow = RowDataPacket & {
-    user_id: number;
-    email: string;
-    name: string;
-    last_seen_at: string | Date | null;
+    user_id: number; email: string; name: string; last_seen_at: string | Date | null;
   };
-
-  const pageParams: Array<string | number> = [...filterParams];
-  let lastSeenJoin = `LEFT JOIN (SELECT CAST(NULL AS UNSIGNED) AS user_id, CAST(NULL AS DATETIME) AS last_seen_at) ls ON 1=0`;
-  if (client) {
-    lastSeenJoin = `LEFT JOIN (
-      SELECT user_id, MAX(COALESCE(last_seen_at, created_at)) AS last_seen_at
-      FROM \`${DEVICES_TABLE}\`
-      WHERE client = ? AND revoked_at IS NULL
-      GROUP BY user_id
-    ) ls ON ls.user_id = u.id`;
-    pageParams.push(client);
-  }
-
   const [userPage] = await pool.execute<UserPageRow[]>(
     `SELECT u.id AS user_id, u.email, u.name, ls.last_seen_at
-     FROM (
-       SELECT DISTINCT e.user_id
-       FROM (${entitled}) e
-       JOIN users u ON u.id = e.user_id
-       WHERE 1=1${userFilter}
-     ) ids
-     JOIN users u ON u.id = ids.user_id
-     ${lastSeenJoin}
-     ORDER BY (ls.last_seen_at IS NULL) ASC, ls.last_seen_at DESC, u.id DESC
-     LIMIT ${PAGE_SIZE} OFFSET ${offset}`,
-    pageParams,
+     ${query.fromSql} ${query.orderSql} LIMIT ${PAGE_SIZE} OFFSET ${offset}`, query.params,
   );
 
   if (userPage.length === 0) {
@@ -420,6 +370,33 @@ export async function listExtensionUsersForAuthor(opts: {
   };
 }
 
+/** Export the entire filtered audience without loading per-device histories. */
+export async function exportExtensionUsersForAuthor(opts: {
+  authorId: number; q?: string; filters?: Partial<ExtensionUserFilters>;
+}) {
+  await ensurePackagesProjectsTable();
+  const client = getCepClientByAuthorId(opts.authorId)?.client ?? null;
+  const query = buildExtensionUsersQuery({ ...opts, client });
+  type ExportRow = RowDataPacket & {
+    user_id: number; email: string; name: string; created_at: string | Date | null;
+    mailing: number | null; email_verified_at: string | Date | null;
+    last_seen_at: string | Date | null; device_count: number; subscription_source: string | null;
+  };
+  const [rows] = await getPool().execute<ExportRow[]>(
+    `SELECT u.id AS user_id, u.email, u.name, u.created_at, u.mailing, u.email_verified_at,
+            ls.last_seen_at, COALESCE(ls.device_count, 0) AS device_count,
+            ${query.sourceSql} AS subscription_source
+     ${query.fromSql} ${query.orderSql}`, query.params,
+  );
+  return rows.map(row => ({
+    user_id: Number(row.user_id), email: String(row.email ?? ""), name: String(row.name ?? ""),
+    registered_at: toIso(row.created_at), last_seen_at: toIso(row.last_seen_at),
+    device_count: Number(row.device_count), subscription_source: row.subscription_source ?? "none",
+    mailing_opt_in: row.mailing != null && Number(row.mailing) === 0,
+    email_verified: row.email_verified_at != null,
+  }));
+}
+
 async function loadSubscriptionBadges(
   userIds: number[],
   authorId: number,
@@ -460,7 +437,7 @@ async function loadSubscriptionBadges(
             paddle_product_name, paddle_price_id, \`system\`
      FROM \`${SUB_TABLE}\`
      WHERE author_id = ? AND buyer_id IN (${placeholders})
-     ORDER BY id DESC`,
+     ORDER BY ${activeAuthorSubscriptionSql("subscription_systems")} DESC, id DESC`,
     [authorId, ...userIds],
   );
 
@@ -470,7 +447,9 @@ async function loadSubscriptionBadges(
     if (seen.has(buyerId)) continue;
     seen.add(buyerId);
 
-    const endsAt = r.ends_at ?? r.paddle_billing_period_ends_at;
+    const a = toIso(r.ends_at);
+    const b = toIso(r.paddle_billing_period_ends_at);
+    const endsAt = !a ? b : !b ? a : new Date(a) >= new Date(b) ? a : b;
     const endsOk =
       endsAt == null ||
       (Number.isFinite(Date.parse(String(endsAt))) &&

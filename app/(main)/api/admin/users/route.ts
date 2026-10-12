@@ -1,8 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { isAffiliateAdmin } from "@/lib/affiliate/admin";
-import { searchAdminUsers } from "@/lib/admin-users";
+import { exportAdminUsers, searchAdminUsers } from "@/lib/admin-users";
+import { parseMailingFilter, validateUserDateRanges } from "@/lib/user-list-filters";
+import { makeCsv, makeMailgunCsv, userCsvResponse } from "@/lib/user-csv";
 import {
+  accessRoleLabel,
   parseAdminUserDateParam,
   parseAdminUserGoogleFilter,
   parseAdminUserRoleFilter,
@@ -35,9 +38,12 @@ export async function GET(req: NextRequest) {
   const registeredTo = parseAdminUserDateParam(url.searchParams.get("registeredTo"));
   const sort = parseAdminUserSortField(url.searchParams.get("sort"));
   const dir = parseAdminUserSortDir(url.searchParams.get("dir"));
+  const mailing = parseMailingFilter(url.searchParams.get("mailing"));
+  const dateError = validateUserDateRanges(url.searchParams);
+  if (dateError) return NextResponse.json({ error: dateError }, { status: 400 });
 
   try {
-    const result = await searchAdminUsers({
+    const options = {
       q,
       page,
       role,
@@ -49,7 +55,18 @@ export async function GET(req: NextRequest) {
       registeredTo,
       sort,
       dir,
-    });
+      mailing,
+    };
+    const format = url.searchParams.get("export");
+    if (format === "csv" || format === "mailgun") {
+      const users = await exportAdminUsers(options);
+      const csv = format === "mailgun" ? makeMailgunCsv(users) : makeCsv(
+        ["id", "email", "name", "role", "registered_at", "mailing_opt_in", "email_verified"],
+        users.map(u => [u.id, u.email, u.name, accessRoleLabel(u.access), u.createdAt, u.mailingOptIn, u.emailVerified]),
+      );
+      return userCsvResponse(csv, `users-${format}-${new Date().toISOString().slice(0, 10)}.csv`);
+    }
+    const result = await searchAdminUsers(options);
     return NextResponse.json(result);
   } catch (err) {
     console.error("[admin/users GET]", err);
