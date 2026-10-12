@@ -250,7 +250,7 @@ function sidebar(pathname, props = {}) {
 test("admin menu opens the active group and keeps Dashboard as the last external link", () => {
   const html = sidebar("/profile/users");
   const buttons = [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].map(match => match[0]);
-  const groupButton = label => buttons.find(button => button.replace(/<[^>]*>/g, "") === label);
+  const groupButton = label => buttons.find(button => new RegExp(`aria-label="(?:Collapse|Expand) ${label}"`).test(button));
   assert.match(groupButton("Account"), /aria-expanded="false"/);
   assert.match(groupButton("Management"), /aria-expanded="true"/);
   assert.match(groupButton("Tools"), /aria-expanded="false"/);
@@ -265,7 +265,7 @@ test("admin menu opens the active group and keeps Dashboard as the last external
 
 test("Add Author follows existing authors and the creation route is highlighted", () => {
   const html = sidebar("/profile/packages/authors/new");
-  const authorList = html.match(/<ul id="account-sidebar-authors".*?<\/ul>/s)?.[0];
+  const authorList = html.match(/<ul aria-label="Authors menu".*?<\/ul>/s)?.[0];
   assert.ok(authorList);
   const links = [...authorList.matchAll(/href="([^"]+)"/g)].map(match => match[1]);
   assert.equal(links.at(-1), "/profile/packages/authors/new");
@@ -281,11 +281,19 @@ test("ordinary account navigation stays visible without admin sections", () => {
 test("PDF Links opens in the profile content with Tools expanded and current link highlighted", async () => {
   const html = sidebar("/profile/pdf-link");
   assert.match(html, /<a\b(?=[^>]*href="\/profile\/pdf-link")(?=[^>]*aria-current="page")[^>]*>/);
-  const tools = [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].find(match => match[0].replace(/<[^>]*>/g, "") === "Tools");
+  const tools = [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].find(match => match[0].includes('aria-label="Collapse Tools"'));
   assert.match(tools[0], /aria-expanded="true"/);
   const config = (await import("../next.config.mjs")).default;
   const legacy = (await config.redirects()).find(rule => rule.source.includes(":slug"));
   assert.equal(new RegExp(`^${legacy.source.replace(":slug", "")}$`).test("/profile/pdf-link"), false);
+});
+
+test("every group has its own overview link and collapse control including Authors", () => {
+  for (const [group, route] of [["Account", "/profile/account"], ["Authors", "/profile/packages"], ["Management", "/profile/management"], ["Tools", "/profile/tools"]]) {
+    const html = sidebar(route);
+    assert.match(html, new RegExp(`aria-label="Collapse ${group}"[^>]*aria-expanded="true"`));
+    assert.match(html, new RegExp(`<a\\b(?=[^>]*href="${route}")(?=[^>]*aria-current="page")[^>]*>`));
+  }
 });
 
 test("PDF admin page checks authorization and the legacy URL redirects into the profile", async () => {
