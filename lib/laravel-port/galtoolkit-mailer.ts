@@ -65,6 +65,7 @@ export interface ContactFormPayload {
   name: string;
   email: string;
   contactMessage: string;
+  attachment?: File | null;
 }
 
 export async function sendGaltoolkitContactForm(
@@ -82,5 +83,10 @@ export async function sendGaltoolkitContactForm(
     logPrefix: "[galtoolkit-mail]",
     text: renderText(payload),
     html: renderHtml(payload),
+    attachments: payload.attachment ? [{
+      filename: payload.attachment.name,
+      content: Buffer.from(await payload.attachment.arrayBuffer()),
+      contentType: payload.attachment.type || undefined,
+    }] : undefined,
   });
 }

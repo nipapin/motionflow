@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { sendGaltoolkitContactForm } from "@/lib/laravel-port/galtoolkit-mailer";
+import { validateGalContactAttachment } from "@/lib/gal-contact-attachment";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,8 +11,8 @@ export const dynamic = "force-dynamic";
  * payload with the same field limits and sends via Resend to `CONTACT_FORM_EMAIL`.
  *
  * Distinct from `/api/contact` (the newer R2 + Telegram pipeline). This one is
- * the simple `name/email/message` mailer used by the PremiereGal Galtoolkit
- * page.
+ * the `name/email/message` mailer with an optional attachment used by the
+ * PremiereGal Galtoolkit page. Legacy JSON submissions remain supported.
  */
 
 const schema = z.object({
@@ -68,11 +69,27 @@ export async function POST(req: NextRequest) {
         );
     }
 
+    const rawAttachment = (raw as Record<string, unknown>).attachFile;
+    let attachment: File | null = null;
+    if (rawAttachment != null) {
+        const error = rawAttachment instanceof File
+            ? validateGalContactAttachment(rawAttachment)
+            : "Attachment must be a file.";
+        if (error) {
+            return NextResponse.json(
+                { message: "The given data was invalid.", errors: { attachFile: [error] } },
+                { status: 422 },
+            );
+        }
+        attachment = rawAttachment as File;
+    }
+
     try {
         await sendGaltoolkitContactForm({
             name: parsed.data.name,
             email: parsed.data.email,
             contactMessage: parsed.data.message,
+            attachment,
         });
     } catch (err) {
         console.error("[send-galtoolkit-contact-form] SMTP send failed:", err);
