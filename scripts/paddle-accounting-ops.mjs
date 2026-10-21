@@ -75,7 +75,8 @@ async function health() {
   for(const [url,release,host] of [['http://127.0.0.1:3000/api/deploy-health',releases.next.releaseId],
     ['http://127.0.0.1:81/deploy-health.php',releases.laravel.releaseId,'motionflow.pro']]) {
     const response=await fetch(url,{headers:host?{Host:host}:{},signal:AbortSignal.timeout(15000)});
-    assert(response.ok); const body=await response.json(); assert.equal(body.status,'ok'); assert.equal(body.release,release);assert.equal(body.database,true);
+    assert(response.ok); const body=await response.json(); if(host) assert.equal(body.booted,true); else assert.equal(body.status,'ok');
+    assert.equal(body.release,release);assert.equal(body.database,true);assert.equal(body.redis,true);
   }
   console.log('Both release health checks passed.');
 }
@@ -100,6 +101,12 @@ try {
     console.log(JSON.stringify({engines,migrations,pm,configured},null,2));
     console.log(run('php',['artisan','migrate:status','--no-ansi'],{cwd:laravel}));
     console.log('dump utility:',run('sh',['-c','command -v mysqldump || command -v mariadb-dump']).trim());
+    try {console.log('Local administrative MySQL access:',run('mysql',['--user=root','--protocol=socket','--batch','--skip-column-names','-e','SELECT 1']).trim()==='1');}catch {console.log('Local administrative MySQL access: unavailable');}
+    for(const entry of await fs.readdir(backups).catch(()=>[])) {
+      if(entry==='latest')continue;
+      const error=await fs.readFile(path.join(backups,entry,'dump-errors.txt'),'utf8').catch(()=>'');
+      if(error)console.log('Prior backup diagnostic:',entry,error.replaceAll(process.env.DB_PASSWORD??'never-match-empty','[redacted]'));
+    }
   } else if(operation==='backup') {
     assert.equal(await settings(),null,'Existing accounting activation requires a fresh reviewed backup procedure');
     await fs.mkdir(backups,{recursive:true,mode:0o700});
@@ -111,8 +118,11 @@ try {
     console.log('Saving code archives and consistent database snapshot to',root);
     run('tar',['-czf',path.join(root,'next.tgz'),'-C',next,'.'],{timeout:15*60*1000});
     run('tar',['-czf',path.join(root,'laravel.tgz'),'-C',laravel,'.'],{timeout:15*60*1000});
+    let access;
+    try {run('mysql',['--user=root','--protocol=socket','--batch','--skip-column-names','-e','SELECT 1'],{stdio:['ignore','pipe','pipe']});access=['--user=root','--protocol=socket'];}
+    catch {access=['-h',process.env.DB_HOST,'-P',process.env.DB_PORT??'3306','-u',process.env.DB_USERNAME];}
     const sql=spawn('mysqldump',['--single-transaction','--quick','--no-tablespaces','--hex-blob','--routines','--triggers','--events',
-      '-h',process.env.DB_HOST,'-P',process.env.DB_PORT??'3306','-u',process.env.DB_USERNAME,process.env.DB_DATABASE],
+      ...access,process.env.DB_DATABASE],
       {env:{...process.env,MYSQL_PWD:process.env.DB_PASSWORD},stdio:['ignore','pipe','pipe']});
     let errors=''; sql.stderr.on('data',chunk=>errors+=chunk);
     const gzip=spawn('gzip',['-c'],{stdio:['pipe','pipe','inherit']});
