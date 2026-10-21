@@ -123,7 +123,7 @@ try {
     catch {access=['-h',process.env.DB_HOST,'-P',process.env.DB_PORT??'3306','-u',process.env.DB_USERNAME];}
     const sql=spawn('mysqldump',['--single-transaction','--quick','--no-tablespaces','--hex-blob','--routines','--triggers','--events',
       ...access,process.env.DB_DATABASE],
-      {env:{...process.env,MYSQL_PWD:process.env.DB_PASSWORD},stdio:['ignore','pipe','pipe']});
+      {env:{...process.env,...(access[0]==='--user=root'?{MYSQL_PWD:''}:{MYSQL_PWD:process.env.DB_PASSWORD})},stdio:['ignore','pipe','pipe']});
     let errors=''; sql.stderr.on('data',chunk=>errors+=chunk);
     const gzip=spawn('gzip',['-c'],{stdio:['pipe','pipe','inherit']});
     const exit = child=>new Promise((resolve,reject)=>{child.once('error',reject);child.once('exit',code=>code===0?resolve():reject(new Error('Snapshot command failed; inspect private server log')));});
