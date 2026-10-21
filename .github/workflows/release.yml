@@ -10,6 +10,17 @@ on:
         description: Deploy the main build to motionflow
         type: boolean
         default: true
+      accounting_operation:
+        description: Fixed Paddle accounting maintenance operation (skips build/deploy)
+        type: choice
+        options: [none, inspect, backup, prepare, verify, enable, status, disable]
+        default: none
+      accounting_next_commit:
+        description: Expected deployed Next commit for prepare/verify/enable
+        type: string
+      accounting_laravel_commit:
+        description: Expected deployed Laravel commit for prepare/verify/enable
+        type: string
 permissions:
   contents: read
 concurrency:
@@ -17,6 +28,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
+    if: github.event_name != 'workflow_dispatch' || inputs.accounting_operation == 'none'
     runs-on: ubuntu-22.04
     timeout-minutes: 35
     outputs:
@@ -114,3 +126,24 @@ jobs:
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           RELEASE_ID: ${{ needs.build.outputs.release_id }}
         run: bash deploy/ci-ssh.sh deploy
+  accounting:
+    if: github.event_name == 'workflow_dispatch' && inputs.accounting_operation != 'none'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '20.20.2'
+      - name: Run fixed server operation using deployment credentials
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          ACCOUNTING_OPERATION: ${{ inputs.accounting_operation }}
+          ACCOUNTING_NEXT_COMMIT: ${{ inputs.accounting_next_commit }}
+          ACCOUNTING_LARAVEL_COMMIT: ${{ inputs.accounting_laravel_commit }}
+        run: bash deploy/paddle-accounting-ops-ssh.sh
