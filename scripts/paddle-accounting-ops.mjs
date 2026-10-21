@@ -144,7 +144,14 @@ try {
     await checkExpected();
     const s=await settings(); assert(s && !s.accept_new && !s.enabled_from,'Accounting must remain disabled during preparation');
     const [[{count}]]=await db.query('SELECT COUNT(*) AS count FROM paddle_accounting_transactions'); assert.equal(Number(count),0);
-    const laravelSecrets={};
+    const laravelSecrets={},nextValues={};
+    const bootstrap=JSON.parse(await fs.readFile(path.join(opsRoot,'bootstrap.json'),'utf8').catch(()=>'{}'));
+    if(!process.env.SPUNKRAM_PADDLE_API_KEY && bootstrap.spunkramKey) {
+      process.env.SPUNKRAM_PADDLE_API_KEY=bootstrap.spunkramKey;
+      process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_ENVIRONMENT='sandbox';
+      nextValues.SPUNKRAM_PADDLE_API_KEY=bootstrap.spunkramKey;
+      nextValues.NEXT_PUBLIC_SPUNKRAM_PADDLE_ENVIRONMENT='sandbox';
+    }
     for(const account of ['default','spunkram']) {
       const prefix=account==='default'?'':'SPUNKRAM_';
       const key=process.env[prefix+'PADDLE_API_KEY']; if(!key) continue;
@@ -165,7 +172,7 @@ try {
     for(const type of ['CREATOR_MONTHLY','CREATOR_YEARLY','CREATOR_AI_MONTHLY','CREATOR_AI_YEARLY']) {
       const key='NEXT_PUBLIC_PADDLE_PRICE_'+type;assert(process.env[key]);laravelSecrets[key]=process.env[key];
     }
-    await writeEnv(path.join(next,'.env'),values);
+    await writeEnv(path.join(next,'.env'),{...values,...nextValues});
     await writeEnv(path.join(laravel,'.env'),{...values,...laravelSecrets,PADDLE_ACCOUNTING_BRIDGE_URL:'http://127.0.0.1:3000/api/internal/paddle-accounting'});
     run('runuser',['-u','motionflow_p_usr','--','php',path.join(laravel,'artisan'),'config:cache'],{cwd:laravel});
     run('pm2',['restart','motionflow']);
@@ -220,4 +227,4 @@ try {
     await fs.writeFile(path.join(root,'activation.json'),JSON.stringify({activatedAt:new Date().toISOString(),releases,settings:await settings()},null,2),{mode:0o600});
     await health();console.log('ACTIVATED. Original site subscriptions and historical charges retain their existing calculation.');
   }
-} finally {await db.end();}
+} finally {await db.end();if(operation==='prepare')await fs.rm(path.join(opsRoot,'bootstrap.json'),{force:true});}

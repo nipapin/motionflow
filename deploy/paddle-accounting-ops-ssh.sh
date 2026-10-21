@@ -17,6 +17,12 @@ opts=(-i "$key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=
 remote="/root/motionflow-accounting-ops/$GITHUB_SHA"
 ssh "${opts[@]}" "root@$DEPLOY_HOST" "install -d -m 700 '$remote'"
 scp "${opts[@]}" scripts/paddle-accounting-ops.mjs "root@$DEPLOY_HOST:$remote/"
+if [[ "$ACCOUNTING_OPERATION" == prepare && -n "${ACCOUNTING_SPUNKRAM_BOOTSTRAP_KEY:-}" ]]; then
+  bootstrap="$RUNNER_TEMP/accounting-bootstrap.json"
+  node --input-type=module -e 'import fs from "node:fs";fs.writeFileSync(process.argv[1],JSON.stringify({spunkramKey:process.env.ACCOUNTING_SPUNKRAM_BOOTSTRAP_KEY}),{mode:0o600})' "$bootstrap"
+  scp "${opts[@]}" "$bootstrap" "root@$DEPLOY_HOST:$remote/bootstrap.json"
+  rm -f "$bootstrap"
+fi
 if [[ "$ACCOUNTING_OPERATION" == verify ]]; then
   npm install --prefix "$RUNNER_TEMP/accounting-typescript" --ignore-scripts --no-audit --no-fund "typescript@$ACCOUNTING_TYPESCRIPT_VERSION"
   tar -czf "$RUNNER_TEMP/typescript.tgz" -C "$RUNNER_TEMP/accounting-typescript" node_modules/typescript

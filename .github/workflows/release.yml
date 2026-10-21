@@ -147,4 +147,5 @@ jobs:
           ACCOUNTING_NEXT_COMMIT: ${{ inputs.accounting_next_commit }}
           ACCOUNTING_LARAVEL_COMMIT: ${{ inputs.accounting_laravel_commit }}
           ACCOUNTING_TYPESCRIPT_VERSION: '5.9.3'
+          ACCOUNTING_SPUNKRAM_BOOTSTRAP_KEY: ${{ inputs.accounting_operation == 'prepare' && secrets.PADDLE_ACCOUNTING_SPUNKRAM_BOOTSTRAP_KEY || '' }}
         run: bash deploy/paddle-accounting-ops-ssh.sh
