@@ -191,11 +191,14 @@ try {
       env:{...process.env,NODE_PATH:path.join(opsRoot,'node_modules'),PADDLE_ACCOUNTING_TEST_MYSQL:'1',PADDLE_ACCOUNTING_LARAVEL_ROOT:laravel}}));
     const unauthorized=await fetch('http://127.0.0.1:3000/api/internal/paddle-accounting',{method:'POST',body:'{}'});assert.equal(unauthorized.status,401);
     const php=`<?php
+    try {
     require $argv[1].'/vendor/autoload.php';
     $app=require $argv[1].'/bootstrap/app.php';$app->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap();
     $db=Illuminate\\Support\\Facades\\DB::connection();
-    $db->statement('CREATE TEMPORARY TABLE paddle_accounting_settings LIKE paddle_accounting_settings');
-    $db->statement('CREATE TEMPORARY TABLE paddle_accounting_transactions LIKE paddle_accounting_transactions');
+    foreach(['paddle_accounting_settings','paddle_accounting_transactions'] as $table) {
+      $definition=(array)$db->selectOne('SHOW CREATE TABLE '.$table);
+      $db->unprepared(preg_replace('/^CREATE TABLE /','CREATE TEMPORARY TABLE ',$definition['Create Table'],1));
+    }
     $db->statement("INSERT INTO paddle_accounting_settings (id,accept_new,enabled_from) VALUES (1,1,'1969-01-01')");
     if(App\\Services\\PaddleActualAccounting::entriesForUser(0)!==[]) throw new RuntimeException('Cabinet leaked other users');
     foreach(config('paddle_accounting.sources') as $source) {
@@ -211,8 +214,12 @@ try {
     $html=view('market.contributor.inc.paddle-actual-earnings',['paddle_actual_entries'=>[(object)['id'=>'test','transaction_id'=>'txn_smoke','currency_code'=>'USD','amount_minor'=>123,'status'=>'posted','created_at'=>'2026-01-01 00:00:00','adjustment_id'=>null]]])->render();
     if(!str_contains($html,'1.23')) throw new RuntimeException('Blade earnings table did not render');
     echo "Native PHP bridge, original signatures, historical exclusion and cabinet passed.\\n";
+    } catch(Throwable $error) {fwrite(STDERR,'Native PHP smoke failed: '.$error->getMessage().PHP_EOL);exit(1);}
     `;
-    const smoke=path.join(opsRoot,'smoke.php');await fs.writeFile(smoke,php,{mode:0o600});console.log(run('php',[smoke,laravel],{cwd:laravel,timeout:90000}));
+    const smoke=path.join(opsRoot,'smoke.php');await fs.writeFile(smoke,php,{mode:0o600});
+    const nativeResult=run('php',[smoke,laravel],{cwd:laravel,timeout:90000});
+    assert(nativeResult.includes('Native PHP bridge, original signatures, historical exclusion and cabinet passed.'),'Native PHP smoke did not complete');
+    console.log(nativeResult);
     assert.deepEqual(await invariants(),before,'Historical rows changed during preactivation checks');
     const [[{count}]]=await db.query('SELECT COUNT(*) AS count FROM paddle_accounting_transactions');assert.equal(Number(count),0);
     await fs.writeFile(path.join(await backupPath(),'preflight.json'),JSON.stringify({passedAt:Date.now(),releases,historical:before},null,2),{mode:0o600});
