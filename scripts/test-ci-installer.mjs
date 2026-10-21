@@ -16,18 +16,22 @@ try {
   const state = join(temporary, "pm2.json"), log = join(temporary, "operations.log");
   write(join(legacy, ".env"), "AUTH_SECRET=fixture-only\n");
   write(join(legacy, "ecosystem.config.cjs"), "module.exports={apps:[]};");
-  write(state, JSON.stringify({ release: "legacy" }));
+  write(state, JSON.stringify({ release: "legacy", worker: null }));
   write(log, "");
   write(join(bin, "pm2"), `#!/usr/bin/env node
 const fs=require('fs'),path=require('path');
 const [action,config]=process.argv.slice(2);
 fs.appendFileSync(process.env.MOCK_LOG,action+':'+(config||'')+'\\n');
 let state=JSON.parse(fs.readFileSync(process.env.MOCK_STATE));
-if(action==='describe')process.exit(state.release==='stopped'?1:0);
-if(action==='delete')state={release:'stopped'};
+if(action==='describe')process.exit(config==='motionflow-accounting'?(state.worker?0:1):(state.release==='stopped'?1:0));
+if(action==='delete'){if(config==='motionflow-accounting')state.worker=null;else state.release='stopped';}
 if(action==='start'){
  if(!config.endsWith('.config.cjs'))process.exit(1);
- state={release:config.endsWith('ecosystem.release.config.cjs')?JSON.parse(fs.readFileSync(path.join(path.dirname(config),'release.json'))).releaseId:'legacy'};
+ if(config.endsWith('paddle-accounting-worker.config.cjs')){
+   const id=JSON.parse(fs.readFileSync(path.join(path.dirname(config),'..','release.json'))).releaseId;
+   if(process.env.MOCK_FAIL_WORKER===id)process.exit(1);
+   state.worker=id;
+ }else state.release=config.endsWith('ecosystem.release.config.cjs')?JSON.parse(fs.readFileSync(path.join(path.dirname(config),'release.json'))).releaseId:'legacy';
 }
 fs.writeFileSync(process.env.MOCK_STATE,JSON.stringify(state));
 `, 0o755);
@@ -44,7 +48,7 @@ process.stdout.write(JSON.stringify({status:'ok',release,database:true,redis:tru
   function archive(n) {
     const source = join(temporary, `source-${n}`), incoming = join(root, "incoming", id(n));
     mkdirSync(incoming, { recursive: true });
-    for (const file of [".next/BUILD_ID", "server.mjs", "server/cep-ws-hub.mjs", "server/deploy-health.mjs", "ecosystem.release.config.cjs", "public/asset.txt", "db/migrations/test.sql"]) write(join(source, file), "fixture");
+    for (const file of [".next/BUILD_ID", "server.mjs", "server/cep-ws-hub.mjs", "server/deploy-health.mjs", "ecosystem.release.config.cjs", "deploy/paddle-accounting-worker.config.cjs", "public/asset.txt", "db/migrations/test.sql"]) write(join(source, file), "fixture");
     for (const module of ["next", "mysql2/promise", "ioredis", "ws", "sharp"]) write(join(source, "node_modules", module, "index.js"), "module.exports={};");
     write(join(source, "release.json"), JSON.stringify({ releaseId: id(n), commit, platform: "linux", arch: "x64", nodeMajor: 20 }));
     for (const script of ["verify-ci-release.mjs", "check-ci-health.mjs", "prune-ci-releases.mjs"]) write(join(source, "scripts", script), readFileSync(join(repo, "scripts", script), "utf8"));
@@ -65,18 +69,28 @@ process.stdout.write(JSON.stringify({status:'ok',release,database:true,redis:tru
   const current = realpathSync(join(root, "current"));
   assert.equal(JSON.parse(readFileSync(state)).release, id(2));
   assert.equal(realpathSync(join(current, ".env")), realpathSync(join(legacy, ".env")));
+  write(state,JSON.stringify({release:id(2),worker:id(2)}));
   archive(3);
   result = install(3, { MOCK_FAIL_RELEASE: id(3) });
   assert.notEqual(result.status, 0);
   assert.equal(realpathSync(join(root, "current")), current);
   assert.equal(JSON.parse(readFileSync(state)).release, id(2));
+  assert.equal(JSON.parse(readFileSync(state)).worker, id(2));
   const corrupt = archive(4);
   writeFileSync(corrupt, "corrupt archive");
   const before = readFileSync(log, "utf8");
   assert.notEqual(install(4).status, 0);
   assert.equal(readFileSync(log, "utf8"), before);
   assert.equal(realpathSync(join(root, "current")), current);
-  console.log("Installer fixtures passed: legacy rollback, activation, release rollback, checksum, shared environment.");
+  archive(5);
+  result=install(5,{MOCK_FAIL_WORKER:id(5)});
+  assert.notEqual(result.status,0);
+  assert.equal(realpathSync(join(root,'current')),current);
+  assert.deepEqual(JSON.parse(readFileSync(state)),{release:id(2),worker:id(2)});
+  archive(6);
+  result=install(6);assert.equal(result.status,0,result.stdout+result.stderr);
+  assert.deepEqual(JSON.parse(readFileSync(state)),{release:id(6),worker:id(6)});
+  console.log("Installer fixtures passed: legacy rollback, activation, release rollback, checksum, shared environment, worker activation and worker rollback.");
 } finally {
   assert.equal(dirname(realpathSync(temporary)), realpathSync(tmpdir()));
   rmSync(temporary, { recursive: true, force: true });

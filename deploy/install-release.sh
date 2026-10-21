@@ -26,6 +26,11 @@ fi
 [[ ! -e "$release" ]] || { echo 'Release exists; rerun all jobs with a new attempt' >&2; exit 1; }
 stage=$(mktemp -d "$root/releases/.staging-$id-XXXXXX")
 switched=0
+worker_previous=""
+worker_switched=0
+if [[ -n "$previous" && -f "$previous/deploy/paddle-accounting-worker.config.cjs" ]] && pm2 describe motionflow-accounting >/dev/null 2>&1; then
+  worker_previous="$previous/deploy/paddle-accounting-worker.config.cjs"
+fi
 start_app() {
   if pm2 describe motionflow >/dev/null 2>&1; then pm2 delete motionflow; fi
   pm2 start "$1" --only motionflow
@@ -40,6 +45,10 @@ rollback() {
       rm -f "$root/current"
     fi
     start_app "$config" || true
+    if [[ "$worker_switched" == 1 ]]; then
+      pm2 delete motionflow-accounting || true
+      pm2 start "$worker_previous" || true
+    fi
     pm2 save || true
   fi
   echo 'Deployment failed; previous application restored if activation had started.' >&2
@@ -68,6 +77,12 @@ for attempt in $(seq 1 25); do
   sleep 2
 done
 [[ "$healthy" == 1 ]] || { echo 'Readiness failed' >&2; false; }
+if [[ -n "$worker_previous" ]]; then
+  [[ -f "$release/deploy/paddle-accounting-worker.config.cjs" ]]
+  worker_switched=1
+  pm2 delete motionflow-accounting
+  pm2 start "$release/deploy/paddle-accounting-worker.config.cjs"
+fi
 pm2 save
 if [[ -n "$previous" ]]; then
   ln -s "$previous" "$root/.previous-$id"
