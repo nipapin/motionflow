@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { accountingSource } from "@/lib/paddle-actual";
 import {
   handlePaddleEvent,
   verifyPaddleSignature,
@@ -10,11 +11,10 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   const secrets = [
-    process.env.PADDLE_WEBHOOK_SECRET,
-    process.env.SPUNKRAM_PADDLE_WEBHOOK_SECRET,
+    { value: process.env.PADDLE_WEBHOOK_SECRET, account: "default" as const },
+    { value: process.env.SPUNKRAM_PADDLE_WEBHOOK_SECRET, account: "spunkram" as const },
   ]
-    .map((s) => s?.trim())
-    .filter((s): s is string => Boolean(s));
+    .filter(s => Boolean(s.value?.trim()));
 
   if (secrets.length === 0) {
     console.error(
@@ -26,10 +26,10 @@ export async function POST(request: Request) {
   const rawBody = await request.text();
   const signature = request.headers.get("paddle-signature");
 
-  const signatureOk = secrets.some((secret) =>
-    verifyPaddleSignature(rawBody, signature, secret),
+  const verifiedSource = secrets.find((secret) =>
+    verifyPaddleSignature(rawBody, signature, secret.value!.trim()),
   );
-  if (!signatureOk) {
+  if (!verifiedSource) {
     console.warn("[paddle-webhook] Invalid signature");
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await handlePaddleEvent(event);
+    const result = await handlePaddleEvent(event, accountingSource(verifiedSource.account));
     if (!result.handled) {
       console.info(
         `[paddle-webhook] Skipped ${event.event_type} (${event.event_id}): ${result.reason ?? "unhandled"}`,

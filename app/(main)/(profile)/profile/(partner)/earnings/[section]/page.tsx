@@ -1,3 +1,4 @@
+import { ActualPaddleEarnings } from "@/components/paddle-actual-earnings";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { format } from "date-fns";
@@ -171,6 +172,7 @@ export default async function EarningsSectionPage({ params, searchParams }: Page
         </div>
 
         <SectionTabs section={section} isAdmin={isAdmin(user)} />
+      <ActualPaddleEarnings userId={user.id} />
 
         <div className="flex flex-wrap gap-2">
           {SALES_PERIODS.map((p) => (
@@ -323,6 +325,7 @@ export default async function EarningsSectionPage({ params, searchParams }: Page
         <p className="text-muted-foreground">Active subscription rows attributed to you as author.</p>
       </div>
       <SectionTabs section={section} isAdmin={isAdmin(user)} />
+      <ActualPaddleEarnings userId={user.id} />
       <div className="flex flex-wrap gap-2">
         {SUB_PERIODS.map((p) => (
           <Button key={p.key} size="sm" variant={p.key === dateKey ? "default" : "outline"} asChild>

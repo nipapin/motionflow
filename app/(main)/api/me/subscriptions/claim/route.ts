@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getTransaction, PaddleApiError, type PaddleApiAccount } from "@/lib/paddle-api";
 import { upsertFromTransaction } from "@/lib/paddle-server";
+import { accountingSource } from "@/lib/paddle-actual";
 import { isSpunkramSubscriptionPriceId } from "@/lib/spunkram-paddle-config";
 
 export const runtime = "nodejs";
@@ -95,6 +96,7 @@ export async function POST(request: Request) {
 
     const result = await upsertFromTransaction(
       txn as unknown as Parameters<typeof upsertFromTransaction>[0],
+      accountingSource(account),
     );
 
     return NextResponse.json({

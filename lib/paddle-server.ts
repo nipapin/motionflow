@@ -1,5 +1,6 @@
 import "server-only";
 import crypto from "node:crypto";
+import { actualAccounting, actualAdjustment, accountingSource, isActualSubscription, type AccountingSource } from "@/lib/paddle-actual";
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
 import {
@@ -74,6 +75,17 @@ async function forwardToGhl(
     amount,
     currency: "USD",
   });
+}
+
+export async function forwardActualAccountingPurchase(actual: { fresh?: boolean; first?: boolean; buyerId?: number | null;
+  notification?: { authorId: number; plan: string; amountSummary?: number } | null }) {
+  if (!actual.fresh || !actual.first || !actual.notification?.authorId || !actual.buyerId) return;
+  const [buyers] = await getPool().execute<RowDataPacket[]>("SELECT email,name FROM users WHERE id=?", [actual.buyerId]);
+  if (!buyers[0]) return;
+  const plan = actual.notification.plan === "annual" ? "yearly" : actual.notification.plan;
+  const event = plan === "lifetime" ? "lifetime_purchase" : plan === "yearly" ? "yearly_purchase" : "monthly_purchase";
+  await forwardToGhl(event, actual.notification.authorId, buyers[0].email, buyers[0].name, plan, actual.notification.amountSummary ?? null)
+    .catch(err => console.error("[paddle] actual accounting GHL forward failed", err));
 }
 
 /**
@@ -809,12 +821,22 @@ async function updatePaymentMethodOnly(
  *   `2026_04_22_subscription_systems_paddle_product_name.sql` for display name, and
  *   `2026_04_23_subscription_systems_paddle_billing_period.sql` for quota windows.
  */
-export async function upsertFromTransaction(txnInput: PaddleTransaction): Promise<{
+export async function upsertFromTransaction(txnInput: PaddleTransaction, source?: AccountingSource): Promise<{
   ok: boolean;
   reason?: string;
   buyerId?: number;
 }> {
   const txn = await resolveTransactionForUpsert(txnInput);
+
+  if (txn.origin !== PAYMENT_METHOD_CHANGE_ORIGIN) {
+    const actual = await actualAccounting.transaction(txn, source ?? accountingSource(paddleAccountForTransaction(txn)));
+    if (actual.handled && !actual.passthrough) {
+      // Financial errors remain durably pending; the legacy formula must never
+      // run for a transaction already owned by the new journal.
+      await forwardActualAccountingPurchase(actual);
+      return { ok: true, buyerId: actual.buyerId ?? undefined, reason: `actual_accounting_${actual.status}` };
+    }
+  }
 
   // Payment-method-only updates must be handled BEFORE the side-charge check
   // below (and before any date/plan logic): they carry a `billing_period`
@@ -1583,6 +1605,7 @@ const REFRESH_EVENTS = new Set([
 
 export async function handlePaddleEvent(
   event: PaddleWebhookEvent,
+  source?: AccountingSource,
 ): Promise<{ handled: boolean; reason?: string }> {
   // Skip `subscription.created` entirely — Paddle fires it the moment the
   // checkout is initialized, even before payment. We only want to record
@@ -1599,8 +1622,8 @@ export async function handlePaddleEvent(
     if (txn.status && txn.status !== "completed") {
       return { handled: false, reason: `transaction_status_${txn.status}` };
     }
-    const result = await upsertFromTransaction(txn);
-    if (result.ok && result.buyerId) {
+    const result = await upsertFromTransaction(txn, source);
+    if (result.ok && result.buyerId && !result.reason?.startsWith("actual_accounting_")) {
       // Enforce "one active subscription per buyer_id": after a brand-new
       // checkout completes, cancel any other active Motionflow rows the buyer
       // has. Best-effort — failures are logged and don't fail the webhook.
@@ -1658,7 +1681,7 @@ export async function handlePaddleEvent(
       });
 
       try {
-        await reverseAuthorBalanceForSubscriptionTermination(sub.id);
+        if (!await isActualSubscription(sub.id)) await reverseAuthorBalanceForSubscriptionTermination(sub.id);
       } catch (err) {
         console.error(
           `[paddle] reverseAuthorBalanceForSubscriptionTermination threw for ${sub.id}:`,
@@ -1698,7 +1721,11 @@ export async function handlePaddleEvent(
   // the author / co-author / external-referral balances, and stamp
   // `platform_earn = -system_tax`. Idempotent: rows already at status≠1 are
   // skipped.
-  if (event.event_type === "adjustment.updated") {
+  if (event.event_type === "adjustment.updated" || event.event_type === "adjustment.created") {
+    const actual = await actualAdjustment(event.data as Record<string, unknown>, source);
+    if (actual.handled) return { handled: true, reason: `actual_adjustment_${actual.status}` };
+    // Preserve the legacy subscription-site and historical-payment behavior.
+    if (event.event_type === "adjustment.created") return { handled: false, reason: "legacy_adjustment_created_ignored" };
     const data = (event.data ?? {}) as {
       transaction_id?: string;
       items?: Array<{ item_id?: string }>;

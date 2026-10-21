@@ -17,4 +17,10 @@ opts=(-i "$key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=
 remote="/root/motionflow-accounting-ops/$GITHUB_SHA"
 ssh "${opts[@]}" "root@$DEPLOY_HOST" "install -d -m 700 '$remote'"
 scp "${opts[@]}" scripts/paddle-accounting-ops.mjs "root@$DEPLOY_HOST:$remote/"
+if [[ "$ACCOUNTING_OPERATION" == verify ]]; then
+  npm install --prefix "$RUNNER_TEMP/accounting-typescript" --ignore-scripts --no-audit --no-fund "typescript@$ACCOUNTING_TYPESCRIPT_VERSION"
+  tar -czf "$RUNNER_TEMP/typescript.tgz" -C "$RUNNER_TEMP/accounting-typescript" node_modules/typescript
+  scp "${opts[@]}" "$RUNNER_TEMP/typescript.tgz" "root@$DEPLOY_HOST:$remote/"
+  ssh "${opts[@]}" "root@$DEPLOY_HOST" "tar -xzf '$remote/typescript.tgz' -C '$remote' --no-same-owner"
+fi
 ssh "${opts[@]}" "root@$DEPLOY_HOST" "node '$remote/paddle-accounting-ops.mjs' '$ACCOUNTING_OPERATION' '${ACCOUNTING_NEXT_COMMIT:-}' '${ACCOUNTING_LARAVEL_COMMIT:-}'"

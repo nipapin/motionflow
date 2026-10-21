@@ -146,4 +146,5 @@ jobs:
           ACCOUNTING_OPERATION: ${{ inputs.accounting_operation }}
           ACCOUNTING_NEXT_COMMIT: ${{ inputs.accounting_next_commit }}
           ACCOUNTING_LARAVEL_COMMIT: ${{ inputs.accounting_laravel_commit }}
+          ACCOUNTING_TYPESCRIPT_VERSION: '5.9.3'
         run: bash deploy/paddle-accounting-ops-ssh.sh

@@ -7,6 +7,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
 
 const [operation, expectedNext, expectedLaravel] = process.argv.slice(2);
 assert(['inspect','backup','prepare','verify','enable','status','disable'].includes(operation));
@@ -16,6 +17,7 @@ const laravel = await fs.realpath('/var/www/motionflow_p_usr/data/www/motionflow
 assert(next.startsWith('/root/motionflow-deploy/releases/'));
 assert(laravel.startsWith('/var/www/motionflow_p_usr/data/www/laravel-ci-deploy/releases/'));
 const backups = '/root/motionflow-accounting-backups';
+const opsRoot=path.dirname(fileURLToPath(import.meta.url));
 const metadata = async root => JSON.parse(await fs.readFile(path.join(root,'release.json'),'utf8'));
 const releases = { next: await metadata(next), laravel: await metadata(laravel) };
 process.loadEnvFile(path.join(next,'.env'));
@@ -44,9 +46,9 @@ async function settings() {
 async function invariants() {
   // Fingerprint historical financial rows, without updating or exporting PII.
   const result={};
-  for(const table of ['sold_items','subscription_payments']) {
+  for(const table of ['sold_items','subscription_payments','subscription_systems','users']) {
     const [[{maxId}]]=await db.query(`SELECT COALESCE(MAX(id),0) AS maxId FROM ${table}`);
-    const [rows]=await db.query(`SELECT * FROM ${table} WHERE id<=? ORDER BY id`,[maxId]);
+    const [rows]=await db.query(`SELECT ${table==='users'?'id,balance':'*'} FROM ${table} WHERE id<=? ORDER BY id`,[maxId]);
     result[table]={maxId,count:rows.length,hash:hash(JSON.stringify(rows))};
   }
   return result;
@@ -56,6 +58,32 @@ async function checkExpected() {
   assert.equal(releases.next.commit,expectedNext,'Unexpected deployed Next');
   assert.equal(releases.laravel.commit,expectedLaravel,'Unexpected deployed Laravel');
   await backupPath();
+}
+async function writeEnv(file,values) {
+  file=await fs.realpath(file); const stat=await fs.stat(file);
+  let text=await fs.readFile(file,'utf8');
+  for(const [key,value] of Object.entries(values)) {
+    assert.match(key,/^[A-Z0-9_]+$/); assert(!/[\r\n]/.test(value));
+    const line=key+'='+value,pattern=new RegExp('^'+key+'=.*$','m');
+    text=pattern.test(text)?text.replace(pattern,()=>line):text.trimEnd()+'\n'+line+'\n';
+  }
+  const temporary=file+'.accounting-new';
+  await fs.writeFile(temporary,text,{mode:stat.mode&0o777});
+  await fs.chown(temporary,stat.uid,stat.gid); await fs.rename(temporary,file);
+}
+async function health() {
+  for(const [url,release,host] of [['http://127.0.0.1:3000/api/deploy-health',releases.next.releaseId],
+    ['http://127.0.0.1:81/deploy-health.php',releases.laravel.releaseId,'motionflow.pro']]) {
+    const response=await fetch(url,{headers:host?{Host:host}:{},signal:AbortSignal.timeout(15000)});
+    assert(response.ok); const body=await response.json(); assert.equal(body.status,'ok'); assert.equal(body.release,release);assert.equal(body.database,true);
+  }
+  console.log('Both release health checks passed.');
+}
+async function worker() {
+  const p=JSON.parse(run('pm2',['jlist'])).find(p=>p.name==='motionflow-accounting');
+  assert.equal(p?.pm2_env.status,'online');assert.equal(p.pm2_env.pm_cwd,next);
+  const [[s]]=await db.query('SELECT TIMESTAMPDIFF(SECOND,worker_heartbeat_at,UTC_TIMESTAMP()) AS age FROM paddle_accounting_settings WHERE id=1');
+  assert(s.age!==null && Number(s.age)<=180,'Accounting worker heartbeat is stale');
 }
 try {
   console.log(JSON.stringify({operation,releases,node:process.version,php:run('php',['-r','echo PHP_VERSION;']),settings:await settings()},null,2));
@@ -102,8 +130,84 @@ try {
     console.log(JSON.stringify(JSON.parse(run('pm2',['jlist'])).map(p=>({name:p.name,status:p.pm2_env.status,cwd:p.pm2_env.pm_cwd})),null,2));
   } else if(operation==='disable') {
     console.log(run('node',['scripts/paddle-accounting.mjs','disable'],{cwd:next}));
-  } else {
+  } else if(operation==='prepare') {
     await checkExpected();
-    throw new Error('Preparation and activation require the verified deployment implementation');
+    const s=await settings(); assert(s && !s.accept_new && !s.enabled_from,'Accounting must remain disabled during preparation');
+    const [[{count}]]=await db.query('SELECT COUNT(*) AS count FROM paddle_accounting_transactions'); assert.equal(Number(count),0);
+    const laravelSecrets={};
+    for(const account of ['default','spunkram']) {
+      const prefix=account==='default'?'':'SPUNKRAM_';
+      const key=process.env[prefix+'PADDLE_API_KEY']; if(!key) continue;
+      const environment=process.env['NEXT_PUBLIC_'+prefix+'PADDLE_ENVIRONMENT']??'sandbox';
+      const response=await fetch((environment==='production'?'https://api.paddle.com':'https://sandbox-api.paddle.com')+'/notification-settings',
+        {headers:{Authorization:'Bearer '+key},signal:AbortSignal.timeout(15000)});
+      assert(response.ok,'Cannot read Paddle destination configuration'); const body=await response.json();
+      await fs.writeFile(path.join(await backupPath(),account+'-notification-settings.json'),JSON.stringify(body,null,2),{mode:0o600});
+      const candidates=body.data.filter(d=>{try {const u=new URL(d.destination);return u.hostname.endsWith('motionflow.pro')&&u.pathname==='/webhook/paddle';} catch{return false;}});
+      const dest=candidates.find(d=>d.active)||candidates[0];
+      assert(dest?.endpoint_secret_key,'Laravel Paddle destination secret unavailable');
+      laravelSecrets[account==='default'?'PADDLE_ACCOUNTING_DEFAULT_WEBHOOK_SECRET':'PADDLE_ACCOUNTING_SPUNKRAM_WEBHOOK_SECRET']=dest.endpoint_secret_key;
+      laravelSecrets['NEXT_PUBLIC_'+prefix+'PADDLE_ENVIRONMENT']=environment;
+      console.log('Laravel destination verified:',account,environment,dest.id,'active='+dest.active);
+    }
+    const secret=process.env.PADDLE_ACCOUNTING_BRIDGE_SECRET??crypto.randomBytes(48).toString('hex'); assert(secret.length>=32);
+    const values={PADDLE_ACCOUNTING_BRIDGE_SECRET:secret};
+    for(const type of ['CREATOR_MONTHLY','CREATOR_YEARLY','CREATOR_AI_MONTHLY','CREATOR_AI_YEARLY']) {
+      const key='NEXT_PUBLIC_PADDLE_PRICE_'+type;assert(process.env[key]);laravelSecrets[key]=process.env[key];
+    }
+    await writeEnv(path.join(next,'.env'),values);
+    await writeEnv(path.join(laravel,'.env'),{...values,...laravelSecrets,PADDLE_ACCOUNTING_BRIDGE_URL:'http://127.0.0.1:3000/api/internal/paddle-accounting'});
+    run('runuser',['-u','motionflow_p_usr','--','php',path.join(laravel,'artisan'),'config:cache'],{cwd:laravel});
+    run('pm2',['restart','motionflow']);
+    if(JSON.parse(run('pm2',['jlist'])).some(p=>p.name==='motionflow-accounting')) run('pm2',['delete','motionflow-accounting']);
+    console.log(run('pm2',['start',path.join(next,'deploy/paddle-accounting-worker.config.cjs')])); run('pm2',['save']);
+    console.log('Bridge configured; worker started; new accounting is still disabled.');
+  } else if(operation==='verify') {
+    await checkExpected(); await health(); await worker();
+    const s=await settings();assert(!s.accept_new && !s.enabled_from,'Run preactivation checks with accounting disabled');
+    for(const file of ['app/Services/PaddleActualAccounting.php','config/paddle_accounting.php',
+      'app/Http/Controllers/Checkout/PaymentServices/GatewayPaddle.php','app/Http/Controllers/Contributor/Earnings.php',
+      'database/migrations/2026_10_21_000000_create_paddle_actual_accounting.php']) console.log(run('php',['-l',path.join(laravel,file)]).trim());
+    console.log(run('runuser',['-u','motionflow_p_usr','--','php',path.join(laravel,'artisan'),'view:cache'],{cwd:laravel}));
+    const before=await invariants();
+    console.log(run('node',['--test','--test-reporter=spec','--test-concurrency=1','scripts/test-paddle-accounting.mjs'],{cwd:next,timeout:180000,
+      env:{...process.env,NODE_PATH:path.join(opsRoot,'node_modules'),PADDLE_ACCOUNTING_TEST_MYSQL:'1',PADDLE_ACCOUNTING_LARAVEL_ROOT:laravel}}));
+    const unauthorized=await fetch('http://127.0.0.1:3000/api/internal/paddle-accounting',{method:'POST',body:'{}'});assert.equal(unauthorized.status,401);
+    const php=`<?php
+    require $argv[1].'/vendor/autoload.php';
+    $app=require $argv[1].'/bootstrap/app.php';$app->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap();
+    $db=Illuminate\\Support\\Facades\\DB::connection();
+    $db->statement('CREATE TEMPORARY TABLE paddle_accounting_settings LIKE paddle_accounting_settings');
+    $db->statement('CREATE TEMPORARY TABLE paddle_accounting_transactions LIKE paddle_accounting_transactions');
+    $db->statement("INSERT INTO paddle_accounting_settings (id,accept_new,enabled_from) VALUES (1,1,'1969-01-01')");
+    if(App\\Services\\PaddleActualAccounting::entriesForUser(0)!==[]) throw new RuntimeException('Cabinet leaked other users');
+    foreach(config('paddle_accounting.sources') as $source) {
+      if(empty($source['secret'])) continue;
+      $event=['event_type'=>'transaction.completed','data'=>['id'=>'txn_accounting_smoke','created_at'=>'1970-01-01T00:00:00Z','items'=>[]]];
+      $raw=json_encode($event);$ts=(string)time();$sig=hash_hmac('sha256',$ts.':'.$raw,$source['secret']);
+      $request=Illuminate\\Http\\Request::create('/webhook/paddle','POST',[],[],[],['CONTENT_TYPE'=>'application/json','HTTP_PADDLE_SIGNATURE'=>'ts='.$ts.';h1='.$sig],$raw);
+      if(App\\Services\\PaddleActualAccounting::forwardIfApplicable($request,$event)!==false) throw new RuntimeException('Historical smoke event should be excluded');
+      $request->headers->set('Paddle-Signature','ts='.$ts.';h1='.str_repeat('0',64));
+      try {App\\Services\\PaddleActualAccounting::forwardIfApplicable($request,$event);throw new RuntimeException('Invalid signature accepted');}
+      catch(Symfony\\Component\\HttpKernel\\Exception\\HttpException $e) {if($e->getStatusCode()!==401)throw $e;}
+    }
+    $html=view('market.contributor.inc.paddle-actual-earnings',['paddle_actual_entries'=>[(object)['id'=>'test','transaction_id'=>'txn_smoke','currency_code'=>'USD','amount_minor'=>123,'status'=>'posted','created_at'=>'2026-01-01 00:00:00','adjustment_id'=>null]]])->render();
+    if(!str_contains($html,'1.23')) throw new RuntimeException('Blade earnings table did not render');
+    echo "Native PHP bridge, original signatures, historical exclusion and cabinet passed.\\n";
+    `;
+    const smoke=path.join(opsRoot,'smoke.php');await fs.writeFile(smoke,php,{mode:0o600});console.log(run('php',[smoke,laravel],{cwd:laravel,timeout:90000}));
+    assert.deepEqual(await invariants(),before,'Historical rows changed during preactivation checks');
+    const [[{count}]]=await db.query('SELECT COUNT(*) AS count FROM paddle_accounting_transactions');assert.equal(Number(count),0);
+    await fs.writeFile(path.join(await backupPath(),'preflight.json'),JSON.stringify({passedAt:Date.now(),releases,historical:before},null,2),{mode:0o600});
+    console.log('PREACTIVATION CHECKS PASSED. Historical financial rows and balances were not modified by tests.');
+  } else if(operation==='enable') {
+    await checkExpected(); await health(); await worker();
+    const root=await backupPath(),preflight=JSON.parse(await fs.readFile(path.join(root,'preflight.json'),'utf8'));
+    assert(Date.now()-preflight.passedAt<30*60*1000,'Repeat preactivation verification');assert.deepEqual(preflight.releases,releases);
+    const before=await invariants();
+    console.log(run('node',['scripts/paddle-accounting.mjs','enable'],{cwd:next}));
+    assert.deepEqual(await invariants(),before,'Activation changed historical financial rows');
+    await fs.writeFile(path.join(root,'activation.json'),JSON.stringify({activatedAt:new Date().toISOString(),releases,settings:await settings()},null,2),{mode:0o600});
+    await health();console.log('ACTIVATED. Original site subscriptions and historical charges retain their existing calculation.');
   }
 } finally {await db.end();}
