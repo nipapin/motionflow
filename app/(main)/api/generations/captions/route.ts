@@ -18,6 +18,7 @@ import {
 } from "@/lib/cep-generations";
 import { uploadBufferToR2 } from "@/lib/r2-storage";
 import { issueCaptionsChaptersReceipt } from "@/lib/captions-chapters-receipt";
+import { analyzeZoomPhrases, type ZoomPhrase, type ZoomFrequency } from "@/lib/jumpcut-analysis";
 import {
   durationGenerationsCost,
   durationFromTimestampChunks,
@@ -378,6 +379,10 @@ export async function POST(req: NextRequest) {
     }
 
     const languageRaw = form.get("language");
+    const zoomFrequency = form.get("jumpCutFrequency");
+    if (zoomFrequency != null && !["low", "medium", "high"].includes(String(zoomFrequency))) {
+      return NextResponse.json({ error: "Invalid jumpCutFrequency" }, { status: 400 });
+    }
     const translateRaw = form.get("translateTo");
     const language =
       typeof languageRaw === "string" &&
@@ -487,6 +492,21 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // The optional JumpCut analysis shares this request's transcription charge.
+    // Finish analysis before consuming quota so failed analysis cannot be billed.
+    let zoomPhrases: ZoomPhrase[] | undefined;
+    if (zoomFrequency) {
+      try {
+        zoomPhrases = await analyzeZoomPhrases(scribe.words || [], zoomFrequency as ZoomFrequency, async (system_prompt, prompt) => {
+          const output = await replicate.run(TRANSLATE_MODEL, { input: { system_prompt, prompt, max_tokens: 4096 } });
+          return typeof output === "string" ? output : Array.isArray(output) ? output.map(String).join("") : String(output ?? "");
+        });
+      } catch (error) {
+        console.error("[captions generation] JumpCut analysis failed:", error);
+        return NextResponse.json({ error: "Could not analyze key phrases for JumpCut. Try again or choose sentence zooms." }, { status: 502 });
+      }
+    }
+
     // Prefer max(client, ASR, word span) — never bill only on client claim.
     const wordSpan = durationFromTimestampChunks(spokenWordChunks(scribe));
     const asrDuration =
@@ -539,6 +559,7 @@ export async function POST(req: NextRequest) {
       cost: finalCost,
       durationSeconds: meterSeconds || undefined,
       chaptersReceipt,
+      ...(zoomPhrases ? { zoomPhrases } : {}),
       generations: consumed.status,
     });
   } catch (error) {
