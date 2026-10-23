@@ -1,4 +1,5 @@
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
+import { getWebSessionVersion } from "@/lib/auth/web-session-version";
 
 export const SESSION_COOKIE_NAME = "next_motionflow_session";
 
@@ -9,6 +10,7 @@ export type SessionPayload = JWTPayload & {
   sub: string;
   email: string;
   name: string;
+  sessionVersion: number;
 };
 
 function getSigningKey(): Uint8Array {
@@ -179,12 +181,14 @@ export async function signSessionToken(user: {
   id: number;
   email: string;
   name: string;
+  sessionVersion?: number;
 }): Promise<string> {
   const key = getSigningKey();
   const maxAge = sessionCookieMaxAgeSec();
   return new SignJWT({
     email: user.email,
     name: user.name,
+    sessionVersion: user.sessionVersion ?? await getWebSessionVersion(user.id),
   })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(String(user.id))
@@ -201,7 +205,12 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
     const email = typeof payload.email === "string" ? payload.email : "";
     const name = typeof payload.name === "string" ? payload.name : "";
     if (!sub || !email) return null;
-    return { ...payload, sub, email, name };
+    const id = Number(sub);
+    const sessionVersion = payload.sessionVersion ?? 0;
+    if (!Number.isSafeInteger(id) || id <= 0 ||
+        typeof sessionVersion !== "number" || !Number.isSafeInteger(sessionVersion) || sessionVersion < 0 ||
+        sessionVersion !== await getWebSessionVersion(id)) return null;
+    return { ...payload, sub, email, name, sessionVersion };
   } catch {
     return null;
   }

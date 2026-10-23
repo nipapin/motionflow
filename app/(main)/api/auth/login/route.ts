@@ -12,6 +12,7 @@ import {
 } from "@/lib/auth/session";
 import { authUserPayloadFromRow } from "@/lib/auth/user-payload";
 import { loginSchema } from "@/lib/validations/auth";
+import { ensureWebSessionSchema } from "@/lib/auth/web-session-version";
 import {
   createLaravelSession,
   encryptLaravelCookie,
@@ -28,6 +29,7 @@ type UserRow = RowDataPacket & {
   name: string;
   password: string;
   google_id?: string | null;
+  session_version: number;
 };
 
 function zodFieldErrors(err: import("zod").ZodError): Record<string, string[]> {
@@ -66,11 +68,14 @@ export async function POST(req: NextRequest) {
 
   try {
     const pool = getPool();
+    await ensureWebSessionSchema();
     const [rows] = await pool.execute<UserRow[]>(
-      "SELECT id, email, name, password, google_id FROM users WHERE email = ? LIMIT 1",
+      `SELECT u.id, u.email, u.name, u.password, u.google_id, COALESCE(v.version, 0) AS session_version
+       FROM users u LEFT JOIN user_web_session_versions v ON v.user_id = u.id WHERE u.email = ? LIMIT 1`,
       [email],
     );
     const user = rows[0];
+    const sessionVersion = Number(user?.session_version ?? 0);
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return NextResponse.json(
         {
@@ -112,6 +117,7 @@ export async function POST(req: NextRequest) {
       id: user.id,
       email: user.email,
       name: user.name,
+      sessionVersion,
     });
 
     const res = NextResponse.json({
@@ -122,7 +128,7 @@ export async function POST(req: NextRequest) {
     const cookieOpts = { ...baseCookieOptions(req), maxAge: sessionCookieMaxAgeSec() };
     res.cookies.set(SESSION_COOKIE_NAME, token, cookieOpts);
 
-    const laravelSessionId = await createLaravelSession(user.id);
+    const laravelSessionId = await createLaravelSession(user.id, sessionVersion);
     if (laravelSessionId) {
       res.cookies.set(LARAVEL_COOKIE_NAME, encryptLaravelCookie(laravelSessionId), cookieOpts);
     }

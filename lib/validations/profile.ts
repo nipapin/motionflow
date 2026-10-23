@@ -19,12 +19,17 @@ export const profilePatchSchema = z
     currentPassword: z.string().optional(),
     newPassword: z.string().min(8, "Password must be at least 8 characters").optional(),
     newPassword_confirmation: z.string().optional(),
+    logoutOtherSessions: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
     const wantsPassword =
       (data.newPassword !== undefined && data.newPassword.length > 0) ||
       (data.newPassword_confirmation !== undefined &&
         (data.newPassword_confirmation?.length ?? 0) > 0);
+
+    if (data.logoutOtherSessions && !wantsPassword) {
+      ctx.addIssue({ code: "custom", message: "Change your password to sign out other sessions", path: ["logoutOtherSessions"] });
+    }
 
     if (wantsPassword) {
       if (!data.currentPassword?.length) {

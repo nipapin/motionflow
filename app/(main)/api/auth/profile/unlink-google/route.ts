@@ -6,16 +6,11 @@ import { resolveAuthUserFlags } from "@/lib/auth/google-account";
 import { oauthPasswordOnlyFromGoogleId } from "@/lib/auth/users-table";
 import {
   SESSION_COOKIE_NAME,
-  LARAVEL_COOKIE_NAME,
   baseCookieOptions,
   sessionCookieMaxAgeSec,
   signSessionToken,
-  verifySessionToken,
 } from "@/lib/auth/session";
-import {
-  decryptLaravelCookie,
-  readLaravelSessionUserId,
-} from "@/lib/auth/laravel-session";
+import { resolveRequestWebSession } from "@/lib/auth/request-web-session";
 
 type UserRow = RowDataPacket & {
   id: number;
@@ -25,31 +20,15 @@ type UserRow = RowDataPacket & {
   google_id?: string | null;
 };
 
-async function resolveUserId(req: NextRequest): Promise<number | null> {
-  const jwtToken = req.cookies.get(SESSION_COOKIE_NAME)?.value;
-  if (jwtToken) {
-    const session = await verifySessionToken(jwtToken);
-    if (session) {
-      const id = Number(session.sub);
-      if (Number.isFinite(id) && id > 0) return id;
-    }
-  }
-  const laravelCookie = req.cookies.get(LARAVEL_COOKIE_NAME)?.value;
-  if (laravelCookie) {
-    const sessionId = decryptLaravelCookie(laravelCookie);
-    if (sessionId) return readLaravelSessionUserId(sessionId);
-  }
-  return null;
-}
-
 export async function POST(req: NextRequest) {
-  const userId = await resolveUserId(req);
-  if (!userId) {
+  const session = await resolveRequestWebSession(req.cookies);
+  if (!session) {
     return NextResponse.json(
       { success: false as const, message: "Unauthorized." },
       { status: 401 },
     );
   }
+  const { userId, sessionVersion } = session;
 
   try {
     const pool = getPool();
@@ -88,6 +67,7 @@ export async function POST(req: NextRequest) {
       id: userId,
       email: row.email,
       name: row.name,
+      sessionVersion,
     });
 
     const res = NextResponse.json({

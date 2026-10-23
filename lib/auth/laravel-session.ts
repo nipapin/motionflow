@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { serialize, unserialize } from "php-serialize";
 import { getRedis } from "@/lib/redis";
 import { LARAVEL_COOKIE_NAME } from "./session";
+import { getWebSessionVersion } from "@/lib/auth/web-session-version";
 
 const CIPHER = "aes-256-cbc";
 const IV_LENGTH = 16;
@@ -94,8 +95,8 @@ export function encryptLaravelCookie(sessionId: string): string {
   return laravelEncrypt(prefixed, key);
 }
 
-/** Read user ID from a Laravel Redis session. */
-export async function readLaravelSessionUserId(sessionId: string): Promise<number | null> {
+/** Read and validate the same website session version as Laravel's middleware. */
+export async function readLaravelSession(sessionId: string): Promise<{ userId: number; sessionVersion: number } | null> {
   try {
     const redis = getRedis();
     await redis.connect().catch(() => {});
@@ -106,20 +107,24 @@ export async function readLaravelSessionUserId(sessionId: string): Promise<numbe
     if (typeof outer !== "string") return null;
     const session = unserialize(outer) as Record<string, unknown>;
     const uid = session[LOGIN_SESSION_KEY];
-    if (typeof uid === "number") return uid;
-    if (typeof uid === "string") {
-      const n = Number(uid);
-      return Number.isFinite(n) && n > 0 ? n : null;
-    }
-    return null;
+    const userId = Number(uid);
+    const sessionVersion = session.motionflow_web_session_version ?? 0;
+    if (!Number.isSafeInteger(userId) || userId <= 0 ||
+        typeof sessionVersion !== "number" || !Number.isSafeInteger(sessionVersion) || sessionVersion < 0 ||
+        sessionVersion !== await getWebSessionVersion(userId)) return null;
+    return { userId, sessionVersion };
   } catch (e) {
     console.error("[laravel-session:read]", e);
     return null;
   }
 }
 
+export async function readLaravelSessionUserId(sessionId: string): Promise<number | null> {
+  return (await readLaravelSession(sessionId))?.userId ?? null;
+}
+
 /** Create a Laravel-compatible session in Redis and return the session ID. */
-export async function createLaravelSession(userId: number): Promise<string | null> {
+export async function createLaravelSession(userId: number, sessionVersion?: number): Promise<string | null> {
   try {
     const sessionId = crypto.randomBytes(20).toString("hex");
     const csrfToken = crypto.randomBytes(20).toString("hex");
@@ -127,6 +132,7 @@ export async function createLaravelSession(userId: number): Promise<string | nul
     const attributes: Record<string, unknown> = {
       _token: csrfToken,
       [LOGIN_SESSION_KEY]: userId,
+      motionflow_web_session_version: sessionVersion ?? await getWebSessionVersion(userId),
       _previous: { url: "" },
       _flash: { old: [], new: [] },
     };

@@ -75,6 +75,7 @@ jobs:
           for script in deploy/install-release.sh deploy/ci-ssh.sh; do bash -n "$script"; done
           node scripts/test-ci-notifications.mjs
           node scripts/test-ci-installer.mjs
+          node --test scripts/test-web-sessions.mjs
           npm exec --yes --package=pm2@7.0.1 -- node scripts/test-ci-pm2.mjs
           npm run build
       - name: Package Linux runtime and verify WebSocket server

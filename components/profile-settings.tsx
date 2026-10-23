@@ -5,6 +5,7 @@ import { useAuth } from "@/components/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -66,6 +67,7 @@ export function ProfileSettings() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [logoutOtherSessions, setLogoutOtherSessions] = useState(false);
   const [savingName, setSavingName] = useState(false);
   const [savingEmail, setSavingEmail] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
@@ -174,11 +176,13 @@ export function ProfileSettings() {
           currentPassword,
           newPassword,
           newPassword_confirmation: confirmPassword,
+          logoutOtherSessions,
         },
         () => {
           setCurrentPassword("");
           setNewPassword("");
           setConfirmPassword("");
+          setLogoutOtherSessions(false);
         },
       );
       if (ok) {
@@ -366,6 +370,22 @@ export function ProfileSettings() {
                 autoComplete="new-password"
                 className={profileInputClass}
               />
+            </div>
+            <div className="flex items-start gap-3">
+              <Checkbox
+                id="profile-logout-others"
+                checked={logoutOtherSessions}
+                onCheckedChange={(checked) => setLogoutOtherSessions(checked === true)}
+                disabled={savingPassword}
+                aria-describedby="profile-logout-others-description"
+                className="mt-0.5 border-blue-500/40"
+              />
+              <div className="space-y-1">
+                <Label htmlFor="profile-logout-others">Sign out of other sessions</Label>
+                <p id="profile-logout-others-description" className="text-sm text-muted-foreground">
+                  Sign out of the website in other browsers. You’ll stay signed in here.
+                </p>
+              </div>
             </div>
             <Button
               type="button"

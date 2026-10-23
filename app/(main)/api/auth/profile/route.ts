@@ -9,12 +9,14 @@ import {
   baseCookieOptions,
   sessionCookieMaxAgeSec,
   signSessionToken,
-  verifySessionToken,
+  appendHostOnlySessionCookieClears,
 } from "@/lib/auth/session";
 import {
-  decryptLaravelCookie,
-  readLaravelSessionUserId,
+  createLaravelSession,
+  encryptLaravelCookie,
 } from "@/lib/auth/laravel-session";
+import { resolveRequestWebSession } from "@/lib/auth/request-web-session";
+import { advanceWebSessionVersion, getWebSessionVersion } from "@/lib/auth/web-session-version";
 import { resolveAuthUserFlags } from "@/lib/auth/google-account";
 import { profilePatchSchema } from "@/lib/validations/profile";
 
@@ -35,31 +37,16 @@ function zodFieldErrors(err: import("zod").ZodError): Record<string, string[]> {
   return out;
 }
 
-async function resolveUserId(req: NextRequest): Promise<number | null> {
-  const jwtToken = req.cookies.get(SESSION_COOKIE_NAME)?.value;
-  if (jwtToken) {
-    const session = await verifySessionToken(jwtToken);
-    if (session) {
-      const id = Number(session.sub);
-      if (Number.isFinite(id) && id > 0) return id;
-    }
-  }
-  const laravelCookie = req.cookies.get(LARAVEL_COOKIE_NAME)?.value;
-  if (laravelCookie) {
-    const sessionId = decryptLaravelCookie(laravelCookie);
-    if (sessionId) return readLaravelSessionUserId(sessionId);
-  }
-  return null;
-}
-
 export async function PATCH(req: NextRequest) {
-  const userId = await resolveUserId(req);
-  if (!userId) {
+  const session = await resolveRequestWebSession(req.cookies);
+  if (!session) {
     return NextResponse.json(
       { success: false as const, message: "Unauthorized." },
       { status: 401 },
     );
   }
+  const { userId } = session;
+  let sessionVersion = session.sessionVersion;
 
   let body: unknown;
   try {
@@ -83,7 +70,7 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
-  const { name, email, currentPassword, newPassword, newPassword_confirmation } =
+  const { name, email, currentPassword, newPassword, newPassword_confirmation, logoutOtherSessions } =
     parsed.data;
 
   const hasName = name !== undefined;
@@ -122,6 +109,8 @@ export async function PATCH(req: NextRequest) {
     const googleLinked = authFlags.hasGoogleLinked;
     let nextEmail = row.email;
     let nextName = row.name;
+    let passwordToken: string | undefined;
+    let replacementLaravelCookie: string | undefined;
 
     if (hasName && name !== row.name) {
       const [taken] = await pool.execute<RowDataPacket[]>(
@@ -241,15 +230,38 @@ export async function PATCH(req: NextRequest) {
         );
       }
       const hashed = await bcrypt.hash(newPassword, 10);
-      await withAccountAudit({ actorUserId: userId, source: "profile" }, (conn) =>
-        conn.execute("UPDATE users SET password = ?, updated_at = NOW() WHERE id = ?", [hashed, userId]),
-      );
+      await withAccountAudit({ actorUserId: userId, source: "profile" }, async (conn) => {
+        await conn.beginTransaction();
+        try {
+          // Serialize concurrent password changes and do not revive a revoked session.
+          const [locked] = await conn.execute<UserRow[]>("SELECT password FROM users WHERE id = ? FOR UPDATE", [userId]);
+          if (locked[0]?.password !== row.password || await getWebSessionVersion(userId, conn) !== sessionVersion) {
+            throw new Error("WEB_SESSION_CHANGED");
+          }
+          if (logoutOtherSessions) {
+            sessionVersion = await advanceWebSessionVersion(conn, userId);
+            const sessionId = await createLaravelSession(userId, sessionVersion);
+            if (!sessionId) throw new Error("Could not preserve the current website session");
+            replacementLaravelCookie = encryptLaravelCookie(sessionId);
+          }
+          passwordToken = await signSessionToken({ id: userId, email: nextEmail, name: nextName, sessionVersion });
+          await conn.execute(
+            `UPDATE users SET password = ?, ${logoutOtherSessions ? "remember_token = NULL," : ""} updated_at = NOW() WHERE id = ?`,
+            [hashed, userId],
+          );
+          await conn.commit();
+        } catch (error) {
+          await conn.rollback();
+          throw error;
+        }
+      });
     }
 
-    const newToken = await signSessionToken({
+    const newToken = passwordToken ?? await signSessionToken({
       id: userId,
       email: nextEmail,
       name: nextName,
+      sessionVersion,
     });
 
     const flagsAfter = await resolveAuthUserFlags({
@@ -267,12 +279,18 @@ export async function PATCH(req: NextRequest) {
         ...flagsAfter,
       },
     });
-    res.cookies.set(SESSION_COOKIE_NAME, newToken, {
+    const cookieOptions = {
       ...baseCookieOptions(req),
       maxAge: sessionCookieMaxAgeSec(),
-    });
+    };
+    if (replacementLaravelCookie) appendHostOnlySessionCookieClears(res);
+    res.cookies.set(SESSION_COOKIE_NAME, newToken, cookieOptions);
+    if (replacementLaravelCookie) res.cookies.set(LARAVEL_COOKIE_NAME, replacementLaravelCookie, cookieOptions);
     return res;
   } catch (e) {
+    if (e instanceof Error && e.message === "WEB_SESSION_CHANGED") {
+      return NextResponse.json({ success: false, message: "Your session or password has changed. Sign in again." }, { status: 401 });
+    }
     console.error("[auth/profile]", e);
     return NextResponse.json(
       { success: false as const, message: "Server error. Try again later." },
