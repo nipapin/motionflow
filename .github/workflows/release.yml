@@ -76,6 +76,7 @@ jobs:
           node scripts/test-ci-notifications.mjs
           node scripts/test-ci-installer.mjs
           node --test scripts/test-web-sessions.mjs
+          node --test scripts/test-caption-highlights.mjs
           npm exec --yes --package=pm2@7.0.1 -- node scripts/test-ci-pm2.mjs
           npm run build
       - name: Package Linux runtime and verify WebSocket server
