@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveCepBearerUser } from "@/lib/cep-auth";
+import { withDownloadActivity } from "@/lib/user-activity";
 import {
   getGalEffectsFilePresign,
   parseGalEffectsHost,
@@ -32,42 +33,50 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const result = await getGalEffectsFilePresign(pathParam, host);
-    if (!result.ok) {
-      const status =
-        result.error === "BAD_PATH"
-          ? 400
-          : result.error === "PRESIGN_FAILED"
-            ? 500
-            : 404;
-      const message =
-        result.error === "BAD_PATH"
-          ? "Invalid path"
-          : result.error === "PRESIGN_FAILED"
-            ? "Could not create download URL"
-            : "File not found on R2";
-      return NextResponse.json(
-        { error: result.error, message },
-        { status },
-      );
-    }
+    return await withDownloadActivity({
+      userId: user.id, action: "effect_file_download", resourceType: "effect_file",
+      resourceId: `${host}:${pathParam}`, resourceName: pathParam,
+      source: "extension", deviceId: user.deviceId, details: { client: user.client, host },
+    }, async (activity) => {
+      const result = await getGalEffectsFilePresign(pathParam, host);
+      if (!result.ok) {
+        const status =
+          result.error === "BAD_PATH"
+            ? 400
+            : result.error === "PRESIGN_FAILED"
+              ? 500
+              : 404;
+        const message =
+          result.error === "BAD_PATH"
+            ? "Invalid path"
+            : result.error === "PRESIGN_FAILED"
+              ? "Could not create download URL"
+              : "File not found on R2";
+        return NextResponse.json(
+          { error: result.error, message },
+          { status },
+        );
+      }
 
-    return NextResponse.json(
-      {
-        url: result.data.url,
-        key: result.data.key,
-        path: result.data.path,
-        etag: result.data.etag,
-        size: result.data.size,
-        expires_in: result.data.expires_in,
-      },
-      {
-        status: 200,
-        headers: {
-          "Cache-Control": "private, no-store",
+      activity.setResourceName(result.data.path);
+      activity.issued("json");
+      return NextResponse.json(
+        {
+          url: result.data.url,
+          key: result.data.key,
+          path: result.data.path,
+          etag: result.data.etag,
+          size: result.data.size,
+          expires_in: result.data.expires_in,
         },
-      },
-    );
+        {
+          status: 200,
+          headers: {
+            "Cache-Control": "private, no-store",
+          },
+        },
+      );
+    });
   } catch (err) {
     console.error("[cep/gal/effects/file]", err);
     return NextResponse.json(

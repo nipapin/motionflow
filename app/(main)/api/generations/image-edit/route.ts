@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Replicate from "replicate";
-import { resolveRequestUser } from "@/lib/auth/resolve-request-user";
+import { resolveRequestUser, requestHasCepBearer } from "@/lib/auth/resolve-request-user";
 import {
     consumeGeneration,
     getGenerationsStatus,
@@ -138,8 +138,8 @@ export async function POST(req: NextRequest) {
         } catch (err) {
             console.error("[image-edit] replicate error:", err);
             const { status, message } = mapReplicateModelError(err, GENERIC_ERROR);
-            void insertGenerationRecord({
-                userId: user.id,
+            await insertGenerationRecord({
+                userId: user.id, source: requestHasCepBearer(req) ? "extension" : "web",
                 tool: "image_edit",
                 status: "failed",
                 settings: {
@@ -160,8 +160,8 @@ export async function POST(req: NextRequest) {
 
         if (!deliveryUrls.length) {
             console.error("[image-edit] empty or unrecognized output:", output);
-            void insertGenerationRecord({
-                userId: user.id,
+            await insertGenerationRecord({
+                userId: user.id, source: requestHasCepBearer(req) ? "extension" : "web",
                 tool: "image_edit",
                 status: "failed",
                 settings: {
@@ -193,8 +193,8 @@ export async function POST(req: NextRequest) {
                 mirrorErr instanceof Error
                     ? mirrorErr.message
                     : "Could not save the edited image. Please try again.";
-            void insertGenerationRecord({
-                userId: user.id,
+            await insertGenerationRecord({
+                userId: user.id, source: requestHasCepBearer(req) ? "extension" : "web",
                 tool: "image_edit",
                 status: "failed",
                 settings: {
@@ -226,7 +226,7 @@ export async function POST(req: NextRequest) {
         }
 
         const recordId = await insertGenerationRecord({
-            userId: user.id,
+            userId: user.id, source: requestHasCepBearer(req) ? "extension" : "web",
             tool: "image_edit",
             status: "ok",
             settings: {

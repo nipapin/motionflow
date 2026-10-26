@@ -105,6 +105,7 @@ export async function POST(req: NextRequest) {
 
     await ensurePackagesProjectsTable();
     const result = await replaceCepDeviceInstalls({
+      userId: user.id,
       deviceId: user.deviceId,
       authorId: cfg.authorId,
       packs,

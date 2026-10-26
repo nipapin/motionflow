@@ -32,6 +32,7 @@ export type GenerationRecordStatus = "ok" | "failed";
 
 export interface InsertGenerationRecordInput {
     userId: number;
+    source?: "web" | "extension";
     tool: GenerationTool;
     status: GenerationRecordStatus;
     settings: Record<string, unknown>;
@@ -56,7 +57,7 @@ export async function insertGenerationRecord(
                 input.userId,
                 input.tool,
                 input.status,
-                JSON.stringify(input.settings),
+                JSON.stringify({ ...input.settings, ...(input.source ? { _activity_source: input.source } : {}) }),
                 input.result != null ? JSON.stringify(input.result) : null,
                 input.errorMessage ?? null,
             ],

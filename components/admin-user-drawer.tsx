@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { CreditCard, History, Loader2, Trash2, User } from "lucide-react";
+import { Activity, CreditCard, History, Loader2, Trash2, User } from "lucide-react";
 import { AdminUserHistory } from "@/components/admin-user-history";
+import { AdminUserActivity } from "@/components/admin-user-activity";
 import type {
   AdminUserDetail,
   AdminUserPurchaseRow,
@@ -40,7 +41,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
-type DrawerTab = "profile" | "access" | "history";
+type DrawerTab = "profile" | "access" | "history" | "activity";
 
 const drawerTabTriggerClass =
   "h-8 flex-none cursor-pointer justify-start gap-2 rounded-lg px-2.5 text-sm font-medium shadow-none " +
@@ -200,7 +201,7 @@ export function AdminUserDrawer({
     <Drawer direction="right" open={open} onOpenChange={(next) => {
       if (!deleting && !deleteOpen) onOpenChange(next);
     }}>
-      <DrawerContent className="h-full overflow-hidden">
+      <DrawerContent className="h-full overflow-hidden data-[vaul-drawer-direction=right]:w-full sm:data-[vaul-drawer-direction=right]:w-1/2">
         <DrawerHeader className="border-b border-border/60">
           <DrawerTitle className="flex flex-wrap items-center gap-2">
             {user?.name ?? (busy ? "Loading…" : "User")}
@@ -216,7 +217,7 @@ export function AdminUserDrawer({
         <Tabs
           value={tab}
           onValueChange={(value) => {
-            if (value === "profile" || value === "access" || value === "history") setTab(value);
+            if (value === "profile" || value === "access" || value === "history" || value === "activity") setTab(value);
           }}
           className="flex min-h-0 flex-1 flex-col gap-0"
         >
@@ -236,6 +237,10 @@ export function AdminUserDrawer({
                 <TabsTrigger value="history" className={drawerTabTriggerClass}>
                   <History className="h-4 w-4" />
                   History
+                </TabsTrigger>
+                <TabsTrigger value="activity" className={drawerTabTriggerClass}>
+                  <Activity className="h-4 w-4" />
+                  Activity
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -294,6 +299,9 @@ export function AdminUserDrawer({
               </TabsContent>
               <TabsContent value="history" className="min-h-0 flex-1 overflow-y-auto p-4">
                 <AdminUserHistory key={user.id} userId={user.id} revision={historyRevision} />
+              </TabsContent>
+              <TabsContent value="activity" className="min-h-0 flex-1 overflow-y-auto p-4">
+                <AdminUserActivity key={user.id} userId={user.id} />
               </TabsContent>
             </>
           ) : null}

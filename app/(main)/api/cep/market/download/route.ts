@@ -9,6 +9,7 @@ import {
   userCanDownloadCepPack,
 } from "@/lib/cep-entitlements";
 import { getPackagesProjectDownloadUrl } from "@/lib/packages-download";
+import { withDownloadActivity } from "@/lib/user-activity";
 
 export const runtime = "nodejs";
 
@@ -35,54 +36,61 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const cfg =
-      getCepClientConfig(user.client) ?? requireCepClientConfig("spunkram-cep");
+    return await withDownloadActivity({
+      userId: user.id, action: "pack_download", resourceType: "extension_pack", resourceId: packId,
+      source: "extension", deviceId: user.deviceId, details: { client: user.client },
+    }, async (activity) => {
+      const cfg =
+        getCepClientConfig(user.client) ?? requireCepClientConfig("spunkram-cep");
 
-    const gate = await userCanDownloadCepPack({
-      userId: user.id,
-      packId,
-      cfg,
-      viewerEmail: user.email,
+      const gate = await userCanDownloadCepPack({
+        userId: user.id,
+        packId,
+        cfg,
+        viewerEmail: user.email,
+      });
+
+      if (!gate.ok) {
+        const status = gate.error === "NOT_FOUND" ? 404 : 403;
+        return NextResponse.json(
+          {
+            error: gate.error,
+            message:
+              gate.error === "NOT_FOUND"
+                ? "Pack not found"
+                : "Purchase or Spunkram subscription required",
+          },
+          { status },
+        );
+      }
+
+      const resolved = await resolveCepPackDownload({
+        packId,
+        cfg,
+        viewerEmail: user.email,
+      });
+      if (!resolved) {
+        return NextResponse.json(
+          { error: "NOT_FOUND", message: "Pack not found" },
+          { status: 404 },
+        );
+      }
+
+      activity.setResourceName(resolved.project.name);
+      const downloadUrl = await getPackagesProjectDownloadUrl(
+        resolved.project,
+        resolved.author,
+      );
+      if (!downloadUrl) {
+        return NextResponse.json(
+          { error: "NO_DOWNLOAD", message: "Pack file not available" },
+          { status: 404 },
+        );
+      }
+
+      activity.issued("redirect");
+      return NextResponse.redirect(downloadUrl, 302);
     });
-
-    if (!gate.ok) {
-      const status = gate.error === "NOT_FOUND" ? 404 : 403;
-      return NextResponse.json(
-        {
-          error: gate.error,
-          message:
-            gate.error === "NOT_FOUND"
-              ? "Pack not found"
-              : "Purchase or Spunkram subscription required",
-        },
-        { status },
-      );
-    }
-
-    const resolved = await resolveCepPackDownload({
-      packId,
-      cfg,
-      viewerEmail: user.email,
-    });
-    if (!resolved) {
-      return NextResponse.json(
-        { error: "NOT_FOUND", message: "Pack not found" },
-        { status: 404 },
-      );
-    }
-
-    const downloadUrl = await getPackagesProjectDownloadUrl(
-      resolved.project,
-      resolved.author,
-    );
-    if (!downloadUrl) {
-      return NextResponse.json(
-        { error: "NO_DOWNLOAD", message: "Pack file not available" },
-        { status: 404 },
-      );
-    }
-
-    return NextResponse.redirect(downloadUrl, 302);
   } catch (err) {
     console.error("[cep/market/download]", err);
     return NextResponse.json(

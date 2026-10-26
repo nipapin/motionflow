@@ -175,8 +175,8 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       console.error("[voiceover] replicate error:", err);
       const { status, message } = mapReplicateError(err);
-      void insertGenerationRecord({
-        userId: user.id,
+      await insertGenerationRecord({
+        userId: user.id, source: user.source === "session" ? "web" : "extension",
         tool: "tts",
         status: "failed",
         settings,
@@ -241,8 +241,8 @@ export async function POST(req: NextRequest) {
       );
     }
     const generations = consumed.status;
-    void insertGenerationRecord({
-      userId: user.id,
+    await insertGenerationRecord({
+      userId: user.id, source: user.source === "session" ? "web" : "extension",
       tool: "tts",
       status: "ok",
       settings,

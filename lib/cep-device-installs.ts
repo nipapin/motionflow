@@ -3,6 +3,8 @@ import "server-only";
 import type { RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
 import { packagesProjectsTableName } from "@/lib/packages-authors-db";
+import { ensureUserActivitySchema } from "@/lib/user-activity";
+import { recordPackActivity, type ActivityPack } from "@/lib/pack-activity";
 
 export const CEP_DEVICE_INSTALLS_TABLE = "cep_device_installs";
 
@@ -45,6 +47,7 @@ async function ensureSchema(): Promise<void> {
  * Only ids belonging to `authorId` in packages_projects (not soft-deleted) are kept.
  */
 export async function replaceCepDeviceInstalls(opts: {
+  userId: number;
   deviceId: number;
   authorId: number;
   packs: CepInstallPackInput[];
@@ -64,21 +67,33 @@ export async function replaceCepDeviceInstalls(opts: {
   }
   const unique = [...byId.keys()];
 
+  let activityReady = true;
+  try { await ensureUserActivitySchema(); } catch { activityReady = false; console.error("[user-activity] schema unavailable"); }
   let allowed: number[] = [];
+  const names = new Map<number, string>();
   if (unique.length > 0) {
     const placeholders = unique.map(() => "?").join(",");
-    type IdRow = RowDataPacket & { id: number };
+    type IdRow = RowDataPacket & { id: number; name: string };
     const [rows] = await pool.execute<IdRow[]>(
-      `SELECT id FROM \`${projectsTable}\`
+      `SELECT id, name FROM \`${projectsTable}\`
        WHERE author_id = ? AND deleted_at IS NULL AND id IN (${placeholders})`,
       [opts.authorId, ...unique],
     );
     allowed = rows.map((r) => Number(r.id));
+    for (const row of rows) names.set(Number(row.id), row.name);
   }
 
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    // Serialize full snapshots for one device so concurrent heartbeats cannot create false changes.
+    const [devices] = await conn.execute<RowDataPacket[]>("SELECT id FROM cep_devices WHERE id = ? AND user_id = ? FOR UPDATE", [opts.deviceId, opts.userId]);
+    if (devices.length !== 1) throw new Error("Device does not belong to user");
+    const [previousRows] = await conn.execute<(RowDataPacket & { pack_id: number; version: string | null; name: string | null })[]>(
+      `SELECT i.pack_id, i.version, p.name FROM \`${CEP_DEVICE_INSTALLS_TABLE}\` i
+       LEFT JOIN \`${projectsTable}\` p ON p.id = i.pack_id WHERE i.device_id = ?`, [opts.deviceId],
+    );
+    const previous: ActivityPack[] = previousRows.map((row) => ({ id: Number(row.pack_id), name: row.name, version: row.version }));
     await conn.execute(
       `DELETE FROM \`${CEP_DEVICE_INSTALLS_TABLE}\` WHERE device_id = ?`,
       [opts.deviceId],
@@ -96,6 +111,10 @@ export async function replaceCepDeviceInstalls(opts: {
         params,
       );
     }
+    if (activityReady) await recordPackActivity(conn, {
+      userId: opts.userId, deviceId: opts.deviceId, mode: "installs", previous,
+      next: allowed.map((id) => ({ id, name: names.get(id) ?? null, version: byId.get(id) ?? null })),
+    });
     await conn.commit();
   } catch (err) {
     await conn.rollback();

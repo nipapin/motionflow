@@ -82,7 +82,7 @@ test("deletion removes account access and preserves financial history", async ()
   const f = fixture({ tables: [
     "users", "cep_devices", "cep_device_active_packs", "cep_device_installs",
     "cep_auth_sessions", "cep_client_sessions", "cep_error_reports", "sessions",
-    "user_favorites", "user_followings", "user_generation_credits",
+    "user_favorites", "user_followings", "user_generation_credits", "user_activity",
     "password_reset_tokens", "password_resets", "email_verification_tokens",
     "sold_items", "subscription_systems", "subscription_payments", "affiliate_commissions",
   ] });

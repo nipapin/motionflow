@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withDownloadActivity } from "@/lib/user-activity";
 import {
   bearerFromRequest,
   identityFromJsonBody,
@@ -76,59 +77,69 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const project = await resolveProjectFile(brand, id, kind);
-    if (!project) {
-      return NextResponse.json(
-        {
-          error: "Project file not found.",
-          code: "PROJECT_NOT_READY",
-        },
-        { status: 404 },
-      );
-    }
-
-    console.info(
-      "[captions] download",
-      access.user.email,
-      access.user.id,
-      brand,
-      id,
-      kind,
-    );
-
-    const encoded = encodeURIComponent(project.filename).replaceAll("'", "%27");
-
-    if (kind === "definition") {
-      const raw = await readR2ObjectBuffer(project.key, project.bucket);
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(raw.toString("utf8"));
-      } catch {
-        console.error("[captions] invalid definition.json", id);
+    // External Odin identities have a separate namespace; never attach them to a Motionflow ID.
+    return await withDownloadActivity({
+      userId: typeof access.user.id === "number" ? access.user.id : 0,
+      action: "caption_download", resourceType: "caption_style", resourceId: id,
+      resourceName: id, source: access.user.source === "session" ? "web" : "extension",
+      details: { brand, fileKind: kind },
+    }, async (activity) => {
+      const project = await resolveProjectFile(brand, id, kind);
+      if (!project) {
         return NextResponse.json(
-          { error: "definition.json is invalid." },
-          { status: 502 },
+          {
+            error: "Project file not found.",
+            code: "PROJECT_NOT_READY",
+          },
+          { status: 404 },
         );
       }
-      return NextResponse.json(parsed, {
-        status: 200,
-        headers: {
-          "Cache-Control": "private, no-store",
-          "Content-Disposition": `attachment; filename="${encoded}"; filename*=UTF-8''${encoded}`,
-        },
+
+      console.info(
+        "[captions] download",
+        access.user.email,
+        access.user.id,
+        brand,
+        id,
+        kind,
+      );
+
+      const encoded = encodeURIComponent(project.filename).replaceAll("'", "%27");
+
+      if (kind === "definition") {
+        const raw = await readR2ObjectBuffer(project.key, project.bucket);
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(raw.toString("utf8"));
+        } catch {
+          console.error("[captions] invalid definition.json", id);
+          return NextResponse.json(
+            { error: "definition.json is invalid." },
+            { status: 502 },
+          );
+        }
+        activity.issued("json");
+        return NextResponse.json(parsed, {
+          status: 200,
+          headers: {
+            "Cache-Control": "private, no-store",
+            "Content-Disposition": `attachment; filename="${encoded}"; filename*=UTF-8''${encoded}`,
+          },
+        });
+      }
+
+      const stream = await createR2ObjectWebStream(project.key, project.bucket);
+      const headers = new Headers({
+        "Content-Type": mimeForFilename(project.filename),
+        "Content-Disposition": `attachment; filename="${encoded}"; filename*=UTF-8''${encoded}`,
+        "Cache-Control": "private, no-store",
       });
-    }
 
-    const stream = await createR2ObjectWebStream(project.key, project.bucket);
-    const headers = new Headers({
-      "Content-Type": mimeForFilename(project.filename),
-      "Content-Disposition": `attachment; filename="${encoded}"; filename*=UTF-8''${encoded}`,
-      "Cache-Control": "private, no-store",
-    });
-
-    return new NextResponse(stream, {
-      status: 200,
-      headers,
+      activity.issued("stream");
+      return new NextResponse(stream, {
+        status: 200,
+        headers,
+      });
     });
   } catch (e) {
     console.error("[captions] POST", e);

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withGenerationActivity } from "@/lib/user-activity";
 import Replicate from "replicate";
 import {
   bearerFromRequest,
@@ -344,223 +345,225 @@ export async function POST(req: NextRequest) {
     });
     if (!access.ok) return access.response;
     if (!isMeteredCaptionsUser(access.user)) return billableAccountRequiredResponse();
+    return await withGenerationActivity(access.user, "captions", async () => {
 
-    console.info(
-      "[captions generation] user",
-      access.user.email,
-      access.user.id,
-      access.user.source,
-    );
-
-    const file = form.get("file");
-    if (!(file instanceof File)) {
-      return NextResponse.json(
-        { error: "Please attach an MP3 file." },
-        { status: 400 },
+      console.info(
+        "[captions generation] user",
+        access.user.email,
+        access.user.id,
+        access.user.source,
       );
-    }
-    if (file.size <= 0) {
-      return NextResponse.json(
-        { error: "The uploaded file is empty." },
-        { status: 400 },
-      );
-    }
-    if (file.size > MAX_BYTES) {
-      return NextResponse.json(
-        { error: "MP3 file must be under 25 MB." },
-        { status: 400 },
-      );
-    }
-    if (!isMp3File(file)) {
-      return NextResponse.json(
-        { error: "Only MP3 files are supported." },
-        { status: 400 },
-      );
-    }
 
-    const languageRaw = form.get("language");
-    const zoomFrequency = form.get("jumpCutFrequency");
-    if (zoomFrequency != null && !["low", "medium", "high"].includes(String(zoomFrequency))) {
-      return NextResponse.json({ error: "Invalid jumpCutFrequency" }, { status: 400 });
-    }
-    const translateRaw = form.get("translateTo");
-    const language =
-      typeof languageRaw === "string" &&
-      languageRaw.trim() &&
-      languageRaw.trim().toLowerCase() !== "auto"
-        ? languageRaw.trim()
-        : undefined;
-    const translateTo =
-      typeof translateRaw === "string" &&
-      translateRaw.trim() &&
-      translateRaw.trim().toLowerCase() !== "off"
-        ? translateRaw.trim().toLowerCase()
-        : undefined;
-
-    if (translateTo && !LANGUAGE_NAMES[translateTo]) {
-      return NextResponse.json(
-        {
-          error: `Invalid "translateTo". Expected one of: ${Object.keys(LANGUAGE_NAMES).join(", ")}.`,
-        },
-        { status: 400 },
-      );
-    }
-
-    // Meter before the expensive ASR call: 1 gen per 10 minutes (ceil).
-    // Client duration = In/Out / Work Area the panel already showed on the button.
-    const clientDuration = parseDurationSeconds(form.get("durationSeconds"));
-    const preCost = durationGenerationsCost(clientDuration ?? 0);
-    const preStatus = await generationsStatusForResolvedUser(access.user);
-    if (preStatus.total_generations_left < preCost) {
-      return NextResponse.json(
-        { code: GENERATION_LIMIT_REACHED_CODE, ...preStatus, cost: preCost },
-        { status: 402 },
-      );
-    }
-
-    let audioUrl: string;
-    try {
-      const buf = Buffer.from(await file.arrayBuffer());
-      const uploaded = await uploadBufferToR2(buf, {
-        contentType: "audio/mpeg",
-        keyPrefix: "captions-input",
-      });
-      audioUrl = uploaded.url;
-    } catch (uploadErr) {
-      console.error("[captions generation] R2 upload failed:", uploadErr);
-      return NextResponse.json(
-        { error: "Could not upload the audio file. Please try again." },
-        { status: 502 },
-      );
-    }
-
-    let scribe: ScribeOutput;
-    try {
-      const raw = await transcribe(audioUrl, { language });
-      const parsed = asScribeOutput(raw);
-      if (!parsed) {
-        console.error("[captions generation] unexpected scribe output shape");
-        return NextResponse.json({ error: GENERIC_ERROR }, { status: 502 });
-      }
-      scribe = parsed;
-    } catch (err) {
-      console.error("[captions generation] replicate error:", err);
-      const { status, message } = mapReplicateError(err);
-      return NextResponse.json({ error: message }, { status });
-    }
-
-    if (!hasTranscription(scribe)) {
-      console.error("[captions generation] empty transcription output");
-      return NextResponse.json({ error: GENERIC_ERROR }, { status: 502 });
-    }
-
-    let translated = false;
-    if (translateTo) {
-      const languageName = languageNameFor(translateTo)!;
-      try {
-        const wordChunks = spokenWordChunks(scribe);
-        const sentenceChunks = wordChunks.length
-          ? sentencesFromWords(wordChunks)
-          : [];
-        const source = sentenceChunks.length
-          ? sentenceChunks
-          : wordChunks.length
-            ? wordChunks
-            : scribe.text.trim()
-              ? [{ text: scribe.text.trim(), timestamp: [0, 0] as [number, number] }]
-              : [];
-        if (source.length) {
-          const translatedChunks = await translateChunks(source, languageName);
-          // ASR word timings no longer match translated text — rebuild words
-          // with proportional timings, still in Scribe shape.
-          const rebuilt = wordsFromChunks(translatedChunks);
-          scribe = withTranslatedWords(scribe, rebuilt);
-          translated = true;
-        }
-      } catch (err) {
-        console.error("[captions generation] translate error:", err);
-        const { status, message } = mapReplicateError(err);
+      const file = form.get("file");
+      if (!(file instanceof File)) {
         return NextResponse.json(
-          {
-            error:
-              status === 500
-                ? "We couldn't translate the captions. Please try again."
-                : message,
-          },
-          { status: status === 500 ? 502 : status },
+          { error: "Please attach an MP3 file." },
+          { status: 400 },
         );
       }
-    }
+      if (file.size <= 0) {
+        return NextResponse.json(
+          { error: "The uploaded file is empty." },
+          { status: 400 },
+        );
+      }
+      if (file.size > MAX_BYTES) {
+        return NextResponse.json(
+          { error: "MP3 file must be under 25 MB." },
+          { status: 400 },
+        );
+      }
+      if (!isMp3File(file)) {
+        return NextResponse.json(
+          { error: "Only MP3 files are supported." },
+          { status: 400 },
+        );
+      }
 
-    // The optional JumpCut analysis shares this request's transcription charge.
-    // Finish analysis before consuming quota so failed analysis cannot be billed.
-    let zoomPhrases: ZoomPhrase[] | undefined;
-    if (zoomFrequency) {
+      const languageRaw = form.get("language");
+      const zoomFrequency = form.get("jumpCutFrequency");
+      if (zoomFrequency != null && !["low", "medium", "high"].includes(String(zoomFrequency))) {
+        return NextResponse.json({ error: "Invalid jumpCutFrequency" }, { status: 400 });
+      }
+      const translateRaw = form.get("translateTo");
+      const language =
+        typeof languageRaw === "string" &&
+        languageRaw.trim() &&
+        languageRaw.trim().toLowerCase() !== "auto"
+          ? languageRaw.trim()
+          : undefined;
+      const translateTo =
+        typeof translateRaw === "string" &&
+        translateRaw.trim() &&
+        translateRaw.trim().toLowerCase() !== "off"
+          ? translateRaw.trim().toLowerCase()
+          : undefined;
+
+      if (translateTo && !LANGUAGE_NAMES[translateTo]) {
+        return NextResponse.json(
+          {
+            error: `Invalid "translateTo". Expected one of: ${Object.keys(LANGUAGE_NAMES).join(", ")}.`,
+          },
+          { status: 400 },
+        );
+      }
+
+      // Meter before the expensive ASR call: 1 gen per 10 minutes (ceil).
+      // Client duration = In/Out / Work Area the panel already showed on the button.
+      const clientDuration = parseDurationSeconds(form.get("durationSeconds"));
+      const preCost = durationGenerationsCost(clientDuration ?? 0);
+      const preStatus = await generationsStatusForResolvedUser(access.user);
+      if (preStatus.total_generations_left < preCost) {
+        return NextResponse.json(
+          { code: GENERATION_LIMIT_REACHED_CODE, ...preStatus, cost: preCost },
+          { status: 402 },
+        );
+      }
+
+      let audioUrl: string;
       try {
-        zoomPhrases = await analyzeZoomPhrases(scribe.words || [], zoomFrequency as ZoomFrequency, async (system_prompt, prompt) => {
-          const output = await replicate.run(TRANSLATE_MODEL, { input: { system_prompt, prompt, max_tokens: 4096 } });
-          return typeof output === "string" ? output : Array.isArray(output) ? output.map(String).join("") : String(output ?? "");
+        const buf = Buffer.from(await file.arrayBuffer());
+        const uploaded = await uploadBufferToR2(buf, {
+          contentType: "audio/mpeg",
+          keyPrefix: "captions-input",
         });
-      } catch (error) {
-        console.error("[captions generation] JumpCut analysis failed:", error);
-        return NextResponse.json({ error: "Could not analyze key phrases for JumpCut. Try again or choose sentence zooms." }, { status: 502 });
+        audioUrl = uploaded.url;
+      } catch (uploadErr) {
+        console.error("[captions generation] R2 upload failed:", uploadErr);
+        return NextResponse.json(
+          { error: "Could not upload the audio file. Please try again." },
+          { status: 502 },
+        );
       }
-    }
 
-    // Prefer max(client, ASR, word span) — never bill only on client claim.
-    const wordSpan = durationFromTimestampChunks(spokenWordChunks(scribe));
-    const asrDuration =
-      typeof scribe.duration_seconds === "number" && scribe.duration_seconds > 0
-        ? scribe.duration_seconds
-        : undefined;
-    const meterSeconds = resolveMeterDuration({
-      clientSeconds: clientDuration,
-      modelSeconds: asrDuration,
-      fromTimestamps: wordSpan,
-    });
-    const finalCost = durationGenerationsCost(meterSeconds);
-
-    // If ASR span is longer than the pre-check estimate, re-validate before consume.
-    if (finalCost > preCost && preStatus.total_generations_left < finalCost) {
-      return NextResponse.json(
-        { code: GENERATION_LIMIT_REACHED_CODE, ...preStatus, cost: finalCost },
-        { status: 402 },
-      );
-    }
-
-    const consumed = await consumeGenerationForResolvedUser(
-      access.user,
-      "captions",
-      finalCost,
-    );
-    if (!consumed.ok) {
-      return NextResponse.json(
-        { code: GENERATION_LIMIT_REACHED_CODE, ...consumed.status, cost: finalCost },
-        { status: 402 },
-      );
-    }
-
-    let chaptersReceipt: string | undefined;
-    try {
-      if (isMeteredCaptionsUser(access.user)) {
-        chaptersReceipt = issueCaptionsChaptersReceipt({
-          userId: access.user.id,
-          durationSeconds: meterSeconds,
-          cost: finalCost,
-        });
+      let scribe: ScribeOutput;
+      try {
+        const raw = await transcribe(audioUrl, { language });
+        const parsed = asScribeOutput(raw);
+        if (!parsed) {
+          console.error("[captions generation] unexpected scribe output shape");
+          return NextResponse.json({ error: GENERIC_ERROR }, { status: 502 });
+        }
+        scribe = parsed;
+      } catch (err) {
+        console.error("[captions generation] replicate error:", err);
+        const { status, message } = mapReplicateError(err);
+        return NextResponse.json({ error: message }, { status });
       }
-    } catch (receiptErr) {
-      console.error("[captions generation] chapters receipt skipped:", receiptErr);
-    }
 
-    return NextResponse.json({
-      ...scribe,
-      translated,
-      cost: finalCost,
-      durationSeconds: meterSeconds || undefined,
-      chaptersReceipt,
-      ...(zoomPhrases ? { zoomPhrases } : {}),
-      generations: consumed.status,
+      if (!hasTranscription(scribe)) {
+        console.error("[captions generation] empty transcription output");
+        return NextResponse.json({ error: GENERIC_ERROR }, { status: 502 });
+      }
+
+      let translated = false;
+      if (translateTo) {
+        const languageName = languageNameFor(translateTo)!;
+        try {
+          const wordChunks = spokenWordChunks(scribe);
+          const sentenceChunks = wordChunks.length
+            ? sentencesFromWords(wordChunks)
+            : [];
+          const source = sentenceChunks.length
+            ? sentenceChunks
+            : wordChunks.length
+              ? wordChunks
+              : scribe.text.trim()
+                ? [{ text: scribe.text.trim(), timestamp: [0, 0] as [number, number] }]
+                : [];
+          if (source.length) {
+            const translatedChunks = await translateChunks(source, languageName);
+            // ASR word timings no longer match translated text — rebuild words
+            // with proportional timings, still in Scribe shape.
+            const rebuilt = wordsFromChunks(translatedChunks);
+            scribe = withTranslatedWords(scribe, rebuilt);
+            translated = true;
+          }
+        } catch (err) {
+          console.error("[captions generation] translate error:", err);
+          const { status, message } = mapReplicateError(err);
+          return NextResponse.json(
+            {
+              error:
+                status === 500
+                  ? "We couldn't translate the captions. Please try again."
+                  : message,
+            },
+            { status: status === 500 ? 502 : status },
+          );
+        }
+      }
+
+      // The optional JumpCut analysis shares this request's transcription charge.
+      // Finish analysis before consuming quota so failed analysis cannot be billed.
+      let zoomPhrases: ZoomPhrase[] | undefined;
+      if (zoomFrequency) {
+        try {
+          zoomPhrases = await analyzeZoomPhrases(scribe.words || [], zoomFrequency as ZoomFrequency, async (system_prompt, prompt) => {
+            const output = await replicate.run(TRANSLATE_MODEL, { input: { system_prompt, prompt, max_tokens: 4096 } });
+            return typeof output === "string" ? output : Array.isArray(output) ? output.map(String).join("") : String(output ?? "");
+          });
+        } catch (error) {
+          console.error("[captions generation] JumpCut analysis failed:", error);
+          return NextResponse.json({ error: "Could not analyze key phrases for JumpCut. Try again or choose sentence zooms." }, { status: 502 });
+        }
+      }
+
+      // Prefer max(client, ASR, word span) — never bill only on client claim.
+      const wordSpan = durationFromTimestampChunks(spokenWordChunks(scribe));
+      const asrDuration =
+        typeof scribe.duration_seconds === "number" && scribe.duration_seconds > 0
+          ? scribe.duration_seconds
+          : undefined;
+      const meterSeconds = resolveMeterDuration({
+        clientSeconds: clientDuration,
+        modelSeconds: asrDuration,
+        fromTimestamps: wordSpan,
+      });
+      const finalCost = durationGenerationsCost(meterSeconds);
+
+      // If ASR span is longer than the pre-check estimate, re-validate before consume.
+      if (finalCost > preCost && preStatus.total_generations_left < finalCost) {
+        return NextResponse.json(
+          { code: GENERATION_LIMIT_REACHED_CODE, ...preStatus, cost: finalCost },
+          { status: 402 },
+        );
+      }
+
+      const consumed = await consumeGenerationForResolvedUser(
+        access.user,
+        "captions",
+        finalCost,
+      );
+      if (!consumed.ok) {
+        return NextResponse.json(
+          { code: GENERATION_LIMIT_REACHED_CODE, ...consumed.status, cost: finalCost },
+          { status: 402 },
+        );
+      }
+
+      let chaptersReceipt: string | undefined;
+      try {
+        if (isMeteredCaptionsUser(access.user)) {
+          chaptersReceipt = issueCaptionsChaptersReceipt({
+            userId: access.user.id,
+            durationSeconds: meterSeconds,
+            cost: finalCost,
+          });
+        }
+      } catch (receiptErr) {
+        console.error("[captions generation] chapters receipt skipped:", receiptErr);
+      }
+
+      return NextResponse.json({
+        ...scribe,
+        translated,
+        cost: finalCost,
+        durationSeconds: meterSeconds || undefined,
+        chaptersReceipt,
+        ...(zoomPhrases ? { zoomPhrases } : {}),
+        generations: consumed.status,
+      });
     });
   } catch (error) {
     console.error("[captions generation] unexpected error:", error);

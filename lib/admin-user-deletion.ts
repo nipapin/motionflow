@@ -50,6 +50,7 @@ export async function deleteAdminUser(id: number, adminUserId: number): Promise<
         "sessions",
         "user_favorites",
         "user_generation_credits",
+        "user_activity",
       ]) {
         if (!available.has(table)) continue;
         await conn.execute(`DELETE FROM \`${table}\` WHERE user_id = ?`, [id]);

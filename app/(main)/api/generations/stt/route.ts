@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Replicate from "replicate";
-import { resolveRequestUser } from "@/lib/auth/resolve-request-user";
+import { resolveRequestUser, requestHasCepBearer } from "@/lib/auth/resolve-request-user";
 import {
     consumeGeneration,
     getGenerationsStatus,
@@ -262,8 +262,8 @@ export async function POST(req: NextRequest) {
         } catch (err) {
             console.error("[stt generation] replicate error:", err);
             const { status, message } = mapReplicateError(err);
-            void insertGenerationRecord({
-                userId: user.id,
+            await insertGenerationRecord({
+                userId: user.id, source: requestHasCepBearer(req) ? "extension" : "web",
                 tool: "stt",
                 status: "failed",
                 settings,
@@ -275,8 +275,8 @@ export async function POST(req: NextRequest) {
         const { text, detectedLanguage } = extractTranscription(output);
         if (!text.trim()) {
             console.error("[stt generation] empty transcription output");
-            void insertGenerationRecord({
-                userId: user.id,
+            await insertGenerationRecord({
+                userId: user.id, source: requestHasCepBearer(req) ? "extension" : "web",
                 tool: "stt",
                 status: "failed",
                 settings,
@@ -297,7 +297,7 @@ export async function POST(req: NextRequest) {
         }
 
         const recordId = await insertGenerationRecord({
-            userId: user.id,
+            userId: user.id, source: requestHasCepBearer(req) ? "extension" : "web",
             tool: "stt",
             status: "ok",
             settings,

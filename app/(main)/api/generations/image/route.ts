@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Replicate, { type FileOutput } from "replicate";
-import { resolveRequestUser } from "@/lib/auth/resolve-request-user";
+import { resolveRequestUser, requestHasCepBearer } from "@/lib/auth/resolve-request-user";
 import {
     consumeGeneration,
     getGenerationsStatus,
@@ -164,8 +164,8 @@ export async function POST(req: NextRequest) {
         } catch (err) {
             console.error("[image generation] replicate error:", err);
             const { status, message } = mapReplicateError(err);
-            void insertGenerationRecord({
-                userId: user.id,
+            await insertGenerationRecord({
+                userId: user.id, source: requestHasCepBearer(req) ? "extension" : "web",
                 tool: "image",
                 status: "failed",
                 settings: { prompt, style, aspect_ratio },
@@ -178,8 +178,8 @@ export async function POST(req: NextRequest) {
 
         if (!items.length) {
             console.error("[image generation] empty output from replicate");
-            void insertGenerationRecord({
-                userId: user.id,
+            await insertGenerationRecord({
+                userId: user.id, source: requestHasCepBearer(req) ? "extension" : "web",
                 tool: "image",
                 status: "failed",
                 settings: { prompt, style, aspect_ratio },
@@ -204,8 +204,8 @@ export async function POST(req: NextRequest) {
 
         if (!images.length) {
             console.error("[image generation] no image urls in output");
-            void insertGenerationRecord({
-                userId: user.id,
+            await insertGenerationRecord({
+                userId: user.id, source: requestHasCepBearer(req) ? "extension" : "web",
                 tool: "image",
                 status: "failed",
                 settings: { prompt, style, aspect_ratio },
@@ -229,8 +229,8 @@ export async function POST(req: NextRequest) {
                 mirrorErr instanceof Error
                     ? mirrorErr.message
                     : "Could not save generated images. Please try again.";
-            void insertGenerationRecord({
-                userId: user.id,
+            await insertGenerationRecord({
+                userId: user.id, source: requestHasCepBearer(req) ? "extension" : "web",
                 tool: "image",
                 status: "failed",
                 settings: { prompt, style, aspect_ratio },
@@ -254,7 +254,7 @@ export async function POST(req: NextRequest) {
         }
 
         const recordId = await insertGenerationRecord({
-            userId: user.id,
+            userId: user.id, source: requestHasCepBearer(req) ? "extension" : "web",
             tool: "image",
             status: "ok",
             settings: { prompt, style, aspect_ratio },

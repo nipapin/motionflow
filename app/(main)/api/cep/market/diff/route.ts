@@ -9,6 +9,7 @@ import {
   userCanDownloadCepPack,
 } from "@/lib/cep-entitlements";
 import { buildPackDiffZip } from "@/lib/packages-pack-diff";
+import { withDownloadActivity } from "@/lib/user-activity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,75 +62,82 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const cfg =
-      getCepClientConfig(user.client) ?? requireCepClientConfig("spunkram-cep");
+    return await withDownloadActivity({
+      userId: user.id, action: "pack_update_download", resourceType: "extension_pack", resourceId: packId,
+      source: "extension", deviceId: user.deviceId, details: { client: user.client },
+    }, async (activity) => {
+      const cfg =
+        getCepClientConfig(user.client) ?? requireCepClientConfig("spunkram-cep");
 
-    const gate = await userCanDownloadCepPack({
-      userId: user.id,
-      packId,
-      cfg,
-      viewerEmail: user.email,
-    });
+      const gate = await userCanDownloadCepPack({
+        userId: user.id,
+        packId,
+        cfg,
+        viewerEmail: user.email,
+      });
 
-    if (!gate.ok) {
-      const status = gate.error === "NOT_FOUND" ? 404 : 403;
-      return NextResponse.json(
-        {
-          error: gate.error,
-          message:
-            gate.error === "NOT_FOUND"
-              ? "Pack not found"
-              : "Purchase or Spunkram subscription required",
+      if (!gate.ok) {
+        const status = gate.error === "NOT_FOUND" ? 404 : 403;
+        return NextResponse.json(
+          {
+            error: gate.error,
+            message:
+              gate.error === "NOT_FOUND"
+                ? "Pack not found"
+                : "Purchase or Spunkram subscription required",
+          },
+          { status },
+        );
+      }
+
+      const resolved = await resolveCepPackDownload({
+        packId,
+        cfg,
+        viewerEmail: user.email,
+      });
+      if (!resolved) {
+        return NextResponse.json(
+          { error: "NOT_FOUND", message: "Pack not found" },
+          { status: 404 },
+        );
+      }
+
+      activity.setResourceName(resolved.project.name);
+      const built = await buildPackDiffZip({
+        project: resolved.project,
+        author: resolved.author,
+        localManifest: manifest,
+      });
+
+      if (!built.ok) {
+        const status = built.error === "NO_DIFF_SOURCE" ? 409 : 404;
+        return NextResponse.json(
+          {
+            error: built.error,
+            message:
+              built.error === "NO_DIFF_SOURCE"
+                ? "No R2 content prefix / manifest for this pack; use full zip download"
+                : built.error === "NO_BUCKET"
+                  ? "Author R2 bucket not configured"
+                  : "Pack download key missing",
+          },
+          { status },
+        );
+      }
+
+      const stem = built.stem.replace(/[^a-zA-Z0-9._-]+/g, "_") || "pack";
+      activity.issued("stream");
+      return new NextResponse(built.zipStream, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename="${stem}-diff.zip"`,
+          "X-Diff-Count": String(built.toDownload.length),
+          "X-Delete-Count": String(built.toDelete.length),
+          "X-Pack-Stem": built.stem,
+          "Cache-Control": "no-store",
         },
-        { status },
-      );
-    }
-
-    const resolved = await resolveCepPackDownload({
-      packId,
-      cfg,
-      viewerEmail: user.email,
-    });
-    if (!resolved) {
-      return NextResponse.json(
-        { error: "NOT_FOUND", message: "Pack not found" },
-        { status: 404 },
-      );
-    }
-
-    const built = await buildPackDiffZip({
-      project: resolved.project,
-      author: resolved.author,
-      localManifest: manifest,
-    });
-
-    if (!built.ok) {
-      const status = built.error === "NO_DIFF_SOURCE" ? 409 : 404;
-      return NextResponse.json(
-        {
-          error: built.error,
-          message:
-            built.error === "NO_DIFF_SOURCE"
-              ? "No R2 content prefix / manifest for this pack; use full zip download"
-              : built.error === "NO_BUCKET"
-                ? "Author R2 bucket not configured"
-                : "Pack download key missing",
-        },
-        { status },
-      );
-    }
-
-    const stem = built.stem.replace(/[^a-zA-Z0-9._-]+/g, "_") || "pack";
-    return new NextResponse(built.zipStream, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="${stem}-diff.zip"`,
-        "X-Diff-Count": String(built.toDownload.length),
-        "X-Delete-Count": String(built.toDelete.length),
-        "X-Pack-Stem": built.stem,
-        "Cache-Control": "no-store",
-      },
+      });
     });
   } catch (err) {
     console.error("[cep/market/diff]", err);

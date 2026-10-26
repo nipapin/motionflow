@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withGenerationActivity } from "@/lib/user-activity";
 import Replicate from "replicate";
 import {
   bearerFromRequest,
@@ -147,111 +148,113 @@ export async function POST(req: NextRequest) {
     });
     if (!access.ok) return access.response;
     const user = access.user;
-    if (!isBillableCepUser(user)) return billableAccountRequiredResponse();
+    return await withGenerationActivity(user, "sections", async () => {
+      if (!isBillableCepUser(user)) return billableAccountRequiredResponse();
 
-    if (!process.env.REPLICATE_API_TOKEN) {
-      console.error("[sections generation] REPLICATE_API_TOKEN is not configured");
-      return NextResponse.json(
-        { error: "Auto Sections isn't available right now. Please try again later." },
-        { status: 503 },
-      );
-    }
+      if (!process.env.REPLICATE_API_TOKEN) {
+        console.error("[sections generation] REPLICATE_API_TOKEN is not configured");
+        return NextResponse.json(
+          { error: "Auto Sections isn't available right now. Please try again later." },
+          { status: 503 },
+        );
+      }
 
-    const rawChunks =
-      body && Array.isArray((body as { chunks?: unknown }).chunks)
-        ? (body as { chunks: unknown[] }).chunks
-        : null;
+      const rawChunks =
+        body && Array.isArray((body as { chunks?: unknown }).chunks)
+          ? (body as { chunks: unknown[] }).chunks
+          : null;
 
-    if (!rawChunks) {
-      return NextResponse.json(
-        { error: 'Expected a JSON body with a "chunks" array.' },
-        { status: 400 },
-      );
-    }
+      if (!rawChunks) {
+        return NextResponse.json(
+          { error: 'Expected a JSON body with a "chunks" array.' },
+          { status: 400 },
+        );
+      }
 
-    const chunks = rawChunks.filter(isInputChunk);
-    if (!chunks.length) {
-      return NextResponse.json(
-        { error: "No valid transcript chunks were provided." },
-        { status: 400 },
-      );
-    }
-    if (chunks.length > MAX_CHUNKS) {
-      return NextResponse.json(
-        {
-          error: `Transcript is too long for Auto Sections (max ${MAX_CHUNKS} sentences).`,
-        },
-        { status: 400 },
-      );
-    }
+      const chunks = rawChunks.filter(isInputChunk);
+      if (!chunks.length) {
+        return NextResponse.json(
+          { error: "No valid transcript chunks were provided." },
+          { status: 400 },
+        );
+      }
+      if (chunks.length > MAX_CHUNKS) {
+        return NextResponse.json(
+          {
+            error: `Transcript is too long for Auto Sections (max ${MAX_CHUNKS} sentences).`,
+          },
+          { status: 400 },
+        );
+      }
 
-    const prompt = buildPrompt(chunks);
-    if (prompt.length > MAX_TRANSCRIPT_CHARS) {
-      return NextResponse.json(
-        { error: "Transcript is too long for Auto Sections." },
-        { status: 400 },
-      );
-    }
+      const prompt = buildPrompt(chunks);
+      if (prompt.length > MAX_TRANSCRIPT_CHARS) {
+        return NextResponse.json(
+          { error: "Transcript is too long for Auto Sections." },
+          { status: 400 },
+        );
+      }
 
-    const preStatus = await generationsStatusForResolvedUser(user);
-    if (preStatus.total_generations_left <= 0) {
-      return NextResponse.json(
-        {
-          code: GENERATION_LIMIT_REACHED_CODE,
-          error: "GENERATION_LIMIT_REACHED",
-          ...preStatus,
-        },
-        { status: 402 },
-      );
-    }
+      const preStatus = await generationsStatusForResolvedUser(user);
+      if (preStatus.total_generations_left <= 0) {
+        return NextResponse.json(
+          {
+            code: GENERATION_LIMIT_REACHED_CODE,
+            error: "GENERATION_LIMIT_REACHED",
+            ...preStatus,
+          },
+          { status: 402 },
+        );
+      }
 
-    let output: unknown;
-    try {
-      output = await replicate.run(SECTIONS_MODEL, {
-        input: {
-          prompt,
-          system_prompt: SYSTEM_PROMPT,
-          max_tokens: 2048,
-        },
-      });
-    } catch (err) {
-      console.error("[sections generation] replicate error:", err);
-      const { status, message } = mapReplicateError(err);
-      return NextResponse.json({ error: message }, { status });
-    }
+      let output: unknown;
+      try {
+        output = await replicate.run(SECTIONS_MODEL, {
+          input: {
+            prompt,
+            system_prompt: SYSTEM_PROMPT,
+            max_tokens: 2048,
+          },
+        });
+      } catch (err) {
+        console.error("[sections generation] replicate error:", err);
+        const { status, message } = mapReplicateError(err);
+        return NextResponse.json({ error: message }, { status });
+      }
 
-    const text = Array.isArray(output) ? output.join("") : String(output ?? "");
+      const text = Array.isArray(output) ? output.join("") : String(output ?? "");
 
-    let sections: Section[];
-    try {
-      sections = toSections(extractJsonArray(text), chunks);
-    } catch (parseErr) {
-      console.error(
-        "[sections generation] failed to parse model output:",
-        parseErr,
-        text,
-      );
-      return NextResponse.json({ error: GENERIC_ERROR }, { status: 502 });
-    }
+      let sections: Section[];
+      try {
+        sections = toSections(extractJsonArray(text), chunks);
+      } catch (parseErr) {
+        console.error(
+          "[sections generation] failed to parse model output:",
+          parseErr,
+          text,
+        );
+        return NextResponse.json({ error: GENERIC_ERROR }, { status: 502 });
+      }
 
-    if (!sections.length) {
-      console.error("[sections generation] empty sections output");
-      return NextResponse.json({ error: GENERIC_ERROR }, { status: 502 });
-    }
+      if (!sections.length) {
+        console.error("[sections generation] empty sections output");
+        return NextResponse.json({ error: GENERIC_ERROR }, { status: 502 });
+      }
 
-    const consumed = await consumeGenerationForResolvedUser(user, "sections");
-    if (!consumed.ok) {
-      return NextResponse.json(
-        {
-          code: GENERATION_LIMIT_REACHED_CODE,
-          error: "GENERATION_LIMIT_REACHED",
-          ...consumed.status,
-        },
-        { status: 402 },
-      );
-    }
+      const consumed = await consumeGenerationForResolvedUser(user, "sections");
+      if (!consumed.ok) {
+        return NextResponse.json(
+          {
+            code: GENERATION_LIMIT_REACHED_CODE,
+            error: "GENERATION_LIMIT_REACHED",
+            ...consumed.status,
+          },
+          { status: 402 },
+        );
+      }
 
-    return NextResponse.json({ sections, generations: consumed.status });
+      return NextResponse.json({ sections, generations: consumed.status });
+    });
   } catch (error) {
     console.error("[sections generation] unexpected error:", error);
     return NextResponse.json({ error: GENERIC_ERROR }, { status: 500 });

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withGenerationActivity } from "@/lib/user-activity";
 import Replicate from "replicate";
 import { LANGUAGE_NAMES } from "@/lib/generation-languages";
 import {
@@ -474,240 +475,242 @@ export async function POST(req: NextRequest) {
         });
         if (!access.ok) return access.response;
         const user = access.user;
-        if (!isMeteredCaptionsUser(user)) return billableAccountRequiredResponse();
+        return await withGenerationActivity(user, "chapters", async () => {
+          if (!isMeteredCaptionsUser(user)) return billableAccountRequiredResponse();
 
-        if (!process.env.REPLICATE_API_TOKEN) {
-            console.error("[chapters generation] REPLICATE_API_TOKEN is not configured");
-            return NextResponse.json(
-                { error: "Chapters generation isn't available right now. Please try again later." },
-                { status: 503 },
-            );
-        }
+          if (!process.env.REPLICATE_API_TOKEN) {
+              console.error("[chapters generation] REPLICATE_API_TOKEN is not configured");
+              return NextResponse.json(
+                  { error: "Chapters generation isn't available right now. Please try again later." },
+                  { status: 503 },
+              );
+          }
 
-        const rawChunks =
-            body && Array.isArray((body as { chunks?: unknown }).chunks)
-                ? (body as { chunks: unknown[] }).chunks
-                : null;
+          const rawChunks =
+              body && Array.isArray((body as { chunks?: unknown }).chunks)
+                  ? (body as { chunks: unknown[] }).chunks
+                  : null;
 
-        if (!rawChunks) {
-            return NextResponse.json(
-                { error: 'Expected a JSON body with a "chunks" array.' },
-                { status: 400 },
-            );
-        }
+          if (!rawChunks) {
+              return NextResponse.json(
+                  { error: 'Expected a JSON body with a "chunks" array.' },
+                  { status: 400 },
+              );
+          }
 
-        const rawTarget = (body as { target?: unknown } | null)?.target;
-        if (rawTarget !== undefined && !isTarget(rawTarget)) {
-            return NextResponse.json(
-                { error: `Invalid "target". Expected one of: ${TARGETS.join(", ")}.` },
-                { status: 400 },
-            );
-        }
-        const target: Target = isTarget(rawTarget) ? rawTarget : "all";
+          const rawTarget = (body as { target?: unknown } | null)?.target;
+          if (rawTarget !== undefined && !isTarget(rawTarget)) {
+              return NextResponse.json(
+                  { error: `Invalid "target". Expected one of: ${TARGETS.join(", ")}.` },
+                  { status: 400 },
+              );
+          }
+          const target: Target = isTarget(rawTarget) ? rawTarget : "all";
 
-        const rawLanguage = (body as { language?: unknown } | null)?.language;
-        if (rawLanguage !== undefined && (typeof rawLanguage !== "string" || !LANGUAGE_NAMES[rawLanguage])) {
-            return NextResponse.json(
-                { error: `Invalid "language". Expected one of: ${Object.keys(LANGUAGE_NAMES).join(", ")}.` },
-                { status: 400 },
-            );
-        }
-        const languageName = typeof rawLanguage === "string" ? LANGUAGE_NAMES[rawLanguage] : undefined;
+          const rawLanguage = (body as { language?: unknown } | null)?.language;
+          if (rawLanguage !== undefined && (typeof rawLanguage !== "string" || !LANGUAGE_NAMES[rawLanguage])) {
+              return NextResponse.json(
+                  { error: `Invalid "language". Expected one of: ${Object.keys(LANGUAGE_NAMES).join(", ")}.` },
+                  { status: 400 },
+              );
+          }
+          const languageName = typeof rawLanguage === "string" ? LANGUAGE_NAMES[rawLanguage] : undefined;
 
-        const rawStyle = (body as { style?: unknown } | null)?.style;
-        if (rawStyle !== undefined && !isChapterStyle(rawStyle)) {
-            return NextResponse.json(
-                { error: `Invalid "style". Expected one of: ${CHAPTER_STYLES.join(", ")}.` },
-                { status: 400 },
-            );
-        }
-        const style: ChapterStyle = isChapterStyle(rawStyle) ? rawStyle : "viral";
+          const rawStyle = (body as { style?: unknown } | null)?.style;
+          if (rawStyle !== undefined && !isChapterStyle(rawStyle)) {
+              return NextResponse.json(
+                  { error: `Invalid "style". Expected one of: ${CHAPTER_STYLES.join(", ")}.` },
+                  { status: 400 },
+              );
+          }
+          const style: ChapterStyle = isChapterStyle(rawStyle) ? rawStyle : "viral";
 
-        const chunks = rawChunks.filter(isInputChunk);
-        if (!chunks.length) {
-            return NextResponse.json(
-                { error: "No valid transcript chunks were provided." },
-                { status: 400 },
-            );
-        }
-        if (chunks.length > MAX_CHUNKS) {
-            return NextResponse.json(
-                { error: `Transcript is too long for chapter generation (max ${MAX_CHUNKS} sentences).` },
-                { status: 400 },
-            );
-        }
+          const chunks = rawChunks.filter(isInputChunk);
+          if (!chunks.length) {
+              return NextResponse.json(
+                  { error: "No valid transcript chunks were provided." },
+                  { status: 400 },
+              );
+          }
+          if (chunks.length > MAX_CHUNKS) {
+              return NextResponse.json(
+                  { error: `Transcript is too long for chapter generation (max ${MAX_CHUNKS} sentences).` },
+                  { status: 400 },
+              );
+          }
 
-        const prompt = buildPrompt(chunks);
-        if (prompt.length > MAX_TRANSCRIPT_CHARS) {
-            return NextResponse.json(
-                { error: "Transcript is too long for chapter generation." },
-                { status: 400 },
-            );
-        }
+          const prompt = buildPrompt(chunks);
+          if (prompt.length > MAX_TRANSCRIPT_CHARS) {
+              return NextResponse.json(
+                  { error: "Transcript is too long for chapter generation." },
+                  { status: 400 },
+              );
+          }
 
-        // Captions+Chapters one-shot: free only with a signed server receipt
-        // from /api/generations/captions (client flag is ignored).
-        // Standalone "all" → ceil(min/10). Section regenerate → 1.
-        const receiptToken = (body as { chaptersReceipt?: unknown } | null)
-            ?.chaptersReceipt;
-        const receiptOk =
-            isMeteredCaptionsUser(user) &&
-            verifyCaptionsChaptersReceipt(receiptToken, user.id).ok;
-        const clientDuration = parseDurationSeconds(
-            (body as { durationSeconds?: unknown } | null)?.durationSeconds,
-        );
-        const chunkDuration = durationFromTimestampChunks(chunks);
-        const meterSeconds = resolveMeterDuration({
-            clientSeconds: clientDuration,
-            fromTimestamps: chunkDuration,
-        });
+          // Captions+Chapters one-shot: free only with a signed server receipt
+          // from /api/generations/captions (client flag is ignored).
+          // Standalone "all" → ceil(min/10). Section regenerate → 1.
+          const receiptToken = (body as { chaptersReceipt?: unknown } | null)
+              ?.chaptersReceipt;
+          const receiptOk =
+              isMeteredCaptionsUser(user) &&
+              verifyCaptionsChaptersReceipt(receiptToken, user.id).ok;
+          const clientDuration = parseDurationSeconds(
+              (body as { durationSeconds?: unknown } | null)?.durationSeconds,
+          );
+          const chunkDuration = durationFromTimestampChunks(chunks);
+          const meterSeconds = resolveMeterDuration({
+              clientSeconds: clientDuration,
+              fromTimestamps: chunkDuration,
+          });
 
-        let cost: number;
-        if (receiptOk && target === "all") {
-            cost = 0;
-        } else if (target === "all") {
-            cost = durationGenerationsCost(meterSeconds);
-        } else {
-            cost = 1;
-        }
+          let cost: number;
+          if (receiptOk && target === "all") {
+              cost = 0;
+          } else if (target === "all") {
+              cost = durationGenerationsCost(meterSeconds);
+          } else {
+              cost = 1;
+          }
 
-        const preStatus = await generationsStatusForResolvedUser(user);
-        if (cost > 0 && preStatus.total_generations_left < cost) {
-            return NextResponse.json(
-                {
-                    code: GENERATION_LIMIT_REACHED_CODE,
-                    error: "GENERATION_LIMIT_REACHED",
-                    ...preStatus,
-                    cost,
-                },
-                { status: 402 },
-            );
-        }
+          const preStatus = await generationsStatusForResolvedUser(user);
+          if (cost > 0 && preStatus.total_generations_left < cost) {
+              return NextResponse.json(
+                  {
+                      code: GENERATION_LIMIT_REACHED_CODE,
+                      error: "GENERATION_LIMIT_REACHED",
+                      ...preStatus,
+                      cost,
+                  },
+                  { status: 402 },
+              );
+          }
 
-        const wantTitles = target === "all" || target === "titles";
-        const wantChapters = target === "all" || target === "chapters";
-        const wantDescription = target === "all" || target === "description";
-        const wantTags = target === "all" || target === "tags";
-        // Claude on Replicate requires max_tokens >= 1024 (422 otherwise).
-        const maxTokens = target === "all" || target === "chapters" ? 3072 : 1024;
+          const wantTitles = target === "all" || target === "titles";
+          const wantChapters = target === "all" || target === "chapters";
+          const wantDescription = target === "all" || target === "description";
+          const wantTags = target === "all" || target === "tags";
+          // Claude on Replicate requires max_tokens >= 1024 (422 otherwise).
+          const maxTokens = target === "all" || target === "chapters" ? 3072 : 1024;
 
-        const runOnce = async (): Promise<ChaptersResponse> => {
-            let output: unknown;
-            try {
-                output = await replicate.run(CHAPTERS_MODEL, {
-                    input: {
-                        prompt,
-                        system_prompt: systemPromptFor(target, languageName, style),
-                        max_tokens: maxTokens,
-                    },
-                });
-            } catch (err) {
-                console.error("[chapters generation] replicate error:", err);
-                const mapped = mapReplicateError(err);
-                const e = new Error(mapped.message) as Error & {
-                    status?: number;
-                    code?: string;
-                };
-                e.status = mapped.status;
-                e.code = "CHAPTERS_REPLICATE_FAILED";
-                throw e;
-            }
+          const runOnce = async (): Promise<ChaptersResponse> => {
+              let output: unknown;
+              try {
+                  output = await replicate.run(CHAPTERS_MODEL, {
+                      input: {
+                          prompt,
+                          system_prompt: systemPromptFor(target, languageName, style),
+                          max_tokens: maxTokens,
+                      },
+                  });
+              } catch (err) {
+                  console.error("[chapters generation] replicate error:", err);
+                  const mapped = mapReplicateError(err);
+                  const e = new Error(mapped.message) as Error & {
+                      status?: number;
+                      code?: string;
+                  };
+                  e.status = mapped.status;
+                  e.code = "CHAPTERS_REPLICATE_FAILED";
+                  throw e;
+              }
 
-            const text = Array.isArray(output) ? output.join("") : String(output ?? "");
-            try {
-                const parsed = extractJsonObject(text) as Record<string, unknown>;
-                const result: ChaptersResponse = {};
-                if (wantTitles) {
-                    result.titles = toTitles(parsed.titles);
-                    if (!result.titles.length) {
-                        throw new Error("empty titles output");
-                    }
-                }
-                if (wantChapters) {
-                    const sections = toSections(parsed.sections, chunks);
-                    if (!sections.length) throw new Error("empty sections output");
-                    result.sections = sections;
-                }
-                if (wantDescription) result.description = toDescription(parsed.description);
-                if (wantTags) result.tags = toTags(parsed.tags);
-                return result;
-            } catch (parseErr) {
-                console.error(
-                    "[chapters generation] failed to parse model output:",
-                    parseErr,
-                    text.slice(0, 2000),
-                );
-                const e = new Error(
-                    parseErr instanceof Error ? parseErr.message : "parse failed",
-                ) as Error & { status?: number; code?: string };
-                e.status = 502;
-                e.code = "CHAPTERS_PARSE_FAILED";
-                throw e;
-            }
-        };
+              const text = Array.isArray(output) ? output.join("") : String(output ?? "");
+              try {
+                  const parsed = extractJsonObject(text) as Record<string, unknown>;
+                  const result: ChaptersResponse = {};
+                  if (wantTitles) {
+                      result.titles = toTitles(parsed.titles);
+                      if (!result.titles.length) {
+                          throw new Error("empty titles output");
+                      }
+                  }
+                  if (wantChapters) {
+                      const sections = toSections(parsed.sections, chunks);
+                      if (!sections.length) throw new Error("empty sections output");
+                      result.sections = sections;
+                  }
+                  if (wantDescription) result.description = toDescription(parsed.description);
+                  if (wantTags) result.tags = toTags(parsed.tags);
+                  return result;
+              } catch (parseErr) {
+                  console.error(
+                      "[chapters generation] failed to parse model output:",
+                      parseErr,
+                      text.slice(0, 2000),
+                  );
+                  const e = new Error(
+                      parseErr instanceof Error ? parseErr.message : "parse failed",
+                  ) as Error & { status?: number; code?: string };
+                  e.status = 502;
+                  e.code = "CHAPTERS_PARSE_FAILED";
+                  throw e;
+              }
+          };
 
-        // One retry — Haiku occasionally returns empty / non-JSON for titles-only.
-        let result: ChaptersResponse | null = null;
-        let lastErr: (Error & { status?: number; code?: string }) | null = null;
-        for (let attempt = 0; attempt < 2; attempt++) {
-            try {
-                result = await runOnce();
-                break;
-            } catch (err) {
-                lastErr = err as Error & { status?: number; code?: string };
-                if (lastErr.code === "CHAPTERS_REPLICATE_FAILED") break;
-                console.warn(
-                    `[chapters generation] attempt ${attempt + 1} failed:`,
-                    lastErr.message,
-                );
-            }
-        }
+          // One retry — Haiku occasionally returns empty / non-JSON for titles-only.
+          let result: ChaptersResponse | null = null;
+          let lastErr: (Error & { status?: number; code?: string }) | null = null;
+          for (let attempt = 0; attempt < 2; attempt++) {
+              try {
+                  result = await runOnce();
+                  break;
+              } catch (err) {
+                  lastErr = err as Error & { status?: number; code?: string };
+                  if (lastErr.code === "CHAPTERS_REPLICATE_FAILED") break;
+                  console.warn(
+                      `[chapters generation] attempt ${attempt + 1} failed:`,
+                      lastErr.message,
+                  );
+              }
+          }
 
-        if (!result) {
-            const status = lastErr?.status ?? 502;
-            const message =
-                lastErr?.code === "CHAPTERS_REPLICATE_FAILED"
-                    ? lastErr.message
-                    : GENERIC_ERROR;
-            return NextResponse.json(
-                {
-                    error: message,
-                    code: lastErr?.code ?? "CHAPTERS_FAILED",
-                },
-                { status },
-            );
-        }
+          if (!result) {
+              const status = lastErr?.status ?? 502;
+              const message =
+                  lastErr?.code === "CHAPTERS_REPLICATE_FAILED"
+                      ? lastErr.message
+                      : GENERIC_ERROR;
+              return NextResponse.json(
+                  {
+                      error: message,
+                      code: lastErr?.code ?? "CHAPTERS_FAILED",
+                  },
+                  { status },
+              );
+          }
 
-        let consumed;
-        try {
-            consumed = await consumeGenerationForResolvedUser(user, "chapters", cost);
-        } catch (consumeErr) {
-            console.error("[chapters generation] consume failed:", consumeErr);
-            return NextResponse.json(
-                {
-                    error: GENERIC_ERROR,
-                    code: "CHAPTERS_CONSUME_FAILED",
-                },
-                { status: 500 },
-            );
-        }
-        if (!consumed.ok) {
-            return NextResponse.json(
-                {
-                    code: GENERATION_LIMIT_REACHED_CODE,
-                    error: "GENERATION_LIMIT_REACHED",
-                    ...consumed.status,
-                    cost,
-                },
-                { status: 402 },
-            );
-        }
+          let consumed;
+          try {
+              consumed = await consumeGenerationForResolvedUser(user, "chapters", cost);
+          } catch (consumeErr) {
+              console.error("[chapters generation] consume failed:", consumeErr);
+              return NextResponse.json(
+                  {
+                      error: GENERIC_ERROR,
+                      code: "CHAPTERS_CONSUME_FAILED",
+                  },
+                  { status: 500 },
+              );
+          }
+          if (!consumed.ok) {
+              return NextResponse.json(
+                  {
+                      code: GENERATION_LIMIT_REACHED_CODE,
+                      error: "GENERATION_LIMIT_REACHED",
+                      ...consumed.status,
+                      cost,
+                  },
+                  { status: 402 },
+              );
+          }
 
-        return NextResponse.json({
-            ...result,
-            generations: consumed.status,
-            cost,
-            durationSeconds: meterSeconds || undefined,
+          return NextResponse.json({
+              ...result,
+              generations: consumed.status,
+              cost,
+              durationSeconds: meterSeconds || undefined,
+          });
         });
     } catch (error) {
         console.error("[chapters generation] unexpected error:", error);

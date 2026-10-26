@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { guardStockRequest } from "@/lib/cep-stock-guard";
+import { withDownloadActivity } from "@/lib/user-activity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -177,29 +178,37 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unsupported provider." }, { status: 400 });
     }
 
-    const sourceUrl =
-      provider === "unsplash"
-        ? await resolveUnsplashDownloadUrl(id)
-        : await resolvePexelsVideoUrl(id);
+    return await withDownloadActivity({
+      userId: gate.caller.id, action: "stock_download", resourceType: "stock_asset",
+      resourceId: `${provider}:${id}`, resourceName: `${provider} ${kind} ${id}`,
+      source: gate.caller.source === "cep-bearer" ? "extension" : "web", deviceId: gate.caller.deviceId,
+      details: { provider, mediaKind: kind },
+    }, async (activity) => {
+      const sourceUrl =
+        provider === "unsplash"
+          ? await resolveUnsplashDownloadUrl(id)
+          : await resolvePexelsVideoUrl(id);
 
-    const upstream = await fetch(sourceUrl, { cache: "no-store" });
-    if (!upstream.ok || !upstream.body) {
-      const text = await upstream.text();
-      console.error("[stock-download] source fetch failed", upstream.status, text);
-      return NextResponse.json({ error: "Failed to fetch source file." }, { status: 502 });
-    }
+      const upstream = await fetch(sourceUrl, { cache: "no-store" });
+      if (!upstream.ok || !upstream.body) {
+        const text = await upstream.text();
+        console.error("[stock-download] source fetch failed", upstream.status, text);
+        return NextResponse.json({ error: "Failed to fetch source file." }, { status: 502 });
+      }
 
-    const contentType = upstream.headers.get("content-type");
-    const ext = inferExtFromUrl(sourceUrl) ?? inferExtFromType(contentType);
-    const filename = `motionflow-${provider}-${id}.${ext}`;
-    const headers = new Headers();
-    headers.set("Content-Type", contentType ?? "application/octet-stream");
-    headers.set("Content-Disposition", `attachment; filename="${filename}"`);
-    headers.set("Cache-Control", "no-store");
+      const contentType = upstream.headers.get("content-type");
+      const ext = inferExtFromUrl(sourceUrl) ?? inferExtFromType(contentType);
+      const filename = `motionflow-${provider}-${id}.${ext}`;
+      const headers = new Headers();
+      headers.set("Content-Type", contentType ?? "application/octet-stream");
+      headers.set("Content-Disposition", `attachment; filename="${filename}"`);
+      headers.set("Cache-Control", "no-store");
 
-    return new NextResponse(upstream.body, {
-      status: 200,
-      headers,
+      activity.issued("stream");
+      return new NextResponse(upstream.body, {
+        status: 200,
+        headers,
+      });
     });
   } catch (err) {
     console.error("[stock-download] request failed", err);

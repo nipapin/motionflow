@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Replicate, { type FileOutput } from "replicate";
-import { resolveRequestUser } from "@/lib/auth/resolve-request-user";
+import { resolveRequestUser, requestHasCepBearer } from "@/lib/auth/resolve-request-user";
 import {
     consumeGeneration,
     getGenerationsStatus,
@@ -316,8 +316,8 @@ export async function POST(req: NextRequest) {
         } catch (err) {
             console.error("[tts generation] replicate error:", err);
             const { status, message } = mapReplicateError(err);
-            void insertGenerationRecord({
-                userId: user.id,
+            await insertGenerationRecord({
+                userId: user.id, source: requestHasCepBearer(req) ? "extension" : "web",
                 tool: "tts",
                 status: "failed",
                 settings,
@@ -329,8 +329,8 @@ export async function POST(req: NextRequest) {
         const audioUrl = extractAudioUrl(output);
         if (!audioUrl) {
             console.error("[tts generation] empty replicate output");
-            void insertGenerationRecord({
-                userId: user.id,
+            await insertGenerationRecord({
+                userId: user.id, source: requestHasCepBearer(req) ? "extension" : "web",
                 tool: "tts",
                 status: "failed",
                 settings,
@@ -353,8 +353,8 @@ export async function POST(req: NextRequest) {
                 mirrorErr instanceof Error
                     ? mirrorErr.message
                     : "Could not save the generated audio. Please try again.";
-            void insertGenerationRecord({
-                userId: user.id,
+            await insertGenerationRecord({
+                userId: user.id, source: requestHasCepBearer(req) ? "extension" : "web",
                 tool: "tts",
                 status: "failed",
                 settings,
@@ -375,7 +375,7 @@ export async function POST(req: NextRequest) {
         }
 
         const recordId = await insertGenerationRecord({
-            userId: user.id,
+            userId: user.id, source: requestHasCepBearer(req) ? "extension" : "web",
             tool: "tts",
             status: "ok",
             settings,

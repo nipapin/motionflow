@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveRequestUser } from "@/lib/auth/resolve-request-user";
+import { resolveRequestUser, requestHasCepBearer } from "@/lib/auth/resolve-request-user";
+import { withDownloadActivity } from "@/lib/user-activity";
 import {
   isAllowedGenerationAssetUrl,
   safeAttachmentFilename,
@@ -37,37 +38,43 @@ export async function GET(req: NextRequest) {
   );
 
   try {
-    const upstream = await fetch(rawUrl, { redirect: "follow" });
-    if (!upstream.ok) {
-      const text = await upstream.text().catch(() => "");
-      console.error(
-        "[download-generation-asset] upstream",
-        upstream.status,
-        text.slice(0, 120),
-      );
-      return NextResponse.json(
-        { error: `upstream ${upstream.status}` },
-        {
-          status:
-            upstream.status >= 400 && upstream.status < 600
-              ? upstream.status
-              : 502,
-        },
-      );
-    }
+    return await withDownloadActivity({
+      userId: user.id, action: "generation_asset_download", resourceType: "generated_asset",
+      resourceName: attachmentName, source: requestHasCepBearer(req) ? "extension" : "web",
+    }, async (activity) => {
+      const upstream = await fetch(rawUrl, { redirect: "follow" });
+      if (!upstream.ok) {
+        const text = await upstream.text().catch(() => "");
+        console.error(
+          "[download-generation-asset] upstream",
+          upstream.status,
+          text.slice(0, 120),
+        );
+        return NextResponse.json(
+          { error: `upstream ${upstream.status}` },
+          {
+            status:
+              upstream.status >= 400 && upstream.status < 600
+                ? upstream.status
+                : 502,
+          },
+        );
+      }
 
-    const contentType =
-      upstream.headers.get("content-type") ?? "application/octet-stream";
-    const contentLength = upstream.headers.get("content-length");
+      const contentType =
+        upstream.headers.get("content-type") ?? "application/octet-stream";
+      const contentLength = upstream.headers.get("content-length");
 
-    const headers: Record<string, string> = {
-      "Content-Type": contentType,
-      "Content-Disposition": `attachment; filename="${attachmentName}"`,
-      "Cache-Control": "private, no-store",
-    };
-    if (contentLength) headers["Content-Length"] = contentLength;
+      const headers: Record<string, string> = {
+        "Content-Type": contentType,
+        "Content-Disposition": `attachment; filename="${attachmentName}"`,
+        "Cache-Control": "private, no-store",
+      };
+      if (contentLength) headers["Content-Length"] = contentLength;
 
-    return new NextResponse(upstream.body, { status: 200, headers });
+      activity.issued("stream");
+      return new NextResponse(upstream.body, { status: 200, headers });
+    });
   } catch (e) {
     console.error("[download-generation-asset]", e);
     return NextResponse.json({ error: "fetch failed" }, { status: 502 });
