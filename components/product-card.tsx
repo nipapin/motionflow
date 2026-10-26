@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { trackMarketItem } from "@/lib/market-telemetry-client";
 import Image from "next/image";
 import { Heart, Download, Volume2, VolumeOff } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
@@ -138,7 +139,7 @@ export function ProductCard({ product, onDownload, onClick }: ProductCardProps) 
       className="group relative rounded-2xl overflow-hidden cursor-pointer bg-card border border-blue-500/30 hover:border-2 hover:border-blue-500 smooth hover-lift glow visibility-auto"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      onClick={onClick}
+      onClick={() => { trackMarketItem("select", product.id); onClick?.(); }}
     >
       <div className="relative aspect-video bg-muted overflow-hidden">
         {thumbnail ? (

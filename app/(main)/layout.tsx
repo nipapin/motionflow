@@ -1,4 +1,8 @@
 import React from "react";
+import { Suspense } from "react";
+import { MarketTelemetry } from "@/components/market-telemetry";
+import { isAffiliateAdmin } from "@/lib/affiliate/admin";
+import { analyticsLayoutVersion } from "@/lib/analytics-layout-version";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
@@ -66,6 +70,9 @@ export default async function RootLayout({
 }>) {
   const sessionUser = await getSessionUser();
   const initialUser = sessionUser ?? null;
+  const heatRate = process.env.MOTIONFLOW_HEATMAP === "0" ? 0 : Math.min(1, Math.max(0,
+    Number(process.env.MOTIONFLOW_HEATMAP_SAMPLE_RATE ?? "0.2") || 0));
+  const analyticsLayout = analyticsLayoutVersion();
   return (
     <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable}`}>
       <body className="font-sans antialiased">
@@ -86,6 +93,9 @@ export default async function RootLayout({
           </VideoMuteProvider>
           <Toaster />
           <AffiliateRefTracker />
+          <Suspense fallback={null}>
+            <MarketTelemetry enabled={process.env.MOTIONFLOW_MARKET_ANALYTICS !== "0" && !isAffiliateAdmin(initialUser)} heatRate={heatRate} layout={analyticsLayout} />
+          </Suspense>
         </ThemeProvider>
         <Analytics />
       </body>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { trackMarketItem } from "@/lib/market-telemetry-client";
 import Image from "next/image";
 
 import { X, Heart, Play, Download, Monitor, FolderOpen, CalendarDays, FileAudio } from "lucide-react";
@@ -42,6 +43,8 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
   const mp4Url = kind === "template" ? productCardVideoSrc(product) : undefined;
   const youtubeUrl = productPreviewVideoUrl(product);
   const hasVideo = !!(mp4Url || youtubeUrl);
+
+  useEffect(() => { if (open) trackMarketItem("view", product.id); }, [open, product.id]);
 
   useEffect(() => {
     if (open && mp4Url) {
@@ -200,6 +203,7 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
   return (
     <>
       <div
+        data-heatmap-ignore
         ref={scrollRef}
         className="fixed inset-0 z-100 bg-black/90 backdrop-blur-sm overflow-y-auto"
         onClick={() => onOpenChange(false)}

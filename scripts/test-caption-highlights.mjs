@@ -72,6 +72,7 @@ test("oversized or invalid input is rejected before model work", () => {
 function route({ left = 3, authenticated = true, valid = true, consumeOk = true, timed = false, modelOutput } = {}) {
   let models = 0, charges = [];
   const mod = load("../app/(main)/api/generations/caption-highlights/route.ts", {
+    "@/lib/user-activity": { withGenerationActivity: async (_user, _tool, operation) => operation() },
     "next/server": { NextResponse: { json: (body, options) => ({ body, status: options?.status ?? 200 }) } },
     replicate: { default: class { async run(_model, { input }) {
       models++; if (!valid) return 'bad';

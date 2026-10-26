@@ -75,11 +75,13 @@ type Payload = {
 
 export function AdminUserDrawer({
   userId,
+  initialTab = "profile",
   onOpenChange,
   onUserUpdated,
   onUserDeleted,
 }: {
   userId: number | null;
+  initialTab?: DrawerTab;
   onOpenChange: (open: boolean) => void;
   onUserUpdated: (user: AdminUserDetail) => void;
   onUserDeleted: (id: number) => void;
@@ -140,11 +142,11 @@ export function AdminUserDrawer({
       setTab("profile");
       return;
     }
-    setTab("profile");
+    setTab(initialTab);
     const ac = new AbortController();
     void load(userId, ac.signal);
     return () => ac.abort();
-  }, [userId, load]);
+  }, [userId, load, initialTab]);
 
   const user = payload?.user ?? null;
   const canSave = profileDirty || entitlementsPending;

@@ -1,5 +1,5 @@
 import {
-  Bookmark, CreditCard, Download, FileText, Handshake, Mail,
+  BarChart3, Bookmark, CreditCard, Download, FileText, Handshake, Mail,
   Settings2, Share2, ShoppingBag, Sparkles, User, UserRound, Users, Wrench,
   type LucideIcon,
 } from "lucide-react";
@@ -28,6 +28,7 @@ export function managementNavigationItems({ showPartners, showUsers }: { showPar
   return [
     ...(showPartners ? [{ href: "/profile/partners", label: "Partners", description: "Manage affiliate partners, referrals and commissions.", icon: Handshake }] : []),
     ...(showUsers ? [
+      { href: "/profile/analytics", label: "Market analytics", description: "See demand, downloads, purchases, tool usage and page heatmaps across your marketplace.", icon: BarChart3 },
       { href: "/profile/users", label: "Users", description: "Find accounts and manage roles, purchases and access.", icon: UserRound },
       { href: "/profile/campaigns", label: "Campaigns", description: "Create and manage campaigns for your user audiences.", icon: Mail },
     ] : []),
@@ -54,7 +55,7 @@ export function isProfileNavigationActive(pathname: string, href: string): boole
 
 export function profileNavigationGroupForPath(pathname: string): ProfileNavigationGroup | null {
   if (["/profile/packages", "/profile/extensions"].some((href) => isProfileNavigationActive(pathname, href))) return "authors";
-  if (["/profile/management", "/profile/partners", "/profile/users", "/profile/campaigns"].some((href) => isProfileNavigationActive(pathname, href))) return "management";
+  if (["/profile/management", "/profile/partners", "/profile/users", "/profile/campaigns", "/profile/analytics"].some((href) => isProfileNavigationActive(pathname, href))) return "management";
   if (["/profile/tools", "/profile/pdf-link"].some((href) => isProfileNavigationActive(pathname, href))) return "tools";
   if (pathname === "/profile/account" || [...ACCOUNT_NAVIGATION, AFFILIATE_NAVIGATION].some(({ href }) => isProfileNavigationActive(pathname, href))) return "account";
   return null;

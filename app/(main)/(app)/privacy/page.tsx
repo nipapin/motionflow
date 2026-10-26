@@ -13,7 +13,7 @@ const sections = [
     content: `When you create an account, purchase a subscription, or use our services, we may collect the following information:
 
 • **Personal Information:** name, email address, billing address, and payment details — processed securely via Paddle, our authorized merchant of record. Motion Flow never stores your full card number.
-• **Usage Data:** pages visited, features used, downloads, search queries, and interaction patterns — measured via Google Analytics to help us understand what's working and what to improve.
+• **Usage Data:** pages visited, selected materials, favorites, downloads, purchases and features used. Our first-party analytics also measures aggregated clicks, sampled cursor movement and dwell, and scroll depth on public pages. Heatmaps do not record typed text, form contents or individual cursor trajectories, and exclude account and payment pages. These measurements help us understand what's working and what to improve.
 • **Device Information:** browser type, operating system, IP address, and device identifiers.
 • **Cookies & Tracking:** we use cookies and similar technologies to personalize your experience and analyze traffic. You can manage or withdraw cookie consent at any time through your browser settings.`,
   },

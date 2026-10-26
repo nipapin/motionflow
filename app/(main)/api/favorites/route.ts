@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveRequestUser } from "@/lib/auth/resolve-request-user";
+import { requestHasCepBearer } from "@/lib/auth/resolve-request-user";
+import { randomUUID } from "node:crypto";
+import { getPool } from "@/lib/db";
+import { ensureMarketAnalyticsSchema } from "@/lib/market-analytics-schema";
+import { isAffiliateAdmin } from "@/lib/affiliate/admin";
 import { getFavoriteItemIds, toggleFavorite } from "@/lib/favorites";
 
 /** GET /api/favorites — favorite item IDs (cookie or CEP Bearer). */
@@ -31,6 +36,13 @@ export async function POST(req: NextRequest) {
 
   try {
     const added = await toggleFavorite(user.id, itemId);
+    if (added && process.env.MOTIONFLOW_MARKET_ANALYTICS !== "0" && !isAffiliateAdmin(user)) {
+      try {
+        await ensureMarketAnalyticsSchema();
+        await getPool().execute("INSERT INTO market_events (id,user_id,visit_id,action,resource_type,resource_id,path,source) VALUES (?,?,?,'favorite','marketplace_item',?,'/',?)",
+          [randomUUID(), user.id, randomUUID(), String(itemId), requestHasCepBearer(req) ? "extension" : "web"]);
+      } catch { console.error("[analytics] could not record favorite"); }
+    }
     return NextResponse.json({ favorited: added });
   } catch (e) {
     console.error("[favorites] POST", e);

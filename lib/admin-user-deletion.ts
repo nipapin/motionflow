@@ -31,6 +31,9 @@ export async function deleteAdminUser(id: number, adminUserId: number): Promise<
         "SELECT TABLE_NAME AS tableName FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE'",
       );
       const available = new Set(tables.map((row) => row.tableName));
+      if (available.has("market_events")) {
+        await conn.execute("UPDATE market_events SET user_id=NULL WHERE user_id=?", [id]);
+      }
 
       if (available.has("cep_devices")) {
         for (const table of ["cep_device_active_packs", "cep_device_installs"]) {
