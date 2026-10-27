@@ -11,7 +11,7 @@ const runWorker = (command, args, options, input) => new Promise((resolve, rejec
   child.stdin.end(input);
 });
 
-export async function translateCommit(commitMessage, { apiKey = process.env.CURSOR_API_KEY, run = runWorker } = {}) {
+export async function translateCommit(commitMessage, { apiKey = process.env.CURSOR_API_KEY, run = runWorker, recentSummaries = [] } = {}) {
   if (!apiKey || !commitMessage?.trim()) return null;
   const cwd = mkdtempSync(join(tmpdir(), "motionflow-commit-"));
   try {
@@ -22,7 +22,7 @@ export async function translateCommit(commitMessage, { apiKey = process.env.CURS
         HOME: cwd, USERPROFILE: cwd, XDG_CONFIG_HOME: cwd, XDG_DATA_HOME: cwd,
         TMPDIR: cwd, TEMP: cwd, TMP: cwd,
       },
-    }, JSON.stringify({ commitMessage: commitMessage.slice(0, 1200) }));
+    }, JSON.stringify({ commitMessage: commitMessage.slice(0, 1200), recentSummaries: recentSummaries.filter(text => typeof text === "string").slice(0, 4).map(text => text.slice(0, 300)) }));
     const line = stdout.split(/\r?\n/).findLast(line => line.startsWith("MOTIONFLOW_COMMIT_TRANSLATION="));
     const translated = JSON.parse(line?.slice("MOTIONFLOW_COMMIT_TRANSLATION=".length) || "null");
     return typeof translated === "string" && translated.trim() ? translated.trim().slice(0, 600) : null;

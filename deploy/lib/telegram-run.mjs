@@ -1,4 +1,4 @@
-import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
+import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const projects = { motionflow: "Motion Flow", "ione-premiere-basics": "Odin Pro", aniomLaravelSite: "Laravel" };
@@ -13,6 +13,24 @@ const titles = {
 const terminal = new Set(["success", "failure", "cancelled", "built"]);
 const escape = (value, limit = 250) => String(value ?? "").slice(0, limit).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+export function recentRunSummaries(directory, currentKey) {
+  try {
+    const files = readdirSync(directory).filter(name => /^\d+-\d+\.json$/.test(name) && name !== `${currentKey}.json`)
+      .map(name => ({ name, modified: statSync(join(directory, name)).mtimeMs }))
+      .sort((a, b) => b.modified - a.modified);
+    const summaries = [];
+    for (const { name } of files) {
+      try {
+        const state = JSON.parse(readFileSync(join(directory, name), "utf8"));
+        const text = typeof state.translatedCommitMessage === "string" ? state.translatedCommitMessage.trim().slice(0, 300) : "";
+        if (text && !summaries.includes(text)) summaries.push(text);
+        if (summaries.length === 4) break;
+      } catch { /* A missing or malformed previous run must not block a notification. */ }
+    }
+    return summaries;
+  } catch { return []; }
+}
 
 export function formatRunNotification(payload) {
   if (!titles[payload.status]) throw new Error("Invalid notification status");
@@ -77,7 +95,7 @@ export async function updateRunNotification({ token, chatIds, payload, stateDire
     state.translationAttempted = true;
     save();
     try {
-      const translated = await translate(state.commitMessage);
+      const translated = await translate(state.commitMessage, { recentSummaries: recentRunSummaries(stateDirectory, key) });
       if (typeof translated === "string" && translated.trim()) state.translatedCommitMessage = translated.trim().slice(0, 600);
     } catch {
       // An unavailable translator must never prevent the normal notification.

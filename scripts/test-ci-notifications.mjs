@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync, mkdirSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { formatRunNotification, updateRunNotification } from "../deploy/lib/telegram-run.mjs";
+import { formatRunNotification, updateRunNotification, recentRunSummaries } from "../deploy/lib/telegram-run.mjs";
 import { createRunPayload } from "../deploy/lib/run-payload.mjs";
 import { translateCommit } from "../deploy/lib/commit-translation.mjs";
 import { rewriteCommit } from "../deploy/commit-translator/rewrite.mjs";
@@ -130,6 +130,32 @@ try {
   } };
   assert.equal(await rewriteCommit(Agent, { apiKey: "fixture-key", cwd: root, commitMessage }), comic);
   await assert.rejects(rewriteCommit({ prompt: async () => ({ status: "error", result: comic }) }, { apiKey: "fixture-key", cwd: root, commitMessage }));
+  const history = join(root, "history");
+  mkdirSync(history);
+  for (let i = 1; i <= 6; i++) {
+    const file = join(history, `${i}-1.json`);
+    writeFileSync(file, JSON.stringify({ translatedCommitMessage: `Summary ${i}`, commitMessage: "must-not-send-raw-history", messages: { privateRecipient: 123 } }));
+    utimesSync(file, new Date(1000 * i), new Date(1000 * i));
+  }
+  writeFileSync(join(history, "broken-1.json"), "not a run file");
+  assert.deepEqual(recentRunSummaries(history, "6-1"), ["Summary 5", "Summary 4", "Summary 3", "Summary 2"]);
+  const context = recentRunSummaries(history, "6-1");
+  await translateCommit(commitMessage, { apiKey: "fixture-key", recentSummaries: context, run: async (_command, _args, _settings, input) => {
+    const data = JSON.parse(input);
+    assert.deepEqual(data.recentSummaries, context);
+    assert.ok(!input.includes("privateRecipient"));
+    assert.ok(!input.includes("must-not-send-raw-history"));
+    return `MOTIONFLOW_COMMIT_TRANSLATION=${JSON.stringify(comic)}`;
+  } });
+  await rewriteCommit({ prompt: async input => {
+    const data = JSON.parse(input.split("Данные коммита (JSON):\n")[1]);
+    assert.deepEqual(data.recentSummaries, context);
+    assert.equal(data.commitMessage, commitMessage);
+    return { status: "finished", result: comic };
+  } }, { apiKey: "fixture-key", cwd: root, commitMessage, recentSummaries: context });
+  let receivedHistory;
+  await updateRunNotification({ ...options, stateDirectory: history, payload: { ...payload, url: payload.url.replace("runs/123", "runs/7"), commitMessage }, translate: async (_message, settings) => { receivedHistory = settings.recentSummaries; return comic; } }, api);
+  assert.deepEqual(receivedHistory, ["Summary 6", "Summary 5", "Summary 4", "Summary 3"]);
   console.log("Telegram checks passed: one message per chat/run/attempt, persistent edits, progress, cancellation, retries, duplicate completion and deleted-message recovery.");
   console.log("Cursor translation checks passed: single cached rewrite, escaped output, original-text fallback, bounded worker and tools disabled.");
 } finally {
