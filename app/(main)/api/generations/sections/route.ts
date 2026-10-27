@@ -1,3 +1,4 @@
+import { getReplicateApiToken } from "@/lib/replicate-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { withGenerationActivity } from "@/lib/user-activity";
 import Replicate from "replicate";
@@ -16,10 +17,6 @@ import {
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
-
-const replicate = new Replicate({
-  auth: process.env.REPLICATE_API_TOKEN,
-});
 
 /** @see https://replicate.com/anthropic/claude-4.5-haiku */
 const SECTIONS_MODEL =
@@ -151,13 +148,15 @@ export async function POST(req: NextRequest) {
     return await withGenerationActivity(user, "sections", async () => {
       if (!isBillableCepUser(user)) return billableAccountRequiredResponse();
 
-      if (!process.env.REPLICATE_API_TOKEN) {
-        console.error("[sections generation] REPLICATE_API_TOKEN is not configured");
+      const replicateApiToken = getReplicateApiToken(user);
+      if (!replicateApiToken) {
+        console.error("[sections generation] Replicate API token is not configured for this client");
         return NextResponse.json(
           { error: "Auto Sections isn't available right now. Please try again later." },
           { status: 503 },
         );
       }
+      const replicate = new Replicate({ auth: replicateApiToken });
 
       const rawChunks =
         body && Array.isArray((body as { chunks?: unknown }).chunks)

@@ -1,3 +1,4 @@
+import { getReplicateApiToken } from "@/lib/replicate-auth";
 import { NextRequest, NextResponse } from "next/server";
 import Replicate, { type FileOutput } from "replicate";
 import {
@@ -21,10 +22,6 @@ import { textGenerationsCost } from "@/lib/generation-cost";
 export const runtime = "nodejs";
 /** CEP client timeout is 120s — keep the whole job inside that budget. */
 export const maxDuration = 120;
-
-const replicate = new Replicate({
-  auth: process.env.REPLICATE_API_TOKEN,
-});
 
 /** Same MiniMax model as /api/generations/tts. */
 const TTS_MODEL = "minimax/speech-2.8-hd" as const;
@@ -87,13 +84,15 @@ export async function POST(req: NextRequest) {
     const user = access.user;
     if (!isBillableCepUser(user)) return billableAccountRequiredResponse();
 
-    if (!process.env.REPLICATE_API_TOKEN) {
-      console.error("[voiceover] REPLICATE_API_TOKEN is not configured");
+    const replicateApiToken = getReplicateApiToken(user);
+    if (!replicateApiToken) {
+      console.error("[voiceover] Replicate API token is not configured for this client");
       return NextResponse.json(
         { error: "SERVICE_UNAVAILABLE", message: "Voiceover isn't available right now." },
         { status: 503 },
       );
     }
+    const replicate = new Replicate({ auth: replicateApiToken });
 
     const text = typeof body.text === "string" ? body.text.trim() : "";
     if (!text) {
@@ -199,8 +198,8 @@ export async function POST(req: NextRequest) {
     let audioBuffer: Buffer;
     try {
       const res = await fetch(deliveryUrl, {
-        headers: process.env.REPLICATE_API_TOKEN
-          ? { Authorization: `Bearer ${process.env.REPLICATE_API_TOKEN}` }
+        headers: replicateApiToken
+          ? { Authorization: `Bearer ${replicateApiToken}` }
           : undefined,
       });
       if (!res.ok) throw new Error(`download failed (${res.status})`);

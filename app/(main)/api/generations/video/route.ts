@@ -1,3 +1,4 @@
+import { getReplicateApiToken } from "@/lib/replicate-auth";
 import { NextRequest, NextResponse } from "next/server";
 import Replicate, { type FileOutput } from "replicate";
 import { resolveRequestUser, requestHasCepBearer } from "@/lib/auth/resolve-request-user";
@@ -20,10 +21,6 @@ import { mirrorReplicateUrlsToR2 } from "@/lib/replicate-mirror-output";
 export const runtime = "nodejs";
 /** Allow long-running Replicate jobs. Adjust if your host caps lower. */
 export const maxDuration = 300;
-
-const replicate = new Replicate({
-    auth: process.env.REPLICATE_API_TOKEN,
-});
 
 /** See https://replicate.com/prunaai/p-video/api/schema */
 const P_VIDEO_MODEL = "prunaai/p-video" as const;
@@ -250,9 +247,10 @@ export async function POST(req: NextRequest) {
             return creatorAi.response;
         }
 
-        if (!process.env.REPLICATE_API_TOKEN) {
+        const replicateApiToken = getReplicateApiToken(user);
+        if (!replicateApiToken) {
             console.error(
-                "[video generation] REPLICATE_API_TOKEN is not configured",
+                "[video generation] Replicate API token is not configured for this client",
             );
             return NextResponse.json(
                 {
@@ -262,6 +260,7 @@ export async function POST(req: NextRequest) {
                 { status: 503 },
             );
         }
+        const replicate = new Replicate({ auth: replicateApiToken });
 
         const body = (await req.json().catch(() => ({}))) as {
             prompt?: string;
@@ -486,6 +485,7 @@ export async function POST(req: NextRequest) {
         let persistedVideoUrl: string;
         try {
             const [mirrored] = await mirrorReplicateUrlsToR2([videoUrl], {
+                apiToken: replicateApiToken,
                 keyPrefix: `video/${user.id}`,
                 defaultContentType: "video/mp4",
             });

@@ -1,3 +1,4 @@
+import { getReplicateApiToken } from "@/lib/replicate-auth";
 import { NextRequest, NextResponse } from "next/server";
 import Replicate from "replicate";
 import { resolveRequestUser, requestHasCepBearer } from "@/lib/auth/resolve-request-user";
@@ -15,10 +16,6 @@ import {
 } from "@/lib/replicate-image-model-io";
 
 export const runtime = "nodejs";
-
-const replicate = new Replicate({
-    auth: process.env.REPLICATE_API_TOKEN,
-});
 
 const MODEL = "recraft-ai/recraft-20b-svg" as const;
 
@@ -89,9 +86,10 @@ export async function POST(req: NextRequest) {
             return creatorAi.response;
         }
 
-        if (!process.env.REPLICATE_API_TOKEN) {
+        const replicateApiToken = getReplicateApiToken(user);
+        if (!replicateApiToken) {
             console.error(
-                "[svg generation] REPLICATE_API_TOKEN is not configured",
+                "[svg generation] Replicate API token is not configured for this client",
             );
             return NextResponse.json(
                 {
@@ -101,6 +99,7 @@ export async function POST(req: NextRequest) {
                 { status: 503 },
             );
         }
+        const replicate = new Replicate({ auth: replicateApiToken });
 
         const body = (await req.json().catch(() => ({}))) as {
             prompt?: string;
@@ -196,6 +195,7 @@ export async function POST(req: NextRequest) {
         let persistedImages: string[];
         try {
             persistedImages = await mirrorReplicateUrlsToR2(deliveryUrls, {
+                apiToken: replicateApiToken,
                 keyPrefix: `svg/${user.id}`,
                 defaultContentType: "image/svg+xml",
             });

@@ -1,3 +1,4 @@
+import { getReplicateApiToken } from "@/lib/replicate-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { withGenerationActivity } from "@/lib/user-activity";
 import Replicate from "replicate";
@@ -30,10 +31,6 @@ import {
 export const runtime = "nodejs";
 /** Scribe v2 + optional translation on longer files can take several minutes. */
 export const maxDuration = 300;
-
-const replicate = new Replicate({
-  auth: process.env.REPLICATE_API_TOKEN,
-});
 
 /** @see https://replicate.com/elevenlabs/scribe-v2 */
 const CAPTIONS_MODEL =
@@ -183,6 +180,7 @@ function sentencesFromWords(words: CaptionChunk[]): CaptionChunk[] {
 }
 
 async function transcribe(
+  replicate: Replicate,
   audioUrl: string,
   options: { language?: string },
 ): Promise<unknown> {
@@ -248,6 +246,7 @@ function wordsFromChunks(chunks: CaptionChunk[]): CaptionChunk[] {
  * Caller rebuilds word-level items via wordsFromChunks (proportional timings).
  */
 async function translateChunks(
+  replicate: Replicate,
   chunks: CaptionChunk[],
   languageName: string,
 ): Promise<CaptionChunk[]> {
@@ -318,19 +317,6 @@ function withTranslatedWords(
 
 export async function POST(req: NextRequest) {
   try {
-    if (!process.env.REPLICATE_API_TOKEN) {
-      console.error(
-        "[captions generation] REPLICATE_API_TOKEN is not configured",
-      );
-      return NextResponse.json(
-        {
-          error:
-            "Caption generation isn't available right now. Please try again later.",
-        },
-        { status: 503 },
-      );
-    }
-
     const form = await req.formData().catch(() => null);
     if (!form) {
       return NextResponse.json(
@@ -345,6 +331,23 @@ export async function POST(req: NextRequest) {
     });
     if (!access.ok) return access.response;
     if (!isMeteredCaptionsUser(access.user)) return billableAccountRequiredResponse();
+
+    const replicateApiToken = getReplicateApiToken(access.user);
+    if (!replicateApiToken) {
+      console.error(
+        "[captions generation] Replicate API token is not configured for this client",
+      );
+      return NextResponse.json(
+        {
+          error:
+            "Caption generation isn't available right now. Please try again later.",
+        },
+        { status: 503 },
+      );
+    }
+
+    const replicate = new Replicate({ auth: replicateApiToken });
+
     return await withGenerationActivity(access.user, "captions", async () => {
 
       console.info(
@@ -438,7 +441,7 @@ export async function POST(req: NextRequest) {
 
       let scribe: ScribeOutput;
       try {
-        const raw = await transcribe(audioUrl, { language });
+        const raw = await transcribe(replicate, audioUrl, { language });
         const parsed = asScribeOutput(raw);
         if (!parsed) {
           console.error("[captions generation] unexpected scribe output shape");
@@ -472,7 +475,7 @@ export async function POST(req: NextRequest) {
                 ? [{ text: scribe.text.trim(), timestamp: [0, 0] as [number, number] }]
                 : [];
           if (source.length) {
-            const translatedChunks = await translateChunks(source, languageName);
+            const translatedChunks = await translateChunks(replicate, source, languageName);
             // ASR word timings no longer match translated text — rebuild words
             // with proportional timings, still in Scribe shape.
             const rebuilt = wordsFromChunks(translatedChunks);

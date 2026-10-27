@@ -1,3 +1,4 @@
+import { getReplicateApiToken } from "@/lib/replicate-auth";
 import { NextRequest, NextResponse } from "next/server";
 import Replicate from "replicate";
 import { resolveRequestUser, requestHasCepBearer } from "@/lib/auth/resolve-request-user";
@@ -13,10 +14,6 @@ import { uploadBufferToR2 } from "@/lib/r2-storage";
 export const runtime = "nodejs";
 /** Whisper transcription can take a while for longer files. */
 export const maxDuration = 300;
-
-const replicate = new Replicate({
-    auth: process.env.REPLICATE_API_TOKEN,
-});
 
 /** @see https://replicate.com/openai/whisper */
 const STT_MODEL =
@@ -152,9 +149,10 @@ export async function POST(req: NextRequest) {
             return creatorAi.response;
         }
 
-        if (!process.env.REPLICATE_API_TOKEN) {
+        const replicateApiToken = getReplicateApiToken(user);
+        if (!replicateApiToken) {
             console.error(
-                "[stt generation] REPLICATE_API_TOKEN is not configured",
+                "[stt generation] Replicate API token is not configured for this client",
             );
             return NextResponse.json(
                 {
@@ -164,6 +162,7 @@ export async function POST(req: NextRequest) {
                 { status: 503 },
             );
         }
+        const replicate = new Replicate({ auth: replicateApiToken });
 
         const form = await req.formData().catch(() => null);
         if (!form) {

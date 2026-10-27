@@ -15,11 +15,12 @@ import {
  */
 export async function resolveRequestUser(
   req?: NextRequest | null,
-): Promise<SessionUser | null> {
+): Promise<(SessionUser & { cepClient?: string }) | null> {
   if (req) {
     const bearer = await resolveCepBearerUser(req.headers.get("authorization"));
     if (bearer) {
-      return loadUserById(bearer.id);
+      const user = await loadUserById(bearer.id);
+      return user ? { ...user, cepClient: bearer.client } : null;
     }
   }
   return getSessionUser();

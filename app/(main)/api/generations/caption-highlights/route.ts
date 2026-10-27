@@ -1,3 +1,4 @@
+import { getReplicateApiToken } from "@/lib/replicate-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { withGenerationActivity } from "@/lib/user-activity";
 import Replicate from "replicate";
@@ -18,7 +19,9 @@ export async function POST(req: NextRequest) {
     if (!auth.ok) return auth.response;
     if (!isMeteredCaptionsUser(auth.user)) return billableAccountRequiredResponse();
     return await withGenerationActivity(auth.user, "caption_highlights", async () => {
-      if (!process.env.REPLICATE_API_TOKEN) return NextResponse.json({ error: "AI highlights are temporarily unavailable." }, { status: 503 });
+      const replicateApiToken = getReplicateApiToken(auth.user);
+      if (!replicateApiToken) return NextResponse.json({ error: "AI highlights are temporarily unavailable." }, { status: 503 });
+      const replicate = new Replicate({ auth: replicateApiToken });
       const body = await req.json().catch(() => null);
       let segments: string[][] | undefined;
       let words: ReturnType<typeof validateHighlightWords> | undefined;
@@ -31,7 +34,6 @@ export async function POST(req: NextRequest) {
       if (status.total_generations_left < cost) return NextResponse.json({
         code: GENERATION_LIMIT_REACHED_CODE, error: "GENERATION_LIMIT_REACHED", ...status, cost,
       }, { status: 402 });
-      const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
       const generate = async (system_prompt: string, prompt: string) => {
         req.signal?.throwIfAborted();
         const output = await replicate.run(MODEL, { input: { system_prompt, prompt, max_tokens: 16384 }, signal: req.signal });

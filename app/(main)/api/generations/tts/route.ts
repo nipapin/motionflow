@@ -1,3 +1,4 @@
+import { getReplicateApiToken } from "@/lib/replicate-auth";
 import { NextRequest, NextResponse } from "next/server";
 import Replicate, { type FileOutput } from "replicate";
 import { resolveRequestUser, requestHasCepBearer } from "@/lib/auth/resolve-request-user";
@@ -14,10 +15,6 @@ import { ALLOWED_LANGUAGE_BOOST } from "@/lib/minimax-language-boost";
 export const runtime = "nodejs";
 /** Long-running TTS jobs occasionally need more than the default 10s budget. */
 export const maxDuration = 120;
-
-const replicate = new Replicate({
-    auth: process.env.REPLICATE_API_TOKEN,
-});
 
 /** @see https://replicate.com/minimax/speech-2.8-hd/api/schema */
 const TTS_MODEL = "minimax/speech-2.8-hd" as const;
@@ -181,9 +178,10 @@ export async function POST(req: NextRequest) {
             return creatorAi.response;
         }
 
-        if (!process.env.REPLICATE_API_TOKEN) {
+        const replicateApiToken = getReplicateApiToken(user);
+        if (!replicateApiToken) {
             console.error(
-                "[tts generation] REPLICATE_API_TOKEN is not configured",
+                "[tts generation] Replicate API token is not configured for this client",
             );
             return NextResponse.json(
                 {
@@ -193,6 +191,7 @@ export async function POST(req: NextRequest) {
                 { status: 503 },
             );
         }
+        const replicate = new Replicate({ auth: replicateApiToken });
 
         const body = (await req.json().catch(() => ({}))) as TtsBody;
 
@@ -342,6 +341,7 @@ export async function POST(req: NextRequest) {
         let persistedAudioUrl: string;
         try {
             const [mirrored] = await mirrorReplicateUrlsToR2([audioUrl], {
+                apiToken: replicateApiToken,
                 keyPrefix: `tts/${user.id}`,
                 defaultContentType:
                     CONTENT_TYPE_BY_FORMAT[audio_format] ?? "audio/mpeg",

@@ -8,7 +8,7 @@ function load(file, imports = {}) {
   const source = readFileSync(new URL(file, import.meta.url), "utf8");
   const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS } }).outputText;
   const exports = {};
-  vm.runInNewContext(code, { exports, require: name => { if (!(name in imports)) throw Error(name); return imports[name]; },
+  vm.runInNewContext(code, { exports, require: name => { if (name === "@/lib/replicate-auth") return load("../lib/replicate-auth.ts", { "server-only": {} }); if (!(name in imports)) throw Error(name); return imports[name]; },
     File, Buffer, console: { info() {}, error() {} },
     process: { env: { REPLICATE_API_TOKEN: "test-only" } } });
   return exports;

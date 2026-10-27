@@ -1,3 +1,4 @@
+import { getReplicateApiToken } from "@/lib/replicate-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { withGenerationActivity } from "@/lib/user-activity";
 import Replicate from "replicate";
@@ -24,10 +25,6 @@ import { verifyCaptionsChaptersReceipt } from "@/lib/captions-chapters-receipt";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
-
-const replicate = new Replicate({
-    auth: process.env.REPLICATE_API_TOKEN,
-});
 
 /** @see https://replicate.com/anthropic/claude-4.5-haiku */
 const CHAPTERS_MODEL =
@@ -478,13 +475,15 @@ export async function POST(req: NextRequest) {
         return await withGenerationActivity(user, "chapters", async () => {
           if (!isMeteredCaptionsUser(user)) return billableAccountRequiredResponse();
 
-          if (!process.env.REPLICATE_API_TOKEN) {
-              console.error("[chapters generation] REPLICATE_API_TOKEN is not configured");
+          const replicateApiToken = getReplicateApiToken(user);
+          if (!replicateApiToken) {
+              console.error("[chapters generation] Replicate API token is not configured for this client");
               return NextResponse.json(
                   { error: "Chapters generation isn't available right now. Please try again later." },
                   { status: 503 },
               );
           }
+          const replicate = new Replicate({ auth: replicateApiToken });
 
           const rawChunks =
               body && Array.isArray((body as { chunks?: unknown }).chunks)

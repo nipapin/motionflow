@@ -10,13 +10,14 @@ import { uploadRemoteUrlToR2 } from "@/lib/r2-storage";
  * @see https://replicate.com/docs/topics/predictions/output-files
  */
 
-function buildReplicateAuthHeaders(): Record<string, string> | undefined {
-    const token = process.env.REPLICATE_API_TOKEN;
+function buildReplicateAuthHeaders(token: string | undefined): Record<string, string> | undefined {
     if (typeof token !== "string" || token === "") return undefined;
     return { Authorization: `Bearer ${token}` };
 }
 
 interface MirrorOptions {
+    /** Use the same account that generated the output. */
+    apiToken?: string;
     /** Folder to store the file under, e.g. `image/{userId}` or `video/{userId}`. */
     keyPrefix: string;
     /** Default content-type if upstream omits it. */
@@ -31,7 +32,7 @@ export async function mirrorReplicateUrlsToR2(
     deliveryUrls: string[],
     opts: MirrorOptions,
 ): Promise<string[]> {
-    const authHeaders = buildReplicateAuthHeaders();
+    const authHeaders = buildReplicateAuthHeaders(opts.apiToken ?? process.env.REPLICATE_API_TOKEN);
     const out: string[] = [];
 
     for (const url of deliveryUrls) {
