@@ -135,6 +135,7 @@ export function AccountSidebar(props: AccountSidebarProps) {
   const pathname = usePathname();
   const normalized = pathname.replace(/\/$/, "") || "/";
   const [authors, setAuthors] = useState<SidebarAuthor[]>(PACKAGES_AUTHORS);
+  const [compactNavigationOpen, setCompactNavigationOpen] = useState(false);
   const { showPackages, showPartners, showUsers, showAffiliate, access } = props;
 
   useEffect(() => {
@@ -154,6 +155,17 @@ export function AccountSidebar(props: AccountSidebarProps) {
   }, [showPackages]);
 
   if (showPackages || showPartners || showUsers) {
+    if (normalized === "/profile/ai-usage") return <>
+      <div className="lg:hidden">
+        <button type="button" aria-expanded={compactNavigationOpen} aria-controls="ai-usage-account-navigation"
+          onClick={() => setCompactNavigationOpen(value => !value)}
+          className={cn("flex min-h-12 w-full items-center justify-between gap-3 px-5 text-sm font-medium", focusClass)}>
+          <span>Admin workspace</span><span className="flex items-center gap-2 text-muted-foreground">Navigation<ChevronDown aria-hidden className={cn("size-4", compactNavigationOpen && "rotate-180")} /></span>
+        </button>
+        {compactNavigationOpen ? <div id="ai-usage-account-navigation" className="max-h-56 overflow-y-auto"><AdminNavigation key={normalized} {...props} authors={authors} normalized={normalized} /></div> : null}
+      </div>
+      <div className="hidden h-full lg:block"><AdminNavigation key={normalized} {...props} authors={authors} normalized={normalized} /></div>
+    </>;
     // Reset expansion on navigation: only the destination group starts open.
     // Manual collapse remains available even while viewing that group.
     return <AdminNavigation key={normalized} {...props} authors={authors} normalized={normalized} />;

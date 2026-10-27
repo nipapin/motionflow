@@ -1,13 +1,9 @@
 import "server-only";
+import { AI_ACCOUNTS, aiAccountForUser, type AiUsageIdentity } from "@/lib/ai-usage-shared";
 
 /** Client identity must come from verified server-side authentication. */
-export function getReplicateApiToken(user: {
-  source?: string;
-  cepClient?: string;
-}): string | undefined {
-  const token = user.cepClient === "spunkram-cep"
-    ? process.env.REPLICATE_SPUNKRAM_API_TOKEN
-    : process.env.REPLICATE_API_TOKEN;
-  // Never fall back to the shared account when Spunkram is not configured.
-  return token?.trim() || undefined;
+export function getReplicateApiToken(user: AiUsageIdentity): string | undefined {
+  const account = AI_ACCOUNTS.find(account => account.id === aiAccountForUser(user))!;
+  // Dedicated panels must never fall back to the shared billing account.
+  return process.env[account.env]?.trim() || undefined;
 }

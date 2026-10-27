@@ -1,3 +1,4 @@
+import { trackedReplicateFetch } from "@/lib/replicate-usage-fetch";
 import { getReplicateApiToken } from "@/lib/replicate-auth";
 import { NextRequest, NextResponse } from "next/server";
 import Replicate, { type FileOutput } from "replicate";
@@ -92,7 +93,7 @@ export async function POST(req: NextRequest) {
         { status: 503 },
       );
     }
-    const replicate = new Replicate({ auth: replicateApiToken });
+    const replicate = new Replicate({ auth: replicateApiToken, fetch: trackedReplicateFetch(user) });
 
     const text = typeof body.text === "string" ? body.text.trim() : "";
     if (!text) {

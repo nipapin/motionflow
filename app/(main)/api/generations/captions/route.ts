@@ -1,3 +1,4 @@
+import { trackedReplicateFetch } from "@/lib/replicate-usage-fetch";
 import { getReplicateApiToken } from "@/lib/replicate-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { withGenerationActivity } from "@/lib/user-activity";
@@ -346,7 +347,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const replicate = new Replicate({ auth: replicateApiToken });
+    const replicate = new Replicate({ auth: replicateApiToken, fetch: trackedReplicateFetch(access.user) });
 
     return await withGenerationActivity(access.user, "captions", async () => {
 

@@ -1,3 +1,4 @@
+import { trackedReplicateFetch } from "@/lib/replicate-usage-fetch";
 import { getReplicateApiToken } from "@/lib/replicate-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { withGenerationActivity } from "@/lib/user-activity";
@@ -156,7 +157,7 @@ export async function POST(req: NextRequest) {
           { status: 503 },
         );
       }
-      const replicate = new Replicate({ auth: replicateApiToken });
+      const replicate = new Replicate({ auth: replicateApiToken, fetch: trackedReplicateFetch(user) });
 
       const rawChunks =
         body && Array.isArray((body as { chunks?: unknown }).chunks)

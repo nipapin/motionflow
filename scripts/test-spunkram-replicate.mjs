@@ -11,22 +11,21 @@ function load(file, imports = {}, env = {}, globals = {}) {
   }).outputText;
   const exports = {};
   vm.runInNewContext(code, {
-    exports, require: name => name === "server-only" ? {} : imports[name] ?? {},
+    exports, require: name => name === "server-only" ? {} : name === "@/lib/ai-usage-shared" ? load("lib/ai-usage-shared.ts") : name === "@/lib/replicate-usage-fetch" ? { trackedReplicateFetch: () => undefined } : imports[name] ?? {},
     process: { env }, Buffer, File, URL,
     console: { info() {}, error() {} }, ...globals,
   });
   return exports;
 }
 
-const tokens = { REPLICATE_API_TOKEN: "shared-test", REPLICATE_SPUNKRAM_API_TOKEN: "spunkram-test" };
+const tokens = { REPLICATE_API_TOKEN: "shared-test", REPLICATE_SPUNKRAM_API_TOKEN: "spunkram-test", REPLICATE_TOOLKIT_API_TOKEN: "toolkit-test", REPLICATE_ODINPRO_API_TOKEN: "odin-test" };
 const spunkram = { id: 7, source: "cep-bearer", cepClient: "spunkram-cep" };
 
 test("Spunkram has no fallback; other panels and web use the shared account", () => {
   const env = { ...tokens };
   const { getReplicateApiToken } = load("lib/replicate-auth.ts", {}, env);
   assert.equal(getReplicateApiToken(spunkram), "spunkram-test");
-  for (const user of [{ source: "session" }, { source: "odin-bearer" },
-    { cepClient: "gal-cep" }, { cepClient: "motionflow-adobe" }, {}]) {
+  for (const user of [{ source: "session" }, { cepClient: "motionflow-adobe" }, {}]) {
     assert.equal(getReplicateApiToken(user), "shared-test");
   }
   delete env.REPLICATE_SPUNKRAM_API_TOKEN;
@@ -87,14 +86,18 @@ function route(tool, user, env, extras = {}, globals = {}) {
 
 for (const tool of routes) {
   test(`${tool}: missing Spunkram token returns 503 before using the shared account`, async () => {
-    const r = route(tool, spunkram, { REPLICATE_API_TOKEN: tokens.REPLICATE_API_TOKEN });
-    assert.equal((await r.post()).status, 503);
-    assert.deepEqual(r.clients, []);
+    for (const user of [spunkram, { id: 7, cepClient: "gal-cep" }, { id: 7, source: "odin-bearer", cepClient: "odin-cep" }]) {
+      const r = route(tool, user, { REPLICATE_API_TOKEN: tokens.REPLICATE_API_TOKEN });
+      assert.equal((await r.post()).status, 503);
+      assert.deepEqual(r.clients, []);
+    }
   });
 
   test(`${tool}: caller selects a separate client per request`, async () => {
     for (const [user, expected, env] of [
       [spunkram, "spunkram-test", { REPLICATE_SPUNKRAM_API_TOKEN: "spunkram-test" }],
+      [{ id: 7, cepClient: "gal-cep" }, "toolkit-test", tokens],
+      [{ id: 7, source: "odin-bearer", cepClient: "odin-cep" }, "odin-test", tokens],
       [{ id: 7, source: "session" }, "shared-test", tokens],
       [{ id: 7, source: "cep-bearer", cepClient: "motionflow-adobe" }, "shared-test", tokens],
     ]) {
