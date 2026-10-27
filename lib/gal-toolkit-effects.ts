@@ -55,8 +55,13 @@ const MIME_BY_EXT: Record<string, string> = {
   ".mp3": "audio/mpeg",
   ".ogg": "audio/ogg",
   ".m4a": "audio/mp4",
+  ".aac": "audio/aac",
+  ".aif": "audio/aiff",
+  ".aiff": "audio/aiff",
   ".flac": "audio/flac",
 };
+
+const AUDIO_EXTENSIONS = new Set([".wav", ".mp3", ".ogg", ".m4a", ".aac", ".aif", ".aiff", ".flac"]);
 
 function extname(fileName: string): string {
   const idx = fileName.lastIndexOf(".");
@@ -145,7 +150,7 @@ export function galEffectsMediaBaseUrl(_host: GalEffectsHost = "PR"): string {
   return `${motionflowSiteOrigin()}/api/cep/gal/effects/media`;
 }
 
-/** Resolve public preview URL segments → `{prefix}/Previews/`, or null. */
+/** Visual previews use Previews; SFX preview streams use audio files in Assets. */
 export function resolveGalEffectsAssetKey(
   pathSegments: string[],
   host: GalEffectsHost = "PR",
@@ -162,9 +167,13 @@ export function resolveGalEffectsAssetKey(
     .filter((p) => p.length > 0 && p !== "." && p !== "..");
 
   if (parts.length === 0) return null;
-  if (parts.some((p) => p.includes("\\") || p.includes("\0"))) return null;
+  if (parts.some((p) => p.includes("/") || p.includes("\\") || p.includes("\0"))) return null;
 
-  return `${galEffectsAssetsPrefix(host)}${parts.join("/")}`;
+  const relative = parts.join("/");
+  const prefix = AUDIO_EXTENSIONS.has(extname(relative))
+    ? `${galEffectsPrefix(host)}/Assets/`
+    : galEffectsAssetsPrefix(host);
+  return `${prefix}${relative}`;
 }
 
 export type GalEffectsMediaObject = {
@@ -177,14 +186,16 @@ export type GalEffectsMediaObject = {
   status: number;
 };
 
-/** Stream a Previews object from the Gal Toolkit bucket (supports HTTP Range). */
+/** Stream visual previews or SFX audio with Range; project sources stay private. */
 export async function getGalEffectsAssetStream(
   key: string,
   rangeHeader: string | null,
   host: GalEffectsHost = "PR",
 ): Promise<GalEffectsMediaObject | null> {
   const prefix = galEffectsAssetsPrefix(host);
-  if (!key.startsWith(prefix)) return null;
+  const audioPrefix = `${galEffectsPrefix(host)}/Assets/`;
+  if (!key.startsWith(prefix) &&
+      !(key.startsWith(audioPrefix) && AUDIO_EXTENSIONS.has(extname(key)))) return null;
 
   const client = getR2Client();
   try {
