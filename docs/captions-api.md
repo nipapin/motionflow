@@ -263,11 +263,11 @@ ASR: [ElevenLabs Scribe v2](https://replicate.com/elevenlabs/scribe-v2) на Rep
 | `file` | audio/mpeg (mp3) | да | Аудио для распознавания |
 | `language` | string | нет | ISO-код; `auto` не передаём (сервер шлёт `language_code: "auto"`) |
 | `translateTo` | string | нет | ISO-код; `off` не передаём — перевод через Claude, слова пересобираются пропорционально, форма ответа остаётся Scribe |
-| `durationSeconds` | number/string | нет | Длительность In/Out / Work Area (сек). Биллинг: `ceil(minutes / 10)` генераций |
+| `durationSeconds` | number/string | нет | Длительность In/Out / Work Area (сек). Биллинг: `ceil(minutes / 5)` генераций |
 | `userId` | string | нет | CEP identity id |
 | `email` | string | нет | CEP identity email |
 
-**Биллинг:** Captions / Chapters — `1 gen = 10 минут` (округление вверх). Voiceover — `1 gen = 1000 символов`. Ответ включает `cost` и обновлённый `generations`.
+**Биллинг:** Captions / Chapters — `1 gen = 5 минут` (округление вверх). Voiceover — `1 gen = 1000 символов`. Ответ включает `cost` и обновлённый `generations`.
 
 #### Успешный ответ `200` (JSON)
 

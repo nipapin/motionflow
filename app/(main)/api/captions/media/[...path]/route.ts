@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/captions/media/[...path]?brand=gal|spunkram
  *
- * Public assets: `thumb.png` / `preview.mp4` → 302 to CDN.
+ * Public assets: `thumb.png` / `preview.webm` / legacy `preview.mp4` → 302 to CDN.
  * `controls.json` → JSON body (CEP fetch; CDN CORS may block the panel).
  * Path: Category/CaptionFolder/filename
  */

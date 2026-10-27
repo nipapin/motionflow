@@ -25,6 +25,7 @@ function privateBucket(): string {
 export const CAPTION_PREVIEW_FILES = new Set([
   "thumb.png",
   "preview.mp4",
+  "preview.webm",
   "controls.json",
 ]);
 
@@ -336,7 +337,7 @@ async function listCaptionObjects(
 
 type CaptionFlags = {
   thumb: boolean;
-  preview: boolean;
+  preview: "preview.webm" | "preview.mp4" | null;
   mogrt: boolean;
   aep: boolean;
   definition: boolean;
@@ -371,7 +372,7 @@ export async function buildCaptionsTree(
     if (!captions.has(caption)) {
       captions.set(caption, {
         thumb: false,
-        preview: false,
+        preview: null,
         mogrt: false,
         aep: false,
         definition: false,
@@ -380,7 +381,8 @@ export async function buildCaptionsTree(
     }
     const flags = captions.get(caption)!;
     if (file === "thumb.png") flags.thumb = true;
-    else if (file === "preview.mp4") flags.preview = true;
+    else if (file === "preview.webm") flags.preview = file;
+    else if (file === "preview.mp4" && !flags.preview) flags.preview = file;
     else if (file === "controls.json") flags.controls = true;
     else if (file === "definition.json" || file === CAPTION_DOWNLOAD_FILES.definition) {
       flags.definition = true;
@@ -412,7 +414,7 @@ export async function buildCaptionsTree(
           ? previewMediaUrl(brand, categoryName, captionName, "thumb.png")
           : null,
         previewVideoUrl: flags.preview
-          ? previewMediaUrl(brand, categoryName, captionName, "preview.mp4")
+          ? previewMediaUrl(brand, categoryName, captionName, flags.preview)
           : null,
         controlsUrl: flags.controls
           ? previewMediaUrl(brand, categoryName, captionName, "controls.json")
@@ -527,7 +529,7 @@ export function mimeForFilename(fileName: string): string {
 
 /**
  * Resolve the public CDN URL for a known preview asset (`thumb.png` /
- * `preview.mp4` / `controls.json`) at `Category/Caption/file` or flat
+ * `preview.webm` / legacy `preview.mp4` / `controls.json`) at `Category/Caption/file` or flat
  * `Caption/file`. Returns `null` for anything else.
  */
 export function resolvePreviewMediaUrl(

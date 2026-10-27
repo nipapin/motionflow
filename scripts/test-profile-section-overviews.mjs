@@ -94,5 +94,5 @@ test("all section overview routes bypass the legacy profile redirect", async () 
   const config = (await import("../next.config.mjs")).default;
   const legacy = (await config.redirects()).find(rule => rule.source.includes(":slug"));
   const match = new RegExp(`^${legacy.source.replace(":slug", "")}$`);
-  for (const group of ["account", "management", "tools"]) assert.equal(match.test(`/profile/${group}`), false);
+  for (const group of ["account", "management", "tools", "analytics", "ai-usage"]) assert.equal(match.test(`/profile/${group}`), false);
 });

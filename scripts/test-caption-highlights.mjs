@@ -182,6 +182,87 @@ test("semantic selection requires matching source tokens and unambiguous repeate
   assert.deepEqual([...analysis.parseHighlightSelections('[[1,"same"]]', repeated)], [1]);
 });
 
+function transcriptionRoute({ left = 3, highlights = true, valid = true, translateTo, abortAfterScribe = false } = {}) {
+  const models = [], charges = [];
+  const controller = new AbortController();
+  const words = [{ text: "same", start: .2, end: .4, type: "word", speaker_id: "a" },
+    { text: " ", start: .4, end: .4, type: "spacing" }, { text: "same.", start: .5, end: .8, type: "word" }];
+  const mod = load("../app/(main)/api/generations/captions/route.ts", {
+    "@/lib/user-activity": { withGenerationActivity: async (_user, _tool, operation) => operation() },
+    "next/server": { NextResponse: { json: (body, options) => ({ body, status: options?.status ?? 200 }) } },
+    replicate: { default: class { async run(model, options) {
+      models.push(model.split(":")[0]);
+      if (model.startsWith("elevenlabs/")) {
+        if (abortAfterScribe) controller.abort();
+        return { text: "same same.", words, duration_seconds: 10 };
+      }
+      if (!valid) return 'bad';
+      if (translateTo) return highlights ? '[{"text":"важный момент.","highlights":[[0,1]]}]' : '["важный момент."]';
+      assert.equal(JSON.parse(options.input.prompt).words.length, 2);
+      return '[[1,"same."]]';
+    } } },
+    "@/lib/auth/resolve-captions-user": { bearerFromRequest: () => "test", identityFromFormData: () => ({}),
+      requireCaptionsAuth: async () => ({ ok: true, user: { id: 7 } }) },
+    "@/lib/ai-generation-gate": { GENERATION_LIMIT_REACHED_CODE: "GENERATION_LIMIT_REACHED" },
+    "@/lib/cep-generations": { isMeteredCaptionsUser: () => true, billableAccountRequiredResponse: () => ({ status: 403 }),
+      generationsStatusForResolvedUser: async () => ({ total_generations_left: left }),
+      consumeGenerationForResolvedUser: async (_user, tool, cost) => { charges.push(cost); return { ok: true, status: {} }; } },
+    "@/lib/r2-storage": { uploadBufferToR2: async () => ({ url: "https://example.test/audio.mp3" }) },
+    "@/lib/captions-chapters-receipt": { issueCaptionsChaptersReceipt: () => "receipt" },
+    "@/lib/generation-languages": { LANGUAGE_NAMES: { ru: "Russian" }, languageNameFor: () => "Russian" },
+    "@/lib/generation-cost": load("../lib/generation-cost.ts"),
+    "@/lib/jumpcut-analysis": {},
+    "@/lib/caption-highlights": analysis,
+  });
+  const form = new Map([["file", new File(["audio"], "test.mp3", { type: "audio/mpeg" })], ["durationSeconds", "10"]]);
+  if (highlights) form.set("highlights", "true");
+  if (translateTo) form.set("translateTo", translateTo);
+  return { call: () => mod.POST({ formData: async () => form, signal: controller.signal }), words,
+    metrics: () => ({ models, charges }) };
+}
+
+test("audio operation performs Scribe then one Haiku and returns original timestamped words plus highlight", async () => {
+  const r = transcriptionRoute(); const response = await r.call();
+  assert.equal(response.status, 200);
+  assert.equal(response.body.highlightsApplied, true);
+  assert.deepEqual(r.metrics(), { models: ["elevenlabs/scribe-v2", "anthropic/claude-4.5-haiku"], charges: [2] });
+  assert.deepEqual(plain(response.body.words), [{ ...r.words[0], highlight: false }, r.words[1], { ...r.words[2], highlight: true }]);
+});
+
+test("translation and highlights share one Haiku call and retain the source sentence time span", async () => {
+  const r = transcriptionRoute({ translateTo: "ru" }); const response = await r.call();
+  assert.equal(response.status, 200);
+  assert.equal(response.body.translated, true);
+  assert.equal(response.body.highlightsApplied, true);
+  assert.deepEqual(r.metrics(), { models: ["elevenlabs/scribe-v2", "anthropic/claude-4.5-haiku"], charges: [2] });
+  assert.equal(response.body.words[0].start, .2);
+  assert.equal(response.body.words.at(-1).end, .8);
+  assert.deepEqual(plain(response.body.words.map(w => [w.text, w.highlight])), [["важный", true], ["момент.", false]]);
+});
+
+test("disabled highlighting adds no model call and insufficient balance stops before Scribe", async () => {
+  const plainRoute = transcriptionRoute({ highlights: false });
+  assert.equal((await plainRoute.call()).status, 200);
+  assert.deepEqual(plainRoute.metrics(), { models: ["elevenlabs/scribe-v2"], charges: [1] });
+  const blocked = transcriptionRoute({ left: 1 });
+  assert.equal((await blocked.call()).status, 402);
+  assert.deepEqual(blocked.metrics(), { models: [], charges: [] });
+});
+
+test("failed highlights keep the transcription and charge only Scribe without retrying", async () => {
+  const r = transcriptionRoute({ valid: false }); const response = await r.call();
+  assert.equal(response.status, 200);
+  assert.equal(response.body.highlightsApplied, false);
+  assert.ok(response.body.highlightError);
+  assert.deepEqual(plain(response.body.words), r.words);
+  assert.deepEqual(r.metrics(), { models: ["elevenlabs/scribe-v2", "anthropic/claude-4.5-haiku"], charges: [1] });
+});
+
+test("cancelling after Scribe prevents Haiku from starting", async () => {
+  const r = transcriptionRoute({ abortAfterScribe: true });
+  assert.notEqual((await r.call()).status, 200);
+  assert.deepEqual(r.metrics(), { models: ["elevenlabs/scribe-v2"], charges: [] });
+});
 test("unauthorized, insufficient-credit and invalid requests never invoke AI or charge", async () => {
   for (const [options, input, status] of [[{ authenticated: false }, [["word"]], 401], [{ left: 0 }, [["word"]], 402], [{}, [], 400]]) {
     const r = route(options); assert.equal((await r.call(input)).status, status);

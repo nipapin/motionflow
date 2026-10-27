@@ -1,0 +1,22 @@
+Hi there,
+
+We found an issue with a recent Gal Toolkit MAX package update that may have left some assets missing.
+
+To restore the complete 1.3.3 package, please remove the toolkit package from the panel and install it again. Please do this even if the panel already shows version 1.3.3.
+
+1. Open your profile in the Gal Toolkit MAX panel. Click the trash icon next to the installed package.
+2. In the Remove Package window, click Confirm.
+3. Open your profile again if needed. Click the download icon next to the package and follow the installation steps. Wait for the full download and installation to finish before using the toolkit.
+
+Once installation is complete, check that your toolkit assets are available again. If you use the toolkit in both Premiere Pro and After Effects, repeat these steps in each app.
+
+You only need to reinstall the toolkit package. You can keep your existing extension installed.
+
+Need help? Visit https://premieregal.motionflow.pro/#faq
+
+Sorry for the inconvenience, and thank you for your patience.
+
+Happy editing,
+The Premiere Gal Team
+
+You are receiving this service notice because you use Gal Toolkit MAX.

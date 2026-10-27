@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Upload the local captions library into R2:
- *   - thumb.png / preview.mp4 / controls.json → R2_PUBLIC_BUCKET (CDN)
+ *   - thumb.png / preview.webm / preview.mp4 / controls.json → R2_PUBLIC_BUCKET (CDN)
  *   - master.mogrt / master.aep → R2_BUCKET (private;
  *     served only via authenticated POST /api/captions)
  *
@@ -60,7 +60,7 @@ const CONTENT_TYPES = {
   ".aep": "application/octet-stream",
 };
 
-const PUBLIC_PREVIEW_FILES = new Set(["thumb.png", "preview.mp4", "controls.json"]);
+const PUBLIC_PREVIEW_FILES = new Set(["thumb.png", "preview.webm", "preview.mp4", "controls.json"]);
 const PROTECTED_FILES = new Set([
   "master.mogrt",
   "master.aep",
@@ -150,6 +150,7 @@ function contentTypeFor(fileName) {
 }
 
 function cacheControlFor(fileName) {
+  if (fileName === "preview.webm" || fileName === "preview.mp4" || fileName === "thumb.png") return "public, max-age=0, must-revalidate";
   return PUBLIC_PREVIEW_FILES.has(fileName) ? "public, max-age=3600" : "private, no-store";
 }
 

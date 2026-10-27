@@ -1,15 +1,15 @@
 /**
  * CEP AI generation metering.
- * Captions / Chapters: 1 gen per 10 minutes (ceil).
+ * Captions / Chapters: 1 gen per 5 minutes (ceil).
  * Voiceover (tts): 1 gen per 1000 characters (ceil).
  */
 
-/** Minutes of audio → generations. 1–10 min = 1, 11–20 = 2, … */
+/** Audio duration → generations. (0, 5] min = 1, (5, 10] min = 2, … */
 export function durationGenerationsCost(durationSeconds: number): number {
   const sec = Number(durationSeconds);
   if (!(sec > 0) || !Number.isFinite(sec)) return 1;
   const minutes = sec / 60;
-  return Math.max(1, Math.ceil(minutes / 10));
+  return Math.max(1, Math.ceil(minutes / 5));
 }
 
 /** Character count → generations. 1–1000 = 1, 1001–2000 = 2, … */

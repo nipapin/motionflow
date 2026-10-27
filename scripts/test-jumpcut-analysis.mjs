@@ -15,6 +15,23 @@ test("AI selects word IDs while text and timestamps come exclusively from ASR", 
   const result = await exports.analyzeZoomPhrases(words, "medium", async () => '[{"first":0,"last":1}]');
   assert.deepEqual(JSON.parse(JSON.stringify(result)), [{ text: "Important takeaway", start: 2, end: 4 }]);
 });
+
+test("Low, Medium and High apply the requested selection rate without changing ASR phrase boundaries", async () => {
+  const prompts = [];
+  for (const frequency of ["low", "medium", "high"]) {
+    const result = await exports.analyzeZoomPhrases(words, frequency, async (system, prompt) => {
+      prompts.push({ system, prompt });
+      assert.ok(system.includes(`Frequency: ${frequency}.`));
+      assert.ok(system.includes(`one phrase per ${{ low: "30-45", medium: "15-25", high: "8-15" }[frequency]} seconds`));
+      return '[{"first":0,"last":0},{"first":1,"last":2}]';
+    });
+    assert.deepEqual(JSON.parse(JSON.stringify(result)), [
+      { start: 2, end: 3, text: "Important" }, { start: 3, end: 5, text: "takeaway here." },
+    ], "all model-selected phrases keep their actual ASR times");
+  }
+  assert.equal(new Set(prompts.map(p => p.system)).size, 3);
+  assert.equal(new Set(prompts.map(p => p.prompt)).size, 1, "the transcript is independent of the requested selection rate");
+});
 test("hallucinated IDs, malformed output and overlapping phrases are rejected", async () => {
   for (const output of ['[{"first":0,"last":99}]', '[{"first":1.5,"last":2}]', '{}', 'not JSON', '[{"first":0,"last":1},{"first":1,"last":2}]']) {
     await assert.rejects(exports.analyzeZoomPhrases(words, "low", async () => output));

@@ -549,7 +549,7 @@ export async function POST(req: NextRequest) {
 
           // Captions+Chapters one-shot: free only with a signed server receipt
           // from /api/generations/captions (client flag is ignored).
-          // Standalone "all" → ceil(min/10). Section regenerate → 1.
+          // Standalone "all" → ceil(min/5). Section regenerate → 1.
           const receiptToken = (body as { chaptersReceipt?: unknown } | null)
               ?.chaptersReceipt;
           const receiptOk =

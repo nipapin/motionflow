@@ -2,7 +2,7 @@
 
 Odin Pro subscribers receive 100 generations per UTC calendar month. The quota
 is shared by Captions, Chapters and Silence Remover (which calls Captions).
-Existing duration-based costs apply: one generation per started 10 minutes.
+Existing duration-based costs apply: one generation per started 5 minutes.
 Section regeneration costs one. Combined Captions/Chapters uses the existing
 signed receipt, bound to the namespaced Odin account ID, to avoid a second charge.
 Free/expired accounts receive zero; there are no Odin extra-credit purchases.
