@@ -10,8 +10,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Public media proxy for Gal Toolkit Assets under private bucket `gal-toolkit-max`.
- * `<img>` / `<video>` cannot send Bearer — keep catalog JSON gated, Assets
+ * Public media proxy for Gal Toolkit Previews under private bucket `gal-toolkit-max`.
+ * `<img>` / `<video>` cannot send Bearer — keep catalog JSON gated, Previews
  * streamable (same pattern as premiere-gal showcase-media).
  */
 const CORS_HEADERS = {

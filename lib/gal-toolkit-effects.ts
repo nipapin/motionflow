@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import { GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, HeadObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getR2Client } from "@/lib/r2-storage";
 import { motionflowSiteOrigin } from "@/lib/motionflow-urls";
@@ -36,7 +36,7 @@ export function galEffectsJsonKey(host: GalEffectsHost = "PR"): string {
 }
 
 export function galEffectsAssetsPrefix(host: GalEffectsHost = "PR"): string {
-  return `${HOST_PREFIX[host]}/Assets/`;
+  return `${HOST_PREFIX[host]}/Previews/`;
 }
 
 /** Host-root file list: `premiere-pro/manifest.json` / `after-effects/manifest.json`. */
@@ -145,7 +145,7 @@ export function galEffectsMediaBaseUrl(_host: GalEffectsHost = "PR"): string {
   return `${motionflowSiteOrigin()}/api/cep/gal/effects/media`;
 }
 
-/** Resolve URL path segments → full R2 key under `{prefix}/Assets/`, or null. */
+/** Resolve public preview URL segments → `{prefix}/Previews/`, or null. */
 export function resolveGalEffectsAssetKey(
   pathSegments: string[],
   host: GalEffectsHost = "PR",
@@ -177,7 +177,7 @@ export type GalEffectsMediaObject = {
   status: number;
 };
 
-/** Stream an Assets object from the Gal Toolkit bucket (supports HTTP Range). */
+/** Stream a Previews object from the Gal Toolkit bucket (supports HTTP Range). */
 export async function getGalEffectsAssetStream(
   key: string,
   rangeHeader: string | null,
@@ -222,7 +222,8 @@ export type LoadGalEffectsResult =
   | { ok: false; error: "NO_PACK" | "BAD_PACK" };
 
 /**
- * Load `{prefix}/Premiere Pro.json` (or AE) from the gal-toolkit-max bucket.
+ * Read the host's .gal catalog beside Assets / Previews / Fonts.
+ * Fall back to the old fixed JSON filename for existing installations.
  */
 export async function loadGalEffectsCatalog(
   host: GalEffectsHost = "PR",
@@ -234,7 +235,20 @@ export async function loadGalEffectsCatalog(
     if (hit && hit.expiresAt > Date.now()) return { ok: true, data: hit.data };
   }
 
-  const raw = await getR2ObjectText(galToolkitBucket(), galEffectsJsonKey(host));
+  const bucket = galToolkitBucket();
+  const prefix = `${galEffectsPrefix(host)}/`;
+  const listing = await getR2Client().send(new ListObjectsV2Command({
+    Bucket: bucket,
+    Prefix: prefix,
+    Delimiter: "/",
+  }));
+  const catalogs = (listing.Contents ?? []).filter(
+    (object) => object.Key?.toLowerCase().endsWith(".gal") && (object.Size ?? 0) > 0,
+  );
+  // Several pack files are ambiguous; do not silently pick an old catalog.
+  if (catalogs.length > 1) return { ok: false, error: "BAD_PACK" };
+  const catalogKey = catalogs[0]?.Key ?? galEffectsJsonKey(host);
+  const raw = await getR2ObjectText(bucket, catalogKey);
   if (!raw) return { ok: false, error: "NO_PACK" };
 
   const body = normalizePackBody(raw);

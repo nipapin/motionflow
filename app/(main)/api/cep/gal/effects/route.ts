@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/cep/gal/effects?host=PR|AE
  * Returns Gal Toolkit pack settings + content tree from R2 bucket `gal-toolkit-max`
- * (`premiere-pro/Premiere Pro.json`). Assets are streamed via
+ * (`premiere-pro/*.gal`). Previews are streamed via
  * `/api/cep/gal/effects/media/…` (private bucket proxy).
  *
  * Auth: Bearer required (any registered CEP client; intended for `gal-cep`).
@@ -33,10 +33,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(
         {
           error: loaded.error === "BAD_PACK" ? "BAD_PACK" : "NO_PACK",
-          message:
-            loaded.error === "BAD_PACK"
-              ? "Pack JSON is invalid"
-              : "Gal effects pack not found on R2",
+          message: "Cannot load package",
         },
         { status: loaded.error === "BAD_PACK" ? 500 : 404 },
       );
