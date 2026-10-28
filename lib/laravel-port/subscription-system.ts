@@ -67,6 +67,15 @@ export interface SubscriptionCheckResponse {
     sync_args: SyncArgs;
 }
 
+/** Legacy callers identify the product with either of these numeric fields. */
+export function subscriptionAuthorId(input: Record<string, unknown>): number | null {
+    const value = input.author_id ?? input.author_name_assigned;
+    if (typeof value !== "number" && typeof value !== "string") return null;
+    if (typeof value === "string" && !value.trim()) return null;
+    const id = Number(value);
+    return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
 function timingSafeEqualString(a: string, b: string): boolean {
     if (a.length !== b.length) return false;
     return timingSafeEqual(Buffer.from(a, "utf8"), Buffer.from(b, "utf8"));
@@ -200,22 +209,25 @@ const SUBSCRIPTION_SELECT_SQL = `
     INNER JOIN users AS buyers ON subscription_systems.buyer_id = buyers.id
 `;
 
-/** Port of `ApiStickSubsMf::checkSubscription` — token+email lookup. */
+/** Match the token and account within the requested product's subscriptions. */
 export async function checkSubscription({
     token,
     email,
+    authorId,
 }: {
     token: string;
     email: string;
+    authorId: number;
 }): Promise<SubscriptionCheckResponse | null> {
     const pool = getPool();
     try {
         const [rows] = await pool.execute<SubscriptionRow[]>(
             `${SUBSCRIPTION_SELECT_SQL}
              WHERE subscription_systems.subscription_id = ? AND buyers.email = ?
+               AND subscription_systems.author_id = ?
              ORDER BY subscription_systems.id DESC
              LIMIT 1`,
-            [token, email],
+            [token, email, authorId],
         );
         const row = rows[0];
         if (!row) return null;

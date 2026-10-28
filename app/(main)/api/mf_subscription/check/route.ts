@@ -3,6 +3,7 @@ import { prepareResponse } from "@/lib/laravel-port/api-response";
 import {
     checkSubscription,
     isAtomxSecureRejected,
+    subscriptionAuthorId,
 } from "@/lib/laravel-port/subscription-system";
 
 export const runtime = "nodejs";
@@ -36,8 +37,8 @@ function asString(value: unknown): string {
 /**
  * Port of Laravel `ApiStickSubsMf::checkSubscription`:
  *   - require `AtomX-Secure-Check` header (timing-safe compare),
- *   - accept `token` (or `subscription_id`) + `email` in the body,
- *   - look up by `subscription_id` join `users.email`, return 404 otherwise.
+ *   - accept `token` (or `subscription_id`) + `email` + author in the body,
+ *   - match the subscription's author as well as its token and account.
  */
 export async function POST(req: NextRequest) {
     if (isAtomxSecureRejected(req.headers)) {
@@ -47,13 +48,18 @@ export async function POST(req: NextRequest) {
     const body = await readInput(req);
     const token = asString(body.token ?? body.subscription_id);
     const email = asString(body.email);
+    const authorId = subscriptionAuthorId(body);
 
     if (!token || !email) {
         return prepareResponse("Token and email are required", 422);
     }
 
-    const data = await checkSubscription({ token, email });
+    if (authorId === null) {
+        return prepareResponse("A valid subscription author is required", 422);
+    }
+
+    const data = await checkSubscription({ token, email, authorId });
     if (data) return prepareResponse(data as unknown as Record<string, unknown>);
 
-    return prepareResponse("The subscription does not exist or it has been deleted", 404);
+    return prepareResponse("This subscription token is not valid for this product or account. Please use the correct product subscription and account email.", 404);
 }
