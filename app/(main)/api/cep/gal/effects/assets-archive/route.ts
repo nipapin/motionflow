@@ -13,13 +13,13 @@ async function handle(req: NextRequest, action: "create" | "download" | "delete"
     if (!user) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     const headers = { "Cache-Control": "private, no-store" };
     if (action === "create") {
-      let body: { host?: string; paths?: unknown; manifest_etag?: unknown };
+      let body: { host?: string; paths?: unknown; manifest_etag?: unknown; direct?: boolean };
       try { body = await req.json(); }
       catch { return NextResponse.json({ error: "BAD_REQUEST" }, { status: 400 }); }
       if (!body || typeof body !== "object") throw new GalArchiveError("BAD_REQUEST", 400);
       const result = await createGalAssetsArchive({
         userId: user.id, host: parseGalEffectsHost(typeof body.host === "string" ? body.host : null),
-        paths: body.paths, manifestEtag: body.manifest_etag, signal: req.signal,
+        paths: body.paths, manifestEtag: body.manifest_etag, signal: req.signal, direct: body.direct === true,
       });
       return NextResponse.json(result, { headers });
     }

@@ -417,7 +417,7 @@ CEP syncs project dependencies in `Assets/_Assets` and `Fonts` on panel start; p
 
 Body: `{ "host": "PR", "paths": ["Assets/_Assets/foo.mp4"], "manifest_etag": "\"…\"" }`.
 
-The server validates canonical dependency/font paths against the current manifest and creates one temporary TAR.GZ with gzip level 9. Response: `{ id, size, format: "tar.gz", manifest_etag }`. A manifest change returns `409 MANIFEST_CHANGED`; no archive is issued. Numbered members `files/0`, `files/1`, etc. correspond to request path order and allow streaming large files without ZIP32 or filename limitations. Archive creation may take time; the CEP request allows up to 15 minutes, and the deployment's proxy timeout must accommodate this route.
+The server validates canonical dependency/font paths against the current manifest and creates one temporary TAR.GZ with gzip level 1. Response: `{ id, size, format: "tar.gz", manifest_etag }`. A manifest change returns `409 MANIFEST_CHANGED`; no archive is issued. Numbered members `files/0`, `files/1`, etc. correspond to request path order and allow streaming large files without ZIP32 or filename limitations. Archive creation may take time; the CEP request allows up to 15 minutes, and the deployment's proxy timeout must accommodate this route.
 
 `GET /api/cep/gal/effects/assets-archive?id={id}` streams the caller's archive with `Content-Type: application/gzip` and exact `Content-Length`. The panel shows byte progress from 0 to 100%, streams extraction into a private staging folder, installs contents, and atomically saves `gal-file-index.json`. It records a pending installation before live file replacements so an interrupted update is retried safely.
 

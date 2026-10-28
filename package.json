@@ -3,6 +3,7 @@
   "version": "0.1.9",
   "private": true,
   "scripts": {
+    "gal:prepare-startup": "node scripts/prepare-gal-startup.mjs",
     "build": "next build",
     "build:staging": "NEXT_DIST_DIR=.next-build next build",
     "dev": "next dev",

@@ -8,7 +8,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { TarArchive } from "archiver";
 import { normalizePackManifest } from "@/lib/packages-pack-diff";
 import {
@@ -66,6 +67,7 @@ export async function createGalAssetsArchive(opts: {
   paths: unknown;
   manifestEtag: unknown;
   signal: AbortSignal;
+  direct?: boolean;
 }) {
   if (!Array.isArray(opts.paths) || !opts.paths.length || opts.paths.length > 50_000 ||
       opts.paths.some(p => typeof p !== "string") || new Set(opts.paths).size !== opts.paths.length) {
@@ -82,11 +84,33 @@ export async function createGalAssetsArchive(opts: {
   const paths = opts.paths as string[];
   if (paths.some(p => canonicalAssetPath(p) !== p || !allowed.has(p))) throw new GalArchiveError("BAD_PATHS", 400);
 
+  // One current full-install bundle is published ahead of time. Only clients
+  // supporting direct URLs receive them; older clients keep the temporary API.
+  if (opts.direct && paths.length === allowed.size) {
+    const ordered = [...allowed].sort();
+    const fingerprint = createHash("sha256").update(JSON.stringify([manifest.data.etag, ordered])).digest("hex");
+    const key = `${galEffectsPrefix(opts.host)}/Startup/latest.tar.gz`;
+    try {
+      const object = await getR2Client().send(new HeadObjectCommand({ Bucket: galToolkitBucket(), Key: key }), { abortSignal: opts.signal });
+      if (object.ContentLength && object.ETag && object.Metadata?.fingerprint === fingerprint) {
+        // Bind the transfer to these bytes even if latest is replaced after HEAD.
+        const url = await getSignedUrl(getR2Client(), new GetObjectCommand({ Bucket: galToolkitBucket(), Key: key, IfMatch: object.ETag }), { expiresIn: 3600 });
+        return { id: randomUUID(), size: object.ContentLength, format: "tar.gz" as const,
+          manifest_etag: manifest.data.etag, url, paths: ordered, shared: true, archive_etag: object.ETag };
+      }
+    } catch (error) {
+      const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+      if (status !== 404) throw error;
+      // Publish bundles before releasing a new manifest. Retain compatibility
+      // while a newly uploaded manifest is being prepared.
+    }
+  }
+
   await mkdir(ARCHIVE_ROOT, { recursive: true });
   await removeExpiredArchives();
   const id = randomUUID();
   const file = archivePath(opts.userId, id);
-  const archive = new TarArchive({ gzip: true, gzipOptions: { level: 9 } });
+  const archive = new TarArchive({ gzip: true, gzipOptions: { level: 1 } });
   const output = createWriteStream(file, { flags: "wx", mode: 0o600 });
   const opened = once(output, "open");
   let source: Readable | undefined;
