@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Public proxy for visual media in Previews and SFX audio in Assets.
+ * Public proxy for visual media and SFX in Previews, with Assets audio fallback.
  * Native media elements cannot send Bearer; catalog and project files stay gated.
  */
 const CORS_HEADERS = {

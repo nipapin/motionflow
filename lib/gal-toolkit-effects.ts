@@ -150,7 +150,7 @@ export function galEffectsMediaBaseUrl(_host: GalEffectsHost = "PR"): string {
   return `${motionflowSiteOrigin()}/api/cep/gal/effects/media`;
 }
 
-/** Visual previews use Previews; SFX preview streams use audio files in Assets. */
+/** Visual and SFX previews live in Previews; some installs keep audio in Assets. */
 export function resolveGalEffectsAssetKey(
   pathSegments: string[],
   host: GalEffectsHost = "PR",
@@ -170,10 +170,17 @@ export function resolveGalEffectsAssetKey(
   if (parts.some((p) => p.includes("/") || p.includes("\\") || p.includes("\0"))) return null;
 
   const relative = parts.join("/");
-  const prefix = AUDIO_EXTENSIONS.has(extname(relative))
-    ? `${galEffectsPrefix(host)}/Assets/`
-    : galEffectsAssetsPrefix(host);
-  return `${prefix}${relative}`;
+  return `${galEffectsAssetsPrefix(host)}${relative}`;
+}
+
+/** Share the same SFX lookup for hover playback and authenticated downloads. */
+function galAudioKeyCandidates(key: string, host: GalEffectsHost): string[] {
+  if (!AUDIO_EXTENSIONS.has(extname(key))) return [key];
+  const prefix = `${galEffectsPrefix(host)}/`;
+  const relative = key.slice(prefix.length);
+  const match = /^(?:Assets|Projects|Previews)\/(.+)$/.exec(relative);
+  if (!key.startsWith(prefix) || !match) return [key];
+  return [...new Set([`${prefix}Previews/${match[1]}`, key, `${prefix}Assets/${match[1]}`])];
 }
 
 export type GalEffectsMediaObject = {
@@ -198,34 +205,37 @@ export async function getGalEffectsAssetStream(
       !(key.startsWith(audioPrefix) && AUDIO_EXTENSIONS.has(extname(key)))) return null;
 
   const client = getR2Client();
-  try {
-    const res = await client.send(
-      new GetObjectCommand({
-        Bucket: galToolkitBucket(),
-        Key: key,
-        Range: rangeHeader || undefined,
-      }),
-    );
-    if (!res.Body) return null;
+  for (const candidate of galAudioKeyCandidates(key, host)) {
+    try {
+      const res = await client.send(
+        new GetObjectCommand({
+          Bucket: galToolkitBucket(),
+          Key: candidate,
+          Range: rangeHeader || undefined,
+        }),
+      );
+      if (!res.Body) return null;
 
-    const status = rangeHeader && res.ContentRange ? 206 : 200;
-    return {
-      key,
-      body: res.Body.transformToWebStream(),
-      contentType: mimeForGalEffectsKey(key),
-      contentLength:
-        typeof res.ContentLength === "number" ? res.ContentLength : undefined,
-      contentRange: res.ContentRange,
-      acceptRanges: res.AcceptRanges || "bytes",
-      status,
-    };
-  } catch (e) {
-    const name = (e as { name?: string } | undefined)?.name;
-    const status = (e as { $metadata?: { httpStatusCode?: number } } | undefined)
-      ?.$metadata?.httpStatusCode;
-    if (name === "NoSuchKey" || name === "NotFound" || status === 404) return null;
-    throw e;
+      const status = rangeHeader && res.ContentRange ? 206 : 200;
+      return {
+        key: candidate,
+        body: res.Body.transformToWebStream(),
+        contentType: mimeForGalEffectsKey(candidate),
+        contentLength:
+          typeof res.ContentLength === "number" ? res.ContentLength : undefined,
+        contentRange: res.ContentRange,
+        acceptRanges: res.AcceptRanges || "bytes",
+        status,
+      };
+    } catch (e) {
+      const name = (e as { name?: string } | undefined)?.name;
+      const status = (e as { $metadata?: { httpStatusCode?: number } } | undefined)
+        ?.$metadata?.httpStatusCode;
+      if (name === "NoSuchKey" || name === "NotFound" || status === 404) continue;
+      throw e;
+    }
   }
+  return null;
 }
 
 export type LoadGalEffectsResult =
@@ -410,37 +420,41 @@ export async function getGalEffectsFilePresign(
   relPath: string,
   host: GalEffectsHost = "PR",
 ): Promise<GalEffectsFileLinkResult> {
-  const key = resolveGalEffectsFileKey(relPath, host);
-  if (!key) return { ok: false, error: "BAD_PATH" };
+  const requestedKey = resolveGalEffectsFileKey(relPath, host);
+  if (!requestedKey) return { ok: false, error: "BAD_PATH" };
 
   const prefix = `${galEffectsPrefix(host)}/`;
-  const path = key.slice(prefix.length);
   const bucket = galToolkitBucket();
   const client = getR2Client();
 
+  let key = "";
   let etag = "";
   let size: number | null = null;
-  try {
-    const head = await client.send(
-      new HeadObjectCommand({ Bucket: bucket, Key: key }),
-    );
-    etag = (head.ETag || "").replace(/^W\//, "").trim() || "";
-    if (!etag) {
-      etag = `"${createHash("sha256").update(key).digest("hex").slice(0, 16)}"`;
-    } else if (!etag.startsWith('"')) {
-      etag = `"${etag.replace(/"/g, "")}"`;
+  for (const candidate of galAudioKeyCandidates(requestedKey, host)) {
+    try {
+      const head = await client.send(
+        new HeadObjectCommand({ Bucket: bucket, Key: candidate }),
+      );
+      key = candidate;
+      etag = (head.ETag || "").replace(/^W\//, "").trim() || "";
+      if (!etag) {
+        etag = `"${createHash("sha256").update(key).digest("hex").slice(0, 16)}"`;
+      } else if (!etag.startsWith('"')) {
+        etag = `"${etag.replace(/"/g, "")}"`;
+      }
+      size = typeof head.ContentLength === "number" ? head.ContentLength : null;
+      break;
+    } catch (e) {
+      const name = (e as { name?: string } | undefined)?.name;
+      const status = (e as { $metadata?: { httpStatusCode?: number } } | undefined)
+        ?.$metadata?.httpStatusCode;
+      if (name === "NoSuchKey" || name === "NotFound" || status === 404) continue;
+      throw e;
     }
-    size = typeof head.ContentLength === "number" ? head.ContentLength : null;
-  } catch (e) {
-    const name = (e as { name?: string } | undefined)?.name;
-    const status = (e as { $metadata?: { httpStatusCode?: number } } | undefined)
-      ?.$metadata?.httpStatusCode;
-    if (name === "NoSuchKey" || name === "NotFound" || status === 404) {
-      return { ok: false, error: "NOT_FOUND" };
-    }
-    throw e;
   }
+  if (!key) return { ok: false, error: "NOT_FOUND" };
 
+  const path = key.slice(prefix.length);
   const filename = path.split("/").pop() || "download";
   try {
     const url = await getSignedUrl(

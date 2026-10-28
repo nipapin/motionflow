@@ -24,6 +24,7 @@ import {
 } from "@/lib/cep-generations";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 async function readIdentity(req: NextRequest): Promise<CaptionsIdentityInput> {
   const bearer = bearerFromRequest(req);
@@ -91,7 +92,9 @@ async function handleStatus(req: NextRequest) {
         source: "cep-bearer",
         ...status,
         plan: authorSub.active
-          ? authorSub.tierId === "library"
+          ? cfg.client === "gal-cep"
+            ? "gal_max"
+            : authorSub.tierId === "library"
             ? "spunkram_editor"
             : "spunkram_editor_ai"
           : "free",
