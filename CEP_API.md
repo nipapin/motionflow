@@ -409,7 +409,19 @@ Reads **`{hostPrefix}/manifest.json`** (e.g. `premiere-pro/manifest.json`). Same
 }
 ```
 
-CEP syncs only `_Assets` / `Assets/_Assets` entries on panel start; project files are downloaded on Apply.
+CEP syncs project dependencies in `Assets/_Assets` and `Fonts` on panel start; project files and SFX sources are downloaded on Apply. Legacy dependency paths are canonicalized to `Assets/_Assets`. CEP compares persisted manifest fingerprints without inspecting every local media file. A successfully installed matching manifest also skips font traversal.
+
+### Assets archive (Bearer)
+
+`POST /api/cep/gal/effects/assets-archive`
+
+Body: `{ "host": "PR", "paths": ["Assets/_Assets/foo.mp4"], "manifest_etag": "\"…\"" }`.
+
+The server validates canonical dependency/font paths against the current manifest and creates one temporary TAR.GZ with gzip level 9. Response: `{ id, size, format: "tar.gz", manifest_etag }`. A manifest change returns `409 MANIFEST_CHANGED`; no archive is issued. Numbered members `files/0`, `files/1`, etc. correspond to request path order and allow streaming large files without ZIP32 or filename limitations. Archive creation may take time; the CEP request allows up to 15 minutes, and the deployment's proxy timeout must accommodate this route.
+
+`GET /api/cep/gal/effects/assets-archive?id={id}` streams the caller's archive with `Content-Type: application/gzip` and exact `Content-Length`. The panel shows byte progress from 0 to 100%, streams extraction into a private staging folder, installs contents, and atomically saves `gal-file-index.json`. It records a pending installation before live file replacements so an interrupted update is retried safely.
+
+`DELETE /api/cep/gal/effects/assets-archive?id={id}` removes the caller's temporary archive (204, idempotent). CEP requests deletion and removes local staging on success, failure, or cancellation. Abandoned server archives expire after one hour; subsequent archive creation also removes expired files left by earlier processes. Multiple server workers must share the archive temporary directory.
 
 ### File download — presigned URL (Bearer)
 
