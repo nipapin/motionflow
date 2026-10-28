@@ -1,7 +1,8 @@
 import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream, createWriteStream, Stats } from "node:fs";
+import { once } from "node:events";
+import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, readdir, stat, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -87,6 +88,7 @@ export async function createGalAssetsArchive(opts: {
   const file = archivePath(opts.userId, id);
   const archive = new TarArchive({ gzip: true, gzipOptions: { level: 9 } });
   const output = createWriteStream(file, { flags: "wx", mode: 0o600 });
+  const opened = once(output, "open");
   let source: Readable | undefined;
   const writing = pipeline(archive, output, { signal: opts.signal });
   // Observe failures immediately, including while an R2 request is pending.
@@ -98,6 +100,7 @@ export async function createGalAssetsArchive(opts: {
   };
   opts.signal.addEventListener("abort", abort, { once: true });
   try {
+    await opened;
     for (let i = 0; i < paths.length; i++) {
       if (opts.signal.aborted) throw new GalArchiveError("ABORTED", 499);
       if (archive.destroyed) throw new GalArchiveError("ARCHIVE_FAILED");
@@ -107,7 +110,7 @@ export async function createGalAssetsArchive(opts: {
       if (!object.Body || object.ContentLength == null) throw new GalArchiveError("NOT_FOUND", 404);
       source = object.Body as Readable;
       // Supply size so archiver streams each R2 object instead of buffering it.
-      const stats = new Stats();
+      const stats = await stat(file);
       stats.size = object.ContentLength;
       const entryDone = new Promise<void>((resolve, reject) => {
         const cleanup = () => {
