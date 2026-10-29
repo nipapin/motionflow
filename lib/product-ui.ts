@@ -73,6 +73,7 @@ export function normalizeProductFiles(files: Product["files"] | string | null | 
   if (typeof obj !== "object" || obj === null || Array.isArray(obj)) return {};
   const o = obj as Record<string, unknown>;
   return {
+    no_file: o.no_file === true,
     main: typeof o.main === "string" ? o.main : undefined,
     image: typeof o.image === "string" ? o.image : undefined,
     video: typeof o.video === "string" ? o.video : undefined,

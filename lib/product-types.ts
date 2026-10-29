@@ -1,5 +1,6 @@
 /** Row shape for `marketplace_items` (MySQL) — matches API/DB JSON. */
 export interface ProductFiles {
+  no_file?: boolean;
   main?: string;
   image?: string;
   video?: string;
@@ -8,6 +9,7 @@ export interface ProductFiles {
 export interface Product {
   id: number;
   author_id: number;
+  admin_only?: boolean;
   access: number;
   price: number;
   team: string | null;

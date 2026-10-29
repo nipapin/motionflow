@@ -58,6 +58,9 @@ export async function getContributorItemsPage(
     params.push(authorId);
   }
 
+  whereSql += " AND (mi.admin_only = 0 OR mi.author_id = ?)";
+  params.push(authorId);
+
   const countSql = `SELECT COUNT(*) AS c FROM \`${table}\` AS mi WHERE ${whereSql}`;
   const [countRows] = await pool.execute<RowDataPacket[]>(countSql, params);
   const total = Number(countRows[0]?.c ?? 0);

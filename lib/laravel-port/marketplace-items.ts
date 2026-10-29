@@ -106,7 +106,7 @@ export async function itemExists(itemId: number): Promise<boolean> {
     const pool = getPool();
     try {
         const [rows] = await pool.execute<RowDataPacket[]>(
-            `SELECT 1 FROM \`${TABLE}\` WHERE id = ? LIMIT 1`,
+            `SELECT 1 FROM \`${TABLE}\` WHERE id = ? AND admin_only = 0 LIMIT 1`,
             [itemId],
         );
         return rows.length > 0;
@@ -122,7 +122,7 @@ export async function getItemSimply(itemId: number): Promise<Record<string, unkn
     const pool = getPool();
     try {
         const [rows] = await pool.execute<MarketplaceItemApiRow[]>(
-            `SELECT * FROM \`${TABLE}\` WHERE id = ? LIMIT 1`,
+            `SELECT * FROM \`${TABLE}\` WHERE id = ? AND admin_only = 0 LIMIT 1`,
             [itemId],
         );
         const row = rows[0];
@@ -181,7 +181,7 @@ async function enrichedQuery({
         GROUP BY ip.item_id
     )`;
 
-    const where: string[] = [`${TABLE}.access = 1`];
+    const where: string[] = [`${TABLE}.access = 1`, `${TABLE}.admin_only = 0`];
     if (extraWhereSql) where.push(extraWhereSql);
 
     const sql = `

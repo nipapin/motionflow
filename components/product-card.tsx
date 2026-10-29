@@ -214,7 +214,7 @@ export function ProductCard({ product, onDownload, onClick }: ProductCardProps) 
             >
               <Heart className={cn("w-4 h-4", favorited && "fill-current")} />
             </button>
-            <button
+            {!product.files.no_file && <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
@@ -224,7 +224,7 @@ export function ProductCard({ product, onDownload, onClick }: ProductCardProps) 
               aria-label="Download"
             >
               <Download className="w-4 h-4" />
-            </button>
+            </button>}
           </div>
         </div>
       </div>

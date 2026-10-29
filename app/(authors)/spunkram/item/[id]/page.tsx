@@ -10,6 +10,7 @@ import {
   RefreshCw,
   ScanText,
 } from "lucide-react";
+import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getMarketItemsByIds } from "@/lib/market-items";
 import { productThumbnailUrl } from "@/lib/product-ui";
 import { resolveItemShowcasePrefix } from "@/lib/item-showcase-source";
@@ -121,7 +122,7 @@ export default async function SpunkramItemPage({
   const itemId = Number(id);
   if (!Number.isInteger(itemId) || itemId <= 0) notFound();
 
-  const [item] = await getMarketItemsByIds([itemId]);
+  const [item] = await getMarketItemsByIds([itemId], await getSessionUser());
   if (!item || item.author_id !== SPUNKRAM_AUTHOR_ID || item.access !== 1) notFound();
 
   const showcase = await loadShowcase(itemId, await resolveItemShowcasePrefix(itemId));
@@ -297,6 +298,7 @@ export default async function SpunkramItemPage({
               itemName={item.name}
               basePrice={item.price}
               jsonArgs={item.json_args}
+              withoutProjectFile={item.files.no_file === true}
               // jsonArgs={`{"paddle_price_ids": ["pri_01kqyy24624agjp3hwq4n4xh0w", "pri_01kqyy3arwj0w5dk3rwk8zx305"]}`}
             />
 

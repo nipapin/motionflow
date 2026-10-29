@@ -135,7 +135,10 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
     const incoming = parsed.data.files;
     if (incoming.image !== undefined) mergedFiles.image = incoming.image;
     if (incoming.video !== undefined) mergedFiles.video = incoming.video;
-    if (incoming.main !== undefined) mergedFiles.main = incoming.main;
+    if (incoming.main !== undefined) {
+      mergedFiles.main = incoming.main;
+      if (incoming.main) delete mergedFiles.no_file;
+    }
     sets.push("files = ?");
     vals.push(JSON.stringify(mergedFiles));
   }

@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import SpunkramItemPage from "@/app/(authors)/spunkram/item/[id]/page";
+import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getMarketItemsByIds } from "@/lib/market-items";
 import { motionflowItemPageUrl } from "@/lib/motionflow-urls";
 import { PREMIERE_GAL_AUTHOR_ID } from "@/lib/premiere-gal-paddle-config";
@@ -18,7 +19,7 @@ export default async function MainSiteItemByIdPage({
   const itemId = Number(id);
   if (!Number.isInteger(itemId) || itemId <= 0) notFound();
 
-  const [item] = await getMarketItemsByIds([itemId]);
+  const [item] = await getMarketItemsByIds([itemId], await getSessionUser());
   if (!item || item.access !== 1) notFound();
 
   if (item.author_id === SPUNKRAM_AUTHOR_ID) {

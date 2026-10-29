@@ -25,8 +25,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ canDownload: false, authenticated: false });
   }
 
-  const products = await getMarketItemsByIds([itemId]);
+  const products = await getMarketItemsByIds([itemId], user);
   const product = products[0];
+  if (!product || product.files.no_file) {
+    return NextResponse.json({ authenticated: true, canDownload: false });
+  }
   const isPaidStockAudio =
     product != null &&
     (productKind(product) === "stock-audio" || productKind(product) === "sound-fx");

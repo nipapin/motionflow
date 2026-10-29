@@ -1,5 +1,6 @@
 import type { RowDataPacket } from "mysql2/promise";
 import type { Product, ProductFiles } from "@/lib/product-types";
+import { canViewMarketplaceItem, type MarketplaceViewer } from "@/lib/market-item-visibility";
 import { getMysqlPool } from "@/lib/db";
 import { softwareLabelToSlug } from "@/lib/product-ui";
 
@@ -63,13 +64,15 @@ function parseProductFilesRow(raw: unknown): ProductFiles {
   if (typeof obj !== "object" || obj === null || Array.isArray(obj)) return {};
   const o = obj as Record<string, unknown>;
   return {
+    no_file: o.no_file === true,
     main: typeof o.main === "string" ? o.main : undefined,
     image: typeof o.image === "string" ? o.image : undefined,
     video: typeof o.video === "string" ? o.video : undefined,
   };
 }
 
-function rowToProduct(row: RowDataPacket): Product | null {
+function rowToProduct(row: RowDataPacket, viewer?: MarketplaceViewer | null): Product | null {
+  if (!canViewMarketplaceItem({ admin_only: row.admin_only, author_id: row.author_id }, viewer)) return null;
   if (row.deleted_at != null) return null;
 
   const id = toNum(row.id, NaN);
@@ -78,6 +81,7 @@ function rowToProduct(row: RowDataPacket): Product | null {
   return {
     id,
     author_id: toNum(row.author_id),
+    admin_only: Number(row.admin_only) === 1,
     access: toNum(row.access, 1),
     price: toNum(row.price),
     team: toStrNull(row.team),
@@ -139,10 +143,10 @@ export async function getMarketItemsByAuthorId(authorId: number, limit?: number)
 
   try {
     const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT * FROM \`${table}\` WHERE author_id = ? AND access = 1 ORDER BY id DESC LIMIT ?`,
+      `SELECT * FROM \`${table}\` WHERE author_id = ? AND access = 1 AND admin_only = 0 ORDER BY id DESC LIMIT ?`,
       [normalizedAuthorId, cappedLimit]
     );
-    return rows.map(rowToProduct).filter((p): p is Product => p != null);
+    return rows.map((row) => rowToProduct(row)).filter((p): p is Product => p != null);
   } catch (err) {
     console.error("[getMarketItemsByAuthorId] MySQL query failed:", err);
     return [];
@@ -169,10 +173,10 @@ export async function getMarketItemsByIndexCategorySlug(
 
   try {
     const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT * FROM \`${table}\` WHERE LOWER(index_category_slug) = LOWER(?) AND author_id = 6 AND access = 1 ORDER BY id DESC LIMIT ?`,
+      `SELECT * FROM \`${table}\` WHERE LOWER(index_category_slug) = LOWER(?) AND author_id = 6 AND access = 1 AND admin_only = 0 ORDER BY id DESC LIMIT ?`,
       [indexCategorySlug, capped]
     );
-    return rows.map(rowToProduct).filter((p): p is Product => p != null);
+    return rows.map((row) => rowToProduct(row)).filter((p): p is Product => p != null);
   } catch (err) {
     console.error("[getMarketItemsByIndexCategorySlug] MySQL query failed:", err);
     return [];
@@ -206,7 +210,7 @@ export async function getMarketItemsPage(
 
   try {
     const params: unknown[] = [indexCategorySlug];
-    let sql = `SELECT * FROM \`${table}\` WHERE LOWER(index_category_slug) = LOWER(?) AND author_id = 6 AND access = 1`;
+    let sql = `SELECT * FROM \`${table}\` WHERE LOWER(index_category_slug) = LOWER(?) AND author_id = 6 AND access = 1 AND admin_only = 0`;
     if (beforeId != null) {
       sql += " AND id < ?";
       params.push(beforeId);
@@ -215,7 +219,7 @@ export async function getMarketItemsPage(
     params.push(capped + 1);
 
     const [rows] = await pool.query<RowDataPacket[]>(sql, params);
-    const products = rows.map(rowToProduct).filter((p): p is Product => p != null);
+    const products = rows.map((row) => rowToProduct(row)).filter((p): p is Product => p != null);
     const hasMore = products.length > capped;
     return { items: hasMore ? products.slice(0, capped) : products, hasMore };
   } catch (err) {
@@ -225,7 +229,7 @@ export async function getMarketItemsPage(
 }
 
 /** Load products by an array of IDs (preserves input order). */
-export async function getMarketItemsByIds(ids: number[]): Promise<Product[]> {
+export async function getMarketItemsByIds(ids: number[], viewer?: MarketplaceViewer | null): Promise<Product[]> {
   if (ids.length === 0) return [];
   const pool = getMysqlPool();
   if (!pool) return [];
@@ -233,14 +237,17 @@ export async function getMarketItemsByIds(ids: number[]): Promise<Product[]> {
   const table = sanitizedTableName();
   const placeholders = ids.map(() => "?").join(",");
 
+  const visibilitySql = Number(viewer?.access) === 100 ? "" :
+    viewer && Number(viewer.id) > 0 ? " AND (admin_only = 0 OR author_id = ?)" : " AND admin_only = 0";
+  const params = viewer && Number(viewer.access) !== 100 && Number(viewer.id) > 0 ? [...ids, Number(viewer.id)] : ids;
   try {
     const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT * FROM \`${table}\` WHERE id IN (${placeholders})`,
-      ids,
+      `SELECT * FROM \`${table}\` WHERE id IN (${placeholders})${visibilitySql}`,
+      params,
     );
     const map = new Map<number, Product>();
     for (const row of rows) {
-      const p = rowToProduct(row);
+      const p = rowToProduct(row, viewer);
       if (p) map.set(p.id, p);
     }
     return ids.map((id) => map.get(id)).filter((p): p is Product => p != null);
@@ -330,7 +337,7 @@ export async function getHomeSections(): Promise<HomeSection[]> {
     const limit = fetchLimit ?? HOME_SECTION_ITEM_LIMIT;
     return `(SELECT m.* FROM \`${table}\` m
       INNER JOIN \`${ITEM_POPULARITIES_TABLE}\` ip ON ip.item_id = m.id AND ip.valuer_id = ?
-      WHERE LOWER(m.index_category_slug) IN (${placeholders}) AND m.author_id = 6 AND m.access = 1
+      WHERE LOWER(m.index_category_slug) IN (${placeholders}) AND m.author_id = 6 AND m.access = 1 AND m.admin_only = 0
       ORDER BY ip.ranking DESC, m.id DESC
       LIMIT ${limit})`;
   });
@@ -382,7 +389,7 @@ export async function getSubCategorySlugs(indexCategorySlug: string): Promise<st
 
   try {
     const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT DISTINCT sub_category_slug FROM \`${table}\` WHERE LOWER(index_category_slug) = LOWER(?) AND author_id = 6 AND access = 1 AND sub_category_slug IS NOT NULL AND sub_category_slug != ''`,
+      `SELECT DISTINCT sub_category_slug FROM \`${table}\` WHERE LOWER(index_category_slug) = LOWER(?) AND author_id = 6 AND access = 1 AND admin_only = 0 AND sub_category_slug IS NOT NULL AND sub_category_slug != ''`,
       [indexCategorySlug],
     );
     const set = new Set<string>();

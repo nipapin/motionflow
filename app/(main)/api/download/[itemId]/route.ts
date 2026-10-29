@@ -63,10 +63,14 @@ export async function GET(
     return redirectRelative("/?signin=1");
   }
 
-  const products = await getMarketItemsByIds([itemId]);
+  const products = await getMarketItemsByIds([itemId], user);
   const product = products[0];
   if (!product) {
     return NextResponse.json({ error: "item not found" }, { status: 404 });
+  }
+
+  if (product.files.no_file) {
+    return NextResponse.json({ error: "NO_PROJECT_FILE", message: "This product does not include a project file for download from this site." }, { status: 404 });
   }
 
   return withDownloadActivity({

@@ -347,7 +347,12 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
                         <p className="mt-3 text-sm text-muted-foreground line-clamp-4 leading-relaxed">{product.description}</p>
                       ) : null}
 
-                      <Button
+                      {product.files.no_file ? (
+                        <div className="mt-6 mb-6">
+                          <p className="text-sm text-muted-foreground mb-3">This product does not include a project file for download from this site.</p>
+                          <a href={`/item/${product.id}`} className="flex items-center justify-center w-full h-12 bg-blue-600 text-white rounded-xl font-medium">View product &amp; pricing</a>
+                        </div>
+                      ) : <Button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -357,7 +362,7 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
                       >
                         <Download className="w-5 h-5 mr-2" />
                         {!user ? "Sign in to Download" : "Download"}
-                      </Button>
+                      </Button>}
 
                       {/* Tags */}
                       <div className="flex flex-wrap gap-2 mb-6">
