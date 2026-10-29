@@ -1,6 +1,6 @@
 import "server-only";
 import crypto from "node:crypto";
-import { actualAccounting, actualAdjustment, accountingSource, isActualSubscription, type AccountingSource } from "@/lib/paddle-actual";
+import { actualAccounting, actualAdjustment, accountingSource, type AccountingSource } from "@/lib/paddle-actual";
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
 import {
@@ -27,7 +27,6 @@ import {
   isMarketplaceOneTimeSale,
   pickAuthorIdForSubscriptionTransaction,
   computeSubscriptionMoneyFromTransaction,
-  reverseAuthorBalanceForSubscriptionTermination,
   reverseAuthorBalanceForRefundedSubscriptionPayment,
   recordSubscriptionPayment,
   lookupSubscriptionForGhl,
@@ -1663,31 +1662,17 @@ export async function handlePaddleEvent(
     const sub = asSubscription(event.data);
     if (!sub) return { handled: false, reason: "missing_subscription_id" };
 
-    // 1:1 port of `GatewayPaddle::webhook`: reverse the author's credited
-    // earn on cancel/past_due (NOT on pause — a paused subscription can still
-    // resume, so its credited balance is left alone). Awaited (not
-    // fire-and-forget) since this affects money, but failures are logged and
-    // don't block the status update below.
+    // Cancellation or a failed renewal changes access, not money already earned
+    // from the preceding successful charge. Only approved refunds reverse it.
     if (
       event.event_type === "subscription.canceled" ||
       event.event_type === "subscription.past_due"
     ) {
-      // Read before reversal/termination - neither mutation touches
-      // author_id/buyer_id/plan, but this keeps ordering identical to the
-      // Laravel port (`GatewayPaddle::webhook` looks the row up first too).
+      // Read the notification details before changing the subscription status.
       const ghlInfo = await lookupSubscriptionForGhl({ subscriptionId: sub.id }).catch((err) => {
         console.error(`[paddle] lookupSubscriptionForGhl threw for ${sub.id}:`, err);
         return null;
       });
-
-      try {
-        if (!await isActualSubscription(sub.id)) await reverseAuthorBalanceForSubscriptionTermination(sub.id);
-      } catch (err) {
-        console.error(
-          `[paddle] reverseAuthorBalanceForSubscriptionTermination threw for ${sub.id}:`,
-          err,
-        );
-      }
 
       if (ghlInfo) {
         const ghlPlan = ghlInfo.plan === "annual" ? "yearly" : ghlInfo.plan;
@@ -1727,9 +1712,14 @@ export async function handlePaddleEvent(
     // Preserve the legacy subscription-site and historical-payment behavior.
     if (event.event_type === "adjustment.created") return { handled: false, reason: "legacy_adjustment_created_ignored" };
     const data = (event.data ?? {}) as {
+      action?: string;
+      status?: string;
       transaction_id?: string;
       items?: Array<{ item_id?: string }>;
     };
+    if (data.action !== "refund" || data.status !== "approved") {
+      return { handled: true, reason: "legacy_adjustment_not_approved_refund" };
+    }
     const transactionId = String(data.transaction_id ?? "");
     if (!transactionId) {
       return { handled: false, reason: "missing_transaction_id" };

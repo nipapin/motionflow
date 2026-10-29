@@ -21,7 +21,6 @@ import { getPool } from "@/lib/db";
  *       - changeAuthorBalance() — users.balance increment/decrement
  *   - app/Models/SubscriptionSystem.php
  *       - createSubscription() — updateOrCreate by (buyer_id, subscription_id, author_id)
- *       - reverseAuthorBalancesForSubscriptionTermination()
  *   - app/Http/Abstracts/Payments/PaymentService.php
  *       - succeedSale()        — top-level shape of the prepare row
  *   - config/aniom.php
@@ -997,62 +996,9 @@ interface CreditedSubscriptionRow extends RowDataPacket {
 }
 
 /**
- * Port of `SubscriptionSystem::reverseAuthorBalancesForSubscriptionTermination`.
- * Called on `subscription.canceled` / `subscription.past_due` (NOT `.paused` —
- * Laravel only reverses on those two; a paused subscription can still resume).
- *
- * Reverses at most once per author per subscription (Laravel dedupes by
- * `unique('author_id')` on the newest row). We additionally guard on
- * `author_balance_credited_for_payment_id` being set, so a redelivered
- * cancel/past_due webhook can't double-decrement the same credit.
- */
-export async function reverseAuthorBalanceForSubscriptionTermination(
-  subscriptionId: string,
-): Promise<void> {
-  if (!subscriptionId) return;
-  const pool = getPool();
-  const [rows] = await pool.execute<CreditedSubscriptionRow[]>(
-    `SELECT id, author_id, author_earn, author_balance_credited_for_payment_id
-       FROM \`${SUBSCRIPTIONS_TABLE}\`
-      WHERE subscription_id = ? AND author_id > 0 AND status IN (1, -1)
-      ORDER BY id DESC`,
-    [subscriptionId],
-  );
-
-  const seenAuthors = new Set<number>();
-  const conn = await pool.getConnection();
-  try {
-    await conn.beginTransaction();
-    for (const row of rows) {
-      const authorId = Number(row.author_id);
-      if (seenAuthors.has(authorId)) continue;
-      seenAuthors.add(authorId);
-
-      if (!row.author_balance_credited_for_payment_id) continue; // never credited (or already reversed)
-      const earn = round(Number(row.author_earn ?? 0), 2);
-      if (earn <= 0) continue;
-
-      await decrementUserBalance(conn, authorId, earn);
-      await conn.execute<ResultSetHeader>(
-        `UPDATE \`${SUBSCRIPTIONS_TABLE}\`
-            SET \`author_balance_credited_for_payment_id\` = NULL, \`updated_at\` = NOW()
-          WHERE \`id\` = ?`,
-        [row.id],
-      );
-    }
-    await conn.commit();
-  } catch (err) {
-    try { await conn.rollback(); } catch { /* ignore */ }
-    throw err;
-  } finally {
-    conn.release();
-  }
-}
-
-/**
  * Port of `SubscriptionSystem::reverseAuthorBalancesForRefundedSubscriptionPayment`.
  * Called on `adjustment.updated` for the refunded transaction id — reverses the
- * author's credited earn for every still-active `subscription_systems` row tied
+ * author's remaining credited earn, including a canceled subscription, tied
  * to that Paddle payment id and zeroes the row out (mirrors Laravel setting
  * `author_earn = 0`, `author_balance_credited_for_payment_id = null`, `status = 0`).
  */
@@ -1067,14 +1013,14 @@ export async function reverseAuthorBalanceForRefundedSubscriptionPayment(
     const [rows] = await conn.execute<CreditedSubscriptionRow[]>(
       `SELECT id, author_id, author_earn, author_balance_credited_for_payment_id
          FROM \`${SUBSCRIPTIONS_TABLE}\`
-        WHERE payment_id = ? AND author_id > 0 AND status = 1
+        WHERE payment_id = ? AND author_id > 0 AND status IN (1, -1)
         FOR UPDATE`,
       [paymentId],
     );
 
     for (const row of rows) {
       const earn = round(Number(row.author_earn ?? 0), 2);
-      if (earn > 0 && row.author_balance_credited_for_payment_id) {
+      if (earn > 0 && row.author_balance_credited_for_payment_id === paymentId) {
         await decrementUserBalance(conn, Number(row.author_id), earn);
       }
       await conn.execute<ResultSetHeader>(

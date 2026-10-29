@@ -305,7 +305,7 @@ test('MySQL: frozen commission terms survive catalog changes on later partial re
 test('migration SQL is identical in both apps and never backfills historical rows', async () => {
   const a=await fs.readFile(new URL('../db/migrations/2026_10_21_paddle_actual_accounting.sql',import.meta.url),'utf8');
   const b=await fs.readFile(laravelFile('database/sql/2026_10_21_paddle_actual_accounting.sql'),'utf8');
-  assert.equal(a,b);assert.doesNotMatch(a,/\b(?:UPDATE|DELETE FROM)\s+(?:users|sold_items|subscription_systems|subscription_payments)\b/i);
+  assert.equal(a.replace(/\r\n/g,'\n'),b.replace(/\r\n/g,'\n'));assert.doesNotMatch(a,/\b(?:UPDATE|DELETE FROM)\s+(?:users|sold_items|subscription_systems|subscription_payments)\b/i);
 });
 
 test('MySQL: both cabinets read stored movements, pending states and current user amounts', { skip: !integration }, async () => {
@@ -368,11 +368,11 @@ test('router: author settlement or pending never cancels an existing MotionFlow 
     assert.equal(result.handled,true);assert.equal(f.counts.sql,0);
   }
 });
-test('router: past_due reverses only the historical branch, not journal-owned author earnings',async()=>{
+test('router: past_due preserves both historical and journal-owned author earnings',async()=>{
   for(const isActual of [true,false]){
     const f=await serverFixture({isActual});
     const result=await f.server.handlePaddleEvent({event_type:'subscription.past_due',data:{id:'sub_author',status:'past_due'}},source);
-    assert.equal(result.handled,true);assert.equal(f.counts.reversals,isActual?0:1);
+    assert.equal(result.handled,true);assert.equal(f.counts.reversals,0);
   }
 });
 test('Laravel bridge: HMAC, timestamp and environment are checked before financial processing',async()=>{
