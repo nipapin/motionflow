@@ -23,6 +23,14 @@ import {
   resolveMeterDuration,
 } from "@/lib/generation-cost";
 import { verifyCaptionsChaptersReceipt } from "@/lib/captions-chapters-receipt";
+import {
+  VIRAL_CANDIDATE_COUNT,
+  parseViralEditedTitles,
+  parseViralTitleCandidates,
+  viralTitleEditorInput,
+  viralTitleEditorSystemPrompt,
+  viralTitleGenerationBrief,
+} from "@/lib/viral-titles";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -54,7 +62,6 @@ const TRANSCRIPT_ANALYSIS = [
     "",
     "Then apply the style below using those findings.",
     "Do not skip the analysis and decorate a generic title.",
-    "The transcript is the only source of facts. Never invent numbers, results, names, or claims.",
 ].join("\n");
 
 type StyleBrief = {
@@ -110,28 +117,8 @@ const STYLE_BRIEFS: Record<ChapterStyle, StyleBrief> = {
             "Analyze the transcript and identify the most surprising, impressive, useful, controversial, or transformative part of the video.",
             "Generate highly clickable YouTube metadata while remaining truthful to the transcript.",
         ].join("\n"),
-        titles: [
-            "TITLE RULES:",
-            `- Create ${TITLE_COUNT} distinctly different high-CTR title options.`,
-            "- Build curiosity and make the viewer feel they need to know what happens in the video.",
-            "- Focus on transformation, surprising results, strong benefits, problems solved, or unexpected discoveries.",
-            "- Use punchy YouTube-native language.",
-            "- You may emphasize 1-3 important words using ALL CAPS.",
-            '- Strong phrases such as "This Changes Everything", "I Wasn\'t Expecting This", "You Don\'t Need...", "The Ultimate...", etc. may be used when appropriate.',
-            "- Questions, bold statements, contrast, and curiosity gaps are encouraged.",
-            "- Titles should feel energetic and confident.",
-            "- Avoid misleading clickbait: every implication must be supported by the transcript.",
-            "- Do not reveal every detail in the title; leave a reason to click.",
-            "- Avoid making all three titles follow the same formula.",
-            "- Prefer titles under approximately 70 characters when possible.",
-            "",
-            "The 3 titles must use different approaches:",
-            "1. Curiosity / intrigue",
-            "2. Strong benefit or transformation",
-            "3. Bold statement or unexpected angle",
-            "Do not simply paraphrase the same title three times.",
-            "Do not take one plain title and only add a hype phrase such as THIS CHANGES EVERYTHING.",
-        ].join("\n"),
+        // Bundled research rules and references are added only when titles are requested.
+        titles: "",
         description: [
             "DESCRIPTION:",
             "- Start with a strong hook based on the most interesting part of the video.",
@@ -325,6 +312,7 @@ function systemPromptFor(target: Target, languageName?: string, style: ChapterSt
     const wantDescription = target === "all" || target === "description";
     const wantTags = target === "all" || target === "tags";
     const wantPackaging = wantTitles || wantDescription || wantTags;
+    const viralTitles = wantTitles && style === "viral";
     const brief = STYLE_BRIEFS[style];
 
     const shapeParts: string[] = [];
@@ -352,11 +340,28 @@ function systemPromptFor(target: Target, languageName?: string, style: ChapterSt
     }
 
     if (wantPackaging) {
-        lines.push(TRANSCRIPT_ANALYSIS, "", brief.intro, "");
+        lines.push(TRANSCRIPT_ANALYSIS, "");
+        if (viralTitles) {
+            lines.push(
+                "Use the transcript for the underlying subject and capabilities. Viral titles may use the bold marketing exaggeration specified below.",
+                "Descriptions, tags and chapter topics must remain accurate to the transcript; title exaggeration does not apply to those fields.",
+                "STYLE: VIRAL — generate compelling title candidates for a separate creative editor.",
+                "",
+            );
+        } else {
+            lines.push(
+                "The transcript is the only source of facts. Never invent numbers, results, names, or claims.",
+                "", brief.intro, "",
+            );
+        }
     }
 
     if (wantTitles) {
-        lines.push(`"titles": exactly ${TITLE_COUNT} YouTube title strings.`, brief.titles, "");
+        lines.push(
+            `"titles": exactly ${viralTitles ? VIRAL_CANDIDATE_COUNT : TITLE_COUNT} YouTube title strings.`,
+            viralTitles ? viralTitleGenerationBrief() : brief.titles,
+            "",
+        );
     }
 
     if (wantChapters) {
@@ -590,8 +595,9 @@ export async function POST(req: NextRequest) {
           const wantChapters = target === "all" || target === "chapters";
           const wantDescription = target === "all" || target === "description";
           const wantTags = target === "all" || target === "tags";
+          const useViralEditor = style === "viral" && wantTitles;
           // Claude on Replicate requires max_tokens >= 1024 (422 otherwise).
-          const maxTokens = target === "all" || target === "chapters" ? 3072 : 1024;
+          const maxTokens = useViralEditor ? 4096 : target === "all" || target === "chapters" ? 3072 : 1024;
 
           const runOnce = async (): Promise<ChaptersResponse> => {
               let output: unknown;
@@ -620,7 +626,9 @@ export async function POST(req: NextRequest) {
                   const parsed = extractJsonObject(text) as Record<string, unknown>;
                   const result: ChaptersResponse = {};
                   if (wantTitles) {
-                      result.titles = toTitles(parsed.titles);
+                      result.titles = useViralEditor
+                          ? parseViralTitleCandidates(parsed.titles)
+                          : toTitles(parsed.titles);
                       if (!result.titles.length) {
                           throw new Error("empty titles output");
                       }
@@ -678,6 +686,46 @@ export async function POST(req: NextRequest) {
                   },
                   { status },
               );
+          }
+
+          // Edit only after successful generation, so a failed editor never
+          // repeats the whole pipeline or returns the internal nine-title pool.
+          // Both provider calls use the same authenticated client's token and
+          // usage tracker; the user is charged once after the final result.
+          if (useViralEditor) {
+              const candidates = result.titles!;
+              let editorOutput: unknown;
+              try {
+                  editorOutput = await replicate.run(CHAPTERS_MODEL, {
+                      input: {
+                          prompt: viralTitleEditorInput(
+                              chunks.map((chunk) => chunk.text.trim()).join("\n"),
+                              candidates,
+                              languageName,
+                          ),
+                          system_prompt: viralTitleEditorSystemPrompt(languageName),
+                          max_tokens: 4096,
+                      },
+                  });
+              } catch (err) {
+                  console.error("[chapters generation] Viral editor provider error:", err);
+                  const mapped = mapReplicateError(err);
+                  return NextResponse.json(
+                      { error: mapped.message, code: "CHAPTERS_EDITOR_FAILED" },
+                      { status: mapped.status },
+                  );
+              }
+              try {
+                  const editorText = Array.isArray(editorOutput)
+                      ? editorOutput.join("") : String(editorOutput ?? "");
+                  result.titles = parseViralEditedTitles(extractJsonObject(editorText), candidates);
+              } catch (err) {
+                  console.error("[chapters generation] Invalid Viral editor response:", err);
+                  return NextResponse.json(
+                      { error: GENERIC_ERROR, code: "CHAPTERS_EDITOR_PARSE_FAILED" },
+                      { status: 502 },
+                  );
+              }
           }
 
           let consumed;

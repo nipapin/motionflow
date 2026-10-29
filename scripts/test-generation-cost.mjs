@@ -12,6 +12,10 @@ function load(file, imports = {}) {
   const exports = {};
   vm.runInNewContext(code, {
     exports, require: name => { if (name === "@/lib/ai-usage-shared") return load("../lib/ai-usage-shared.ts"); if (name === "@/lib/replicate-usage-fetch") return { trackedReplicateFetch: () => undefined }; if (name === "@/lib/replicate-auth") return load("../lib/replicate-auth.ts", { "server-only": {} });
+      if (name === "@/lib/viral-titles") return load("../lib/viral-titles.ts", {
+        "server-only": {},
+        "@/lib/viral-titles-prompts.json": { default: JSON.parse(readFileSync(new URL("../lib/viral-titles-prompts.json", import.meta.url), "utf8")) },
+      });
       if (!Object.hasOwn(imports, name)) throw new Error(`Unexpected import: ${name}`);
       return imports[name];
     },
@@ -37,13 +41,27 @@ function route(tool, { seconds = 301, modelSeconds = seconds, left = 10, highlig
   const module = load(`../app/(main)/api/generations/${tool}/route.ts`, {
     "@/lib/user-activity": { withGenerationActivity: async (_user, _tool, operation) => operation() },
     "next/server": { NextResponse: { json: (body, options) => ({ body, status: options?.status ?? 200 }) } },
-    replicate: { default: class { async run(model) {
+    replicate: { default: class { async run(model, { input } = {}) {
       modelCalls++;
       if (model.startsWith("elevenlabs/")) return {
         text: "Hello", duration_seconds: modelSeconds,
         words: [{ text: "Hello", start: 0, end: modelSeconds, type: "word" }],
       };
-      return JSON.stringify({ titles: ["One", "Two", "Three"], sections: [{ start_index: 0, topic: "Intro" }], description: "Description", tags: ["audio"] });
+      if (input?.system_prompt?.includes("EDITOR TASK AND OUTPUT CONTRACT")) {
+        const { candidates } = JSON.parse(input.prompt);
+        return JSON.stringify({
+          reviews: candidates.map(({ id }) => ({ candidate_id: id, click_score: 4, angle: `Angle ${id}`, reason: "Fixture candidate" })),
+          final_titles: candidates.slice(0, 3).map(({ id, title }) => ({
+            source_candidate_id: id, action: "keep", title,
+            angle: `Angle ${id}`, hook: "Fixture hook", reason: "Fixture selection",
+          })),
+          selection_note: "Fixture editor output",
+        });
+      }
+      const titles = input?.system_prompt?.includes("exactly 9")
+        ? ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"]
+        : ["One", "Two", "Three"];
+      return JSON.stringify({ titles, sections: [{ start_index: 0, topic: "Intro" }], description: "Description", tags: ["audio"] });
     } } },
     "@/lib/auth/resolve-captions-user": {
       bearerFromRequest: () => "test", identityFromFormData: () => ({}), identityFromJsonBody: () => ({}),
