@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AuthorExtraGenerations } from "@/components/author-extra-generations";
 import { cn } from "@/lib/utils";
 
 const SPUNKRAM_AUTHOR_ID = 1691;
@@ -456,6 +457,8 @@ export function ExtensionsGiveAccessDialog({
               ) : null}
             </div>
           ) : null}
+
+          {access && !accessBusy && <AuthorExtraGenerations key={`${authorId}:${access.user_id}`} authorId={authorId} userId={access.user_id} />}
 
           {(selectedEmail || missingEmail) && !accessBusy ? (
             <>
