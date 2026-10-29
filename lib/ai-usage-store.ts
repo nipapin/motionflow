@@ -1,4 +1,5 @@
 import "server-only";
+import { saveAiBillingMetrics } from "@/lib/ai-usage-billing";
 import type { RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
 import { createHash } from "node:crypto";
@@ -67,6 +68,7 @@ export async function saveAiPrediction(raw: unknown, user?: AiUsageIdentity): Pr
     tokenCount(metrics.output_token_count ?? metrics.token_output_count),
     user?.id == null ? null : `${user.source === "odin-bearer" ? "" : "mf:"}${user.id}`.slice(0, 191),
     user?.cepClient?.slice(0, 64) ?? null]);
+  await saveAiBillingMetrics(p.id, metrics);
   return true;
 }
 

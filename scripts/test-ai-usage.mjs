@@ -190,3 +190,14 @@ test("summary, rows and author totals share exact UTC bounds and parameterized f
   }
   assert.match(calls.find(call => call.sql.includes("SELECT prediction_id")).sql, /LIMIT 50 OFFSET 50/);
 });
+
+test("billable metrics retain only safe unit counts and preserve previously recorded units", async () => {
+  const calls = [];
+  const load = loader({ "@/lib/db": { getPool: () => ({ query: async () => [], execute: async (sql, args) => { calls.push({sql, args}); return [{}]; } }) } });
+  const { saveAiBillingMetrics } = load("@/lib/ai-usage-billing");
+  await saveAiBillingMetrics("p123", {image_output_count: 2, generic_output_count: 3, prompt: "private", output: "private", api_token: "secret"});
+  assert.deepEqual(JSON.parse(calls[0].args[1]), {image_output_count: 2, generic_output_count: 3});
+  assert.match(calls[0].sql, /JSON_MERGE_PATCH/);
+  await saveAiBillingMetrics("p123", {image_output_count: -1, generic_output_count: 1.5});
+  assert.equal(calls.length, 1);
+});
