@@ -88,7 +88,7 @@ export function AudioTrack({
             >
               <Heart className={cn("w-4 h-4", favorited && "fill-current")} />
             </button>
-            {!hideDownloadButton && (
+            {!hideDownloadButton && !product.files.no_file && (
               <button
                 type="button"
                 className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-foreground/5 rounded-full smooth"

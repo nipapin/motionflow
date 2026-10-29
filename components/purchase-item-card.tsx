@@ -166,6 +166,12 @@ export function PurchaseItemCard({
         </div>
 
         <div className="flex shrink-0 flex-row items-center justify-end border-t border-blue-500/10 pt-4 lg:flex-col lg:items-end lg:border-t-0 lg:pt-0">
+        {product?.files.no_file ? (
+          <div className="text-sm text-muted-foreground text-right">
+            <p>No project file download</p>
+            <a href={itemPageUrl} className="mt-1 inline-block text-primary underline">View product</a>
+          </div>
+        ) : (
           <Button
             type="button"
             variant="outline"
@@ -176,6 +182,7 @@ export function PurchaseItemCard({
             <Download className="size-5" />
             Download
           </Button>
+        )}
         </div>
       </div>
     </article>

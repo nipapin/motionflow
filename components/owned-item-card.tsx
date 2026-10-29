@@ -50,6 +50,12 @@ export function OwnedItemCard({
         <p className="mt-1 text-xs text-muted-foreground/80">{dateLabel}</p>
       </div>
       <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+        {product?.files.no_file ? (
+          <div className="text-sm text-muted-foreground text-right">
+            <p>No project file download</p>
+            <a href={`/item/${itemId}`} className="mt-1 inline-block text-primary underline">View product</a>
+          </div>
+        ) : (
         <Button
           type="button"
           onClick={() => void startMarketplaceDownload(itemId)}
@@ -58,6 +64,7 @@ export function OwnedItemCard({
           <Download className="mr-2 h-4 w-4" />
           Download
         </Button>
+        )}
       </div>
     </article>
   );
