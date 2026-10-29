@@ -12,8 +12,7 @@ import {
 } from "@/lib/cep-entitlements";
 import { getGenerationsStatus } from "@/lib/generations";
 import {
-  getMotionflowGenerationPlan,
-  hasActiveMotionflowSubscription,
+  getActiveSubscriptionForUser,
 } from "@/lib/subscriptions";
 
 export const runtime = "nodejs";
@@ -46,13 +45,15 @@ export async function GET(req: NextRequest) {
     const devices = await listDevicesForUser(user.id, user.deviceId, user.client);
 
     if (cfg.platformSubscription) {
-      const [creatorActive, generationPlan, generations, { purchases }] =
+      const [activeSubscription, generations, { purchases }] =
         await Promise.all([
-          hasActiveMotionflowSubscription(user.id),
-          getMotionflowGenerationPlan(user.id),
+          getActiveSubscriptionForUser(user.id),
           getGenerationsStatus(user.id),
           resolveCepTier(user.id, cfg, { host }),
         ]);
+
+      const creatorActive = !!activeSubscription;
+      const generationPlan = activeSubscription?.tier ?? "none";
 
       const tier =
         generationPlan === "creator_ai"
@@ -80,7 +81,7 @@ export async function GET(req: NextRequest) {
                 ? "Creator + AI"
                 : "Creator",
           status: creatorActive ? "active" : "none",
-          renews_at: null,
+          renews_at: activeSubscription?.currentPeriodEnd ?? null,
           generation_plan: generationPlan,
         },
         /** Explicit platform flags for DaVinci / marketplace clients */
@@ -129,8 +130,9 @@ export async function GET(req: NextRequest) {
       manage_subscription_url: cepManageSubscriptionUrl(cfg),
       devices,
     });
-  } catch (err) {
-    console.error("[cep/me]", err);
+  } catch {
+    // Never log database parameters, account details or bearer credentials.
+    console.error("[cep/me] profile lookup failed");
     return NextResponse.json(
       { error: "SERVER_ERROR", message: "Could not load profile" },
       { status: 500 },

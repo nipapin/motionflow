@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveRequestUser } from "@/lib/auth/resolve-request-user";
 import {
-  getMotionflowGenerationPlan,
-  hasActiveMotionflowSubscription,
+  getActiveSubscriptionForUser,
 } from "@/lib/subscriptions";
+
+export const dynamic = "force-dynamic";
 
 /**
  * GET /api/me/subscription-status
@@ -12,15 +13,14 @@ import {
 export async function GET(req: NextRequest) {
   const user = await resolveRequestUser(req);
   if (!user) {
-    return NextResponse.json({ active: false, authenticated: false });
+    return NextResponse.json({ active: false, authenticated: false }, { headers: { "Cache-Control": "private, no-store" } });
   }
-  const [active, generation_plan] = await Promise.all([
-    hasActiveMotionflowSubscription(user.id),
-    getMotionflowGenerationPlan(user.id),
-  ]);
+  const subscription = await getActiveSubscriptionForUser(user.id);
+  const generation_plan = subscription?.tier ?? "none";
   return NextResponse.json({
     authenticated: true,
-    active,
+    active: !!subscription,
     generation_plan,
-  });
+    subscription,
+  }, { headers: { "Cache-Control": "private, no-store" } });
 }

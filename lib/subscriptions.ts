@@ -209,13 +209,28 @@ function catalogTierFromRow(r: SubRow): PricingTier | null {
   return hit?.tier ?? null;
 }
 
+/** Paddle timestamps are persisted as UTC DATETIME by toMysqlDateTime(). */
+export function subscriptionDateToIso(raw: string | Date | null | undefined): string | null {
+  if (raw == null || raw === "") return null;
+  if (raw instanceof Date) return Number.isFinite(raw.getTime()) ? raw.toISOString() : null;
+  const value = raw.trim();
+  // MySQL DATETIME has no zone. Interpret its stored UTC wall clock explicitly,
+  // independent of the Node process timezone. Respect offsets on ISO input.
+  const utcValue = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(value)
+    ? `${value.replace(" ", "T")}Z`
+    : /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00Z` : value;
+  if (!/(?:Z|[+-]\d{2}:?\d{2})$/i.test(utcValue)) return null;
+  const date = new Date(utcValue);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
 function formatDateDMY(raw: string | null): string | null {
-  if (!raw) return null;
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return raw;
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `${dd}.${mm}.${d.getFullYear()}`;
+  const iso = subscriptionDateToIso(raw);
+  if (!iso) return null;
+  const d = new Date(iso);
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  return `${dd}.${mm}.${d.getUTCFullYear()}`;
 }
 
 const TABLE = "subscription_systems";
@@ -235,8 +250,8 @@ function endsAtStillValid(endsAt: string | null): boolean {
 
 /** Paid period end for access checks: later of `ends_at` and billing period end. */
 function rowPeriodEnd(r: SubRow): string | null {
-  const a = r.ends_at;
-  const b = r.paddle_billing_period_ends_at;
+  const a = subscriptionDateToIso(r.ends_at);
+  const b = subscriptionDateToIso(r.paddle_billing_period_ends_at);
   if (!a) return b ?? null;
   if (!b) return a;
   return new Date(a) >= new Date(b) ? a : b;
@@ -264,7 +279,7 @@ export async function getSubscriptionsForUser(
   userId: number,
 ): Promise<SubscriptionListItem[]> {
   const pool = getPool();
-  const [rows] = await pool.execute<SubRow[]>(LIST_SUBSCRIPTION_SQL, [userId]);
+  const [rows] = await pool.execute<SubRow[]>({ sql: LIST_SUBSCRIPTION_SQL, dateStrings: true, timezone: "Z" }, [userId]);
 
   return rows.filter((r) => rowIsProfileSubscriptionListing(r)).map((r) => {
     const pres = resolveSubscriptionPresentation(r);
@@ -388,7 +403,7 @@ function rowToActiveSummary(r: SubRow): ActiveSubscriptionSummary {
     paddleSubscriptionId: String(r.subscription_id ?? ""),
     tier,
     billingPeriod,
-    currentPeriodEnd: r.paddle_billing_period_ends_at ?? r.ends_at ?? null,
+    currentPeriodEnd: rowPeriodEnd(r),
     cancelled: r.status === -1,
     scheduledChange,
   };
@@ -406,7 +421,7 @@ export async function getActiveSubscriptionForUser(
   userId: number,
 ): Promise<ActiveSubscriptionSummary | null> {
   const pool = getPool();
-  const [rows] = await pool.execute<SubRow[]>(GENERATION_SUBSCRIPTION_SQL, [userId]);
+  const [rows] = await pool.execute<SubRow[]>({ sql: GENERATION_SUBSCRIPTION_SQL, dateStrings: true, timezone: "Z" }, [userId]);
 
   const activeCatalog = rows.filter(
     (r) => rowIsBillableMotionflowSubscription(r) && rowIsActive(r),
@@ -429,7 +444,7 @@ export async function hasActiveMotionflowSubscription(
   userId: number,
 ): Promise<boolean> {
   const pool = getPool();
-  const [rows] = await pool.execute<SubRow[]>(LIST_SUBSCRIPTION_SQL, [userId]);
+  const [rows] = await pool.execute<SubRow[]>({ sql: LIST_SUBSCRIPTION_SQL, dateStrings: true, timezone: "Z" }, [userId]);
   return rows.some((r) => rowIsBillableMotionflowSubscription(r) && rowIsActive(r));
 }
 
@@ -518,7 +533,7 @@ export async function getMotionflowGenerationContext(
   userId: number,
 ): Promise<MotionflowGenerationContext> {
   const pool = getPool();
-  const [rows] = await pool.execute<SubRow[]>(GENERATION_SUBSCRIPTION_SQL, [
+  const [rows] = await pool.execute<SubRow[]>({ sql: GENERATION_SUBSCRIPTION_SQL, dateStrings: true, timezone: "Z" }, [
     userId,
   ]);
 
