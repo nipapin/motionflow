@@ -116,24 +116,43 @@ export function parseHighlightWordRanges(text: string, wordCount: number): Set<n
   return selected;
 }
 
-/** A selection identifies actual source tokens; the model never supplies a length. */
+/** Resolve exact source tokens, allowing an unambiguous one-word model ID drift. */
 export function parseHighlightSelections(text: string, words: TimestampedCaptionWord[]): Set<number> {
   const selections = parseHighlightJson(text);
   if (!Array.isArray(selections)) throw new Error("Invalid AI highlight response.");
-  const selected = new Set<number>();
+  const reachable: number[][] = [];
   let previousEnd = -1;
   for (const selection of selections) {
     if (!Array.isArray(selection) || selection.length !== 2) {
       throw new Error("AI highlights must identify exact source words.");
     }
     const [id, token] = selection;
-    if (!Number.isInteger(id) || id < 0 || id >= words.length || id <= previousEnd || token !== words[id].text) {
+    if (!Number.isInteger(id) || id < 0 || id >= words.length || id < previousEnd || typeof token !== "string") {
       throw new Error("AI highlight selection does not match source words.");
     }
-    selected.add(id);
+    // Repeated reported IDs are allowed only when the exact tokens resolve to
+    // different source words in strictly increasing order below.
+    // Matching IDs remain fixed anchors. Only mismatched IDs may move to an
+    // adjacent exact token; never search the transcript for a repeated word.
+    const candidates = token === words[id].text ? [id]
+      : [id - 1, id + 1].filter(index => index >= 0 && index < words.length && words[index].text === token);
+    const previous = reachable[reachable.length - 1];
+    const matches = candidates.filter(index => !previous || previous.some(before => before < index));
+    if (!matches.length) throw new Error("AI highlight selection does not match source words.");
+    reachable.push(matches);
     previousEnd = id;
   }
-  return selected;
+  // Every prefix above is viable. Walking back must leave exactly one complete
+  // ordered assignment, otherwise a repeated token makes recovery ambiguous.
+  const selected = new Set<number>();
+  let next = words.length;
+  for (let i = reachable.length - 1; i >= 0; i--) {
+    const matches = reachable[i].filter(index => index < next);
+    if (matches.length !== 1) throw new Error("Ambiguous AI highlight selection.");
+    next = matches[0];
+    selected.add(next);
+  }
+  return new Set([...selected].reverse());
 }
 
 export async function highlightCaptionWords(input: unknown,

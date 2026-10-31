@@ -1,5 +1,7 @@
 # AI caption highlights
 
+The archived Turkish request from 2026-10-31 exposed adjacent ID drift and a repeated reported ID: `[104,"Sesli"], [105,"geçiş"], [105,"efektlerini"]` refer to source words 103, 104 and 105. The parser permits repeated reported IDs only when exact token matching produces one unique, strictly increasing assignment to distinct source words. It also resolves `[261,"düzenini"]` to the exact adjacent source token at 262. Duplicate selections of the same source word, ambiguous repeated tokens and shifts beyond one word are rejected. Recovery uses the original model response and never starts another prediction or modifies transcript text or timings.
+
 Caption generation with highlights uses **one** `POST /api/generations/captions` multipart request with `highlights=true`:
 
 `audio → one Scribe prediction → complete timestamped transcript → one Haiku prediction → timestamped words + highlight → UI / Adobe`.
@@ -24,7 +26,7 @@ Response:
 {"words":[{"text":"important","start":0.2,"end":0.6,"highlight":true},{"text":"idea","start":0.6,"end":1.0,"highlight":true}],"cost":1,"generations":{}}
 ```
 
-Each operation starts exactly one Haiku prediction. The model returns sparse, sorted `[globalWordId,"exact source token"]` pairs. The server checks every ID and exact token string before applying flags; the model never supplies a segment number or phrase length. Adjacent selected tokens form phrases in the source transcript. The prompt selects the shortest core concepts or outcomes and skips filler, modal verbs and generic instructional framing. Empty selection is valid. The client additionally checks word count, text and timestamps before saving flags. Model output cannot replace the transcript or its timings. There are no model batches or automatic billable retries.
+Each operation starts exactly one Haiku prediction. The model returns sparse, sorted `[globalWordId,"exact source token"]` pairs. The server checks every ID and exact token string before applying flags; the model never supplies a segment number or phrase length. A mismatched ID may move one word in either direction only when the exact token and the complete ordered selection identify a single assignment. Matching IDs stay fixed; ambiguous repeated words, invalid IDs and larger shifts are rejected. Adjacent selected tokens form phrases in the source transcript. The prompt selects the shortest core concepts or outcomes and skips filler, modal verbs and generic instructional framing. Empty selection is valid. The client additionally checks word count, text and timestamps before saving flags. Model output cannot replace the transcript or its timings. There are no model batches or automatic billable retries.
 
 One complete JSON array is extracted from plain or fenced output; explanatory prose outside it does not invalidate good data. Truncated JSON, multiple competing payloads, mismatched tokens and invalid IDs are rejected. Actual analysis failures are logged on the server. A manual live-model check of the reported example selected `close-up` and `meaningful idea.` without `should` or `emphasize`.
 
