@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  bearerFromRequest,
-  requireCaptionsAuth,
-} from "@/lib/auth/resolve-captions-user";
-import { isSpunkramBetaTester } from "@/lib/spunkram-beta";
+import { resolveCepPermissionContext } from "@/lib/cep-author-permissions";
 import {
   cepProductFromClient,
   defaultFfmpegUrls,
@@ -57,13 +53,17 @@ function emptyManifest(ffmpeg: SpunkramLatestManifest["ffmpeg"]) {
 /**
  * GET /api/cep/update — extension update manifest for the caller's CEP client
  * (`gal-cep` → `public/downloads/gal/…`, else Spunkram).
- * Stable: R2 `latest.json`. Beta: `beta.json` for allowlisted testers.
+ * Stable: R2 `latest.json`. Beta: `beta.json` with this author's DB permission.
  */
 export async function GET(req: NextRequest) {
-  const auth = await requireCaptionsAuth({ bearer: bearerFromRequest(req) });
-  if (!auth.ok) return auth.response;
-
-  const product = cepProductFromClient(auth.user.cepClient);
+  let context: Awaited<ReturnType<typeof resolveCepPermissionContext>>;
+  try {
+    context = await resolveCepPermissionContext(req.headers.get("authorization"));
+  } catch {
+    return NextResponse.json({ error: "SERVER_ERROR" }, { status: 500 });
+  }
+  if (!context) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  const product = cepProductFromClient(context.cfg.client);
 
   let ffmpeg: SpunkramLatestManifest["ffmpeg"];
   try {
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
     const stable = await readLatestManifestFromR2(product);
     let beta: SpunkramLatestManifest | null = null;
 
-    if (isSpunkramBetaTester(auth.user.email)) {
+    if (context.permissions.beta_updates) {
       beta = await readBetaManifestFromR2(product);
     }
 
@@ -104,7 +104,7 @@ export async function GET(req: NextRequest) {
             chosen.channel ?? (/-beta/i.test(chosen.version) ? "beta" : "stable"),
           ffmpeg: chosen.ffmpeg ?? ffmpeg,
         },
-        { headers: { "Cache-Control": "private, max-age=30" } },
+        { headers: { "Cache-Control": "private, no-store" } },
       );
     }
   } catch (err) {
@@ -113,6 +113,6 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json(emptyManifest(ffmpeg), {
     status: 200,
-    headers: { "Cache-Control": "private, max-age=30" },
+    headers: { "Cache-Control": "private, no-store" },
   });
 }

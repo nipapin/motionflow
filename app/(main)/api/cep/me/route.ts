@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listDevicesForUser, resolveCepBearerUser } from "@/lib/cep-auth";
-import {
-  getCepClientConfig,
-  requireCepClientConfig,
-} from "@/lib/cep-client-registry";
+import { getCepClientConfig } from "@/lib/cep-client-registry";
 import {
   cepEntitlementsForTier,
   cepManageSubscriptionUrl,
@@ -11,6 +8,7 @@ import {
   resolveCepTier,
 } from "@/lib/cep-entitlements";
 import { getGenerationsStatus } from "@/lib/generations";
+import { getCepAuthorPermissions } from "@/lib/cep-author-permissions";
 import {
   getActiveSubscriptionForUser,
 } from "@/lib/subscriptions";
@@ -36,13 +34,16 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const cfg =
-      getCepClientConfig(user.client) ?? requireCepClientConfig("spunkram-cep");
+    const cfg = getCepClientConfig(user.client);
+    if (!cfg) return NextResponse.json({ error: "UNKNOWN_CLIENT" }, { status: 403 });
 
     const hostRaw = (req.nextUrl.searchParams.get("host") || "").toUpperCase();
     const host = hostRaw === "AE" || hostRaw === "PR" ? hostRaw : undefined;
 
-    const devices = await listDevicesForUser(user.id, user.deviceId, user.client);
+    const [devices, permissions] = await Promise.all([
+      listDevicesForUser(user.id, user.deviceId, user.client),
+      getCepAuthorPermissions({ provider: "motionflow", subjectId: String(user.id) }, cfg.authorId),
+    ]);
 
     if (cfg.platformSubscription) {
       const [activeSubscription, generations, { purchases }] =
@@ -71,6 +72,7 @@ export async function GET(req: NextRequest) {
           name: user.name || undefined,
         },
         client: cfg.client,
+        permissions,
         tier,
         subscription: {
           active: creatorActive,
@@ -100,7 +102,7 @@ export async function GET(req: NextRequest) {
         subscribe_url: cepSubscribeUrl(cfg),
         manage_subscription_url: cepManageSubscriptionUrl(cfg),
         devices,
-      });
+      }, { headers: { "Cache-Control": "private, no-store" } });
     }
 
     const { tier, subscription, purchases } = await resolveCepTier(
@@ -117,6 +119,7 @@ export async function GET(req: NextRequest) {
         name: user.name || undefined,
       },
       client: cfg.client,
+      permissions,
       tier,
       subscription: {
         active: subscription.active,
@@ -129,7 +132,7 @@ export async function GET(req: NextRequest) {
       subscribe_url: cepSubscribeUrl(cfg),
       manage_subscription_url: cepManageSubscriptionUrl(cfg),
       devices,
-    });
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch {
     // Never log database parameters, account details or bearer credentials.
     console.error("[cep/me] profile lookup failed");

@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  bearerFromRequest,
-  resolveCaptionsUser,
-} from "@/lib/auth/resolve-captions-user";
-import { isSpunkramReleaseAdmin } from "@/lib/spunkram-beta";
+import { resolveCepPermissionContext } from "@/lib/cep-author-permissions";
 import {
   cepProductFromClient,
   listCepProductVersionsFromR2,
@@ -18,7 +14,7 @@ export const dynamic = "force-dynamic";
  * GET /api/cep/update/versions — uploaded ZXPs for the caller's brand (admin only).
  */
 export async function GET(req: NextRequest) {
-  const bearer = bearerFromRequest(req);
+  const bearer = req.headers.get("authorization");
   if (!bearer) {
     return NextResponse.json(
       { error: "UNAUTHORIZED", message: "Sign in required." },
@@ -26,22 +22,20 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  let email: string | null = null;
-  let product: ReturnType<typeof cepProductFromClient> = "spunkram";
+  let context: Awaited<ReturnType<typeof resolveCepPermissionContext>>;
   try {
-    const user = await resolveCaptionsUser({ bearer });
-    email = user?.email ?? null;
-    product = cepProductFromClient(user?.cepClient);
+    context = await resolveCepPermissionContext(bearer);
   } catch {
-    email = null;
+    return NextResponse.json({ error: "SERVER_ERROR" }, { status: 500 });
   }
-
-  if (!isSpunkramReleaseAdmin(email)) {
+  if (!context) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  if (!context.permissions.admin) {
     return NextResponse.json(
       { error: "FORBIDDEN", message: "Release admin access required." },
       { status: 403 },
     );
   }
+  const product = cepProductFromClient(context.cfg.client);
 
   try {
     const [versions, stable, beta] = await Promise.all([
@@ -64,7 +58,7 @@ export async function GET(req: NextRequest) {
         betas,
         stables,
       },
-      { headers: { "Cache-Control": "private, max-age=30" } },
+      { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (err) {
     console.error("[cep/update/versions] failed", err);
