@@ -45,7 +45,9 @@ async function eventQuery(filters: MarketFilters) {
     params.push(filters.from, filters.to);
   };
   branch("market_events", "market:", { user: "user_id", action: "action", detail: "action", status: "'observed'", type: "resource_type", resource: "resource_id", name: "NULL", source: "source", at: "created_at" }, "resource_type<>'page'");
-  branch("user_activity", "activity:", { user: "user_id", action: "CASE category WHEN 'download' THEN 'download' WHEN 'generation' THEN 'generation' ELSE 'extension' END", detail: "action", status: "status", type: "resource_type", resource: "COALESCE(resource_id,LEFT(resource_name,191),'unidentified')", name: "resource_name", source: "source", at: "created_at" });
+  // Gal file handoffs include pack dependencies; they are extension activity, not material downloads.
+  // Classify at read time so the same rule also applies to existing history.
+  branch("user_activity", "activity:", { user: "user_id", action: "CASE WHEN resource_type='effect_file' THEN 'extension' WHEN category='download' THEN 'download' WHEN category='generation' THEN 'generation' ELSE 'extension' END", detail: "action", status: "status", type: "resource_type", resource: "COALESCE(resource_id,LEFT(resource_name,191),'unidentified')", name: "resource_name", source: "source", at: "created_at" });
   branch("subscription_downloads", "download:", { user: "user_id", action: "'download'", detail: "'marketplace_download'", status: "'unknown'", type: "'marketplace_item'", resource: "item_id", name: "NULL", source: "'unknown'", at: "created_at" },
     tables.has("user_activity") ? "NOT EXISTS (SELECT 1 FROM user_activity a WHERE a.legacy_download_id=subscription_downloads.id)" : "1=1");
   branch("generation_records", "generation:", { user: "user_id", action: "'generation'", detail: "'generation'", status: "status", type: "'tool'", resource: "tool", name: "NULL", source: "CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(settings,'$._activity_source')) IN ('web','extension') THEN JSON_UNQUOTE(JSON_EXTRACT(settings,'$._activity_source')) WHEN JSON_UNQUOTE(JSON_EXTRACT(settings,'$.source')) LIKE 'cep-%' THEN 'extension' ELSE 'unknown' END", at: "created_at" });
@@ -76,7 +78,7 @@ export async function readMarketOverview(filters: MarketFilters): Promise<Market
     ${count("view")} AS views,${count("select")} AS selections,${count("favorite")} AS favorites,
     ${count("download")} AS downloads,${count("purchase")} AS purchases,${count("generation")} AS generations,
     ${count("extension")} AS extensions,COUNT(DISTINCT e.user_id) AS users,${dateText("MAX(e.at)")} AS lastAt
-    ${sql} GROUP BY e.resource_type,e.resource_id`;
+    ${sql} AND e.resource_type<>'effect_file' GROUP BY e.resource_type,e.resource_id`;
   const queries = [
     `SELECT ${actions},COUNT(DISTINCT e.user_id) AS users,SUM(e.status='failed') AS failures ${sql}`,
     `SELECT DATE_FORMAT(e.at,'%Y-%m-%d') AS day,${actions} ${sql} GROUP BY DATE(e.at) ORDER BY DATE(e.at)`,

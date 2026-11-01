@@ -2,17 +2,17 @@
 
 **Management → Market analytics** (`/profile/analytics`) is the main entry point. It is restricted to the existing account-management administrators.
 
-The overview shows demand over the selected period, daily trends and ranked materials/tools. Filters cover dates (up to one year), market/extensions/AI, action, source and material/user search. Rankings can be sorted by views, selections, saves, downloads, paid item purchases, tool usage, users or recent activity. Open a material to see its global events and interacting users; account activity is a secondary drilldown.
+The overview shows demand over the selected period, daily trends and ranked materials/tools. Filters cover dates (up to one year), market/extensions/AI, action, source and material/user search. Rankings can be sorted by views, selections, saves, downloads, paid item purchases, tool usage, users or recent activity. Individual Gal Toolkit effect files and pack dependencies are excluded from the rankings and their pagination totals; their requests remain available in All activity. Open a material to see its global events and interacting users; account activity is a secondary drilldown.
 
 ## Data definitions
 
 - **Views:** opening a product detail modal or a supported public item route. Public page visits are collected separately and do not inflate item views.
 - **Selections:** clicks on product cards. These are events, rather than distinct people or a matched-user conversion funnel.
 - **Saved:** additions to favorites during the period, recorded on the server. Removing a favorite does not erase the historical save action.
-- **Downloads:** new file/link handoffs plus legacy subscription download requests. New failed/requested actions are excluded from the successful totals and remain visible in the activity feed. A handoff is not proof of full file receipt. Linked legacy records are excluded to prevent duplicates.
+- **Downloads:** new material/pack file or link handoffs plus legacy subscription download requests. Individual Gal Toolkit file requests (`effect_file`, including `Assets/_Assets/` dependencies) count as extension activity, not downloads, so fetching a pack's files does not inflate the download totals or daily chart. This classification applies to existing history at read time. New failed/requested actions are excluded from the successful totals and remain visible in the activity feed. A handoff is not proof of full file receipt. Linked legacy records are excluded to prevent duplicates.
 - **Purchases:** paid, currently active item licenses from `sold_items`, excluding canceled/revoked rows, zero-price rows and campaign/admin/gift grants. These are licenses, not unique checkout transactions or subscription revenue. Browser events cannot create purchases. Refunds/revocations can change past-period counts.
 - **AI:** generation result records plus structured captions, chapters, sections and standalone highlight responses. Failed results remain in the feed and failure count.
-- **Extensions:** reported pack state changes and file/pack requests through the existing server endpoints. These indicate reported state or requests, not proof that an effect was applied inside an Adobe project.
+- **Extensions:** reported pack state changes and individual Gal Toolkit file requests through the existing server endpoints. These include technical dependency requests, not just distinct packs or user choices, and are not proof that an effect was applied inside an Adobe project. Full pack and pack update downloads remain in Downloads.
 - **Users:** distinct identified account IDs. Anonymous visitors can contribute views/selections and are labeled explicitly; they are not fabricated accounts.
 
 Existing download, purchase and AI histories are queried directly. Views, selections, saves and heatmaps have no historical backfill. Missing optional legacy tables produce a partial-data notice; database failures produce an error rather than fabricated zero metrics. Dates follow the database wall clock. AI prompts, output URLs, purchase codes and credentials are never returned by the overview API.
