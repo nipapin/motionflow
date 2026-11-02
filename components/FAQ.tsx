@@ -1,5 +1,7 @@
 "use client";
 
+import { SpunkramText } from "@/components/spunkram-language";
+
 import { useState } from "react";
 import { faq } from "@/lib/data";
 
@@ -10,9 +12,7 @@ export function FAQ() {
     <section id="faq" className="relative py-20">
       <div className="max-w-3xl mx-auto px-5 sm:px-8">
         <div className="text-center">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight text-foreground">
-            FAQ
-          </h2>
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight text-foreground"><SpunkramText>{"FAQ"}</SpunkramText></h2>
         </div>
 
         <div className="mt-10 relative overflow-hidden rounded-2xl card">
@@ -32,7 +32,7 @@ export function FAQ() {
                   aria-expanded={isOpen}
                 >
                   <span className="font-medium text-base text-foreground">
-                    {item.q}
+                    <SpunkramText>{item.q}</SpunkramText>
                   </span>
                   <span
                     className={`w-6 h-6 shrink-0 grid place-items-center text-muted group-hover:text-foreground transition-all ${
@@ -59,7 +59,7 @@ export function FAQ() {
                   }`}
                 >
                   <div className="overflow-hidden">
-                    <p className="text-muted leading-relaxed">{item.a}</p>
+                    <p className="text-muted leading-relaxed"><SpunkramText>{item.a}</SpunkramText></p>
                   </div>
                 </div>
               </div>

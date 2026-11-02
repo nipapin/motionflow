@@ -1,6 +1,9 @@
 "use client";
 
+import { SpunkramLanguageSwitcher, SpunkramText, useSpunkramLanguage } from "@/components/spunkram-language";
+
 import { useEffect, useState } from "react";
+import Image from "next/image";
 
 const links = [
   { href: "#download", label: "Download" },
@@ -24,6 +27,7 @@ export function NavbarWithOffset({
   position?: "fixed" | "sticky";
   className?: string;
 }) {
+  const { t } = useSpunkramLanguage();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -50,36 +54,43 @@ export function NavbarWithOffset({
           />
           <nav className="relative z-[1] h-14 px-3 sm:px-4 flex items-center gap-3">
             <a href="#top" className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-brand-violet grid place-items-center shadow-[inset_0_1px_0_0_rgb(255_255_255/0.25)]">
-                <span className="text-white font-semibold text-sm">S</span>
-              </div>
-              <span className="font-semibold tracking-tight text-foreground">
+              <Image
+                src="/assets/spunkram-nav.svg"
+                alt=""
+                width={36}
+                height={36}
+                className="h-9 w-9 shrink-0"
+                unoptimized
+              />
+              <span className="hidden font-semibold tracking-tight text-foreground min-[360px]:inline">
                 Spunkram
               </span>
             </a>
 
-            <div className="ml-auto hidden md:flex items-center gap-6">
-              <ul className="flex items-center gap-7 text-sm text-muted">
+            <div className="ml-auto hidden xl:flex items-center gap-5">
+              <ul className="flex items-center gap-5 text-sm text-muted">
                 {links.map((l) => (
                   <li key={l.href}>
                     <a
                       href={l.href}
                       className="hover:text-foreground transition-colors"
                     >
-                      {l.label}
+                      <SpunkramText>{l.label}</SpunkramText>
                     </a>
                   </li>
                 ))}
               </ul>
+              <SpunkramLanguageSwitcher />
             </div>
 
-            <div className="ml-auto md:hidden flex items-center gap-2">
+            <div className="ml-auto xl:hidden flex items-center gap-2">
+              <SpunkramLanguageSwitcher />
               <button
-                aria-label="Menu"
+                aria-label={t("Menu")}
                 onClick={() => setOpen(!open)}
                 className="w-9 h-9 grid place-items-center rounded-lg border border-line/60 bg-page/20 backdrop-blur-xl"
               >
-                <span className="sr-only">Menu</span>
+                <span className="sr-only"><SpunkramText>{"Menu"}</SpunkramText></span>
                 <div className="w-5 flex flex-col gap-[5px]">
                   <span
                     className={`h-[1.5px] bg-foreground transition-transform ${
@@ -104,7 +115,7 @@ export function NavbarWithOffset({
       </div>
 
       {open && (
-        <div className="md:hidden max-w-7xl mx-auto px-5 sm:px-8 pt-2">
+        <div className="xl:hidden max-w-7xl mx-auto px-5 sm:px-8 pt-2">
           <div className="card relative overflow-hidden rounded-2xl border border-brand-500/25">
             <div
               className="card-sheen-pricing pointer-events-none absolute inset-0 z-0"
@@ -118,7 +129,7 @@ export function NavbarWithOffset({
                     onClick={() => setOpen(false)}
                     className="block py-2 text-muted hover:text-foreground transition-colors"
                   >
-                    {l.label}
+                    <SpunkramText>{l.label}</SpunkramText>
                   </a>
                 </li>
               ))}

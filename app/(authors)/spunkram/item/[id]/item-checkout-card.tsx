@@ -103,7 +103,7 @@ export function ItemCheckoutCard({
   };
 
   return (
-    <div className="border-b border-white/10 pb-4">
+    <div className="border-b border-white/10 pb-3">
       <div className="flex items-end gap-3">
         <div className="min-w-24 flex-[0.8]">
           <div className="text-sm text-muted">Price</div>
@@ -133,7 +133,7 @@ export function ItemCheckoutCard({
             value={licenseType}
             onValueChange={(value) => setLicenseType(value as SpunkramLicenseType)}
           >
-            <SelectTrigger className="mt-2 h-11 w-full rounded-xl border-white/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] px-3 text-sm font-semibold text-foreground shadow-[inset_0_1px_0_0_rgb(255_255_255/0.14)] focus-visible:border-brand-500/70 focus-visible:ring-brand-500/20 data-placeholder:text-foreground">
+            <SelectTrigger className="mt-1.5 !h-8 w-full rounded-lg border-white/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] px-2.5 !py-1 text-xs font-medium text-foreground shadow-[inset_0_1px_0_0_rgb(255_255_255/0.14)] focus-visible:border-brand-500/70 focus-visible:ring-brand-500/20 data-placeholder:text-foreground">
               <SelectValue placeholder="Select license" />
             </SelectTrigger>
             <SelectContent
@@ -158,7 +158,7 @@ export function ItemCheckoutCard({
         type="button"
         onClick={openCheckout}
         disabled={isOpening}
-        className="mt-4 w-full rounded-xl bg-linear-to-r from-blue-600 to-blue-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/25 smooth hover:from-blue-500 hover:to-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
+        className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-brand-violet px-4 py-2.5 text-sm font-semibold text-white shadow-[0_14px_28px_-16px_rgb(110_60_255/0.92)] transition-all hover:bg-brand-violet-hover disabled:cursor-not-allowed disabled:opacity-60"
       >
         {isOpening ? "Opening secure checkout..." : "Buy now"}
       </button>

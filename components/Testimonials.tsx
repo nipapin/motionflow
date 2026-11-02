@@ -1,3 +1,7 @@
+"use client";
+
+import { SpunkramText, useSpunkramLanguage } from "@/components/spunkram-language";
+
 const reviews: Array<{
   photo: string;
   name: string;
@@ -28,8 +32,9 @@ const reviews: Array<{
 ];
 
 function Stars() {
+  const { t } = useSpunkramLanguage();
   return (
-    <div className="flex gap-0.5" aria-label="5 out of 5 stars">
+    <div className="flex gap-0.5" aria-label={t("5 out of 5 stars")}>
       {[0, 1, 2, 3, 4].map((i) => (
         <svg
           key={i}
@@ -50,12 +55,8 @@ export function Testimonials() {
     <section id="reviews" className="relative py-20">
       <div className="max-w-7xl mx-auto px-5 sm:px-8">
         <div className="mb-8">
-          <div className="text-xs font-medium text-muted uppercase tracking-[0.2em]">
-            Loved by editors
-          </div>
-          <h2 className="mt-2 text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight text-foreground">
-            Built for people who ship video
-          </h2>
+          <div className="text-xs font-medium text-muted uppercase tracking-[0.2em]"><SpunkramText>{"Loved by editors"}</SpunkramText></div>
+          <h2 className="mt-2 text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight text-foreground"><SpunkramText>{"Built for people who ship video"}</SpunkramText></h2>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -71,7 +72,7 @@ export function Testimonials() {
               <div className="relative z-[1] flex h-full flex-col gap-4 p-5 sm:p-6">
                 <Stars />
                 <p className="flex-1 text-sm leading-relaxed text-muted">
-                  &ldquo;{r.text}&rdquo;
+                  &ldquo;<SpunkramText>{r.text}</SpunkramText>&rdquo;
                 </p>
                 <div className="flex items-center gap-3 border-t border-line pt-4">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -89,7 +90,7 @@ export function Testimonials() {
                       {r.name}
                     </div>
                     <div className="mt-0.5 text-xs leading-tight text-muted">
-                      {r.role}
+                      <SpunkramText>{r.role}</SpunkramText>
                     </div>
                   </div>
                 </div>

@@ -1,5 +1,7 @@
 "use client";
 
+import { SpunkramText, useSpunkramLanguage } from "@/components/spunkram-language";
+
 import { useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 
@@ -25,6 +27,7 @@ export function Hero() {
 /* ---------- TILES ---------- */
 
 function VideoTile() {
+  const { t } = useSpunkramLanguage();
   const [playing, setPlaying] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -36,32 +39,26 @@ function VideoTile() {
   };
 
   return (
-    <div className="card relative w-full aspect-video rounded-3xl overflow-hidden border border-brand-500/25">
-      <div className="card-sheen-pricing pointer-events-none absolute inset-0 z-0" aria-hidden="true" />
+    <div className="relative w-full aspect-video rounded-3xl overflow-hidden border border-brand-500/25 bg-transparent">
       {!playing && (
         <button
           type="button"
           onClick={handlePlay}
-          aria-label="Play preview video"
+          aria-label={t("Play preview video")}
           className="absolute inset-0 z-[2] w-full h-full group cursor-pointer"
         >
-          {/* Fallback violet gradient behind image */}
-          <div className="absolute inset-0 bg-gradient-to-br from-brand-700 via-page to-accent-600" />
           <img
-            src="/hero-poster.png"
-            alt="Spunkram preview"
+            src="/spunkram-hero-poster.png"
+            alt={t("Spunkram preview")}
             className="absolute inset-0 w-full h-full object-cover"
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).style.display = "none";
             }}
           />
-          {/* Light overlay for play control contrast */}
-          <div className="absolute inset-0 bg-black/15" />
-
           {/* Play button */}
-          <div className="absolute inset-0 grid place-items-center">
-            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-white text-black grid place-items-center shadow-[0_10px_40px_-10px_rgba(0,0,0,0.6)] group-hover:scale-105 transition-transform">
-              <svg className="w-8 h-8 translate-x-0.5" width={32} height={32} viewBox="0 0 24 24" fill="currentColor">
+          <div className="absolute bottom-4 left-4 sm:bottom-5 sm:left-5">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full border border-brand-300/50 bg-gradient-to-br from-brand-700/80 via-brand-500/80 to-brand-300/80 backdrop-blur-sm text-white grid place-items-center shadow-[0_4px_20px_rgba(124,58,237,0.3)] group-hover:shadow-[0_4px_28px_rgba(124,58,237,0.55)] group-hover:scale-105 group-focus-visible:scale-105 transition-[box-shadow,transform] duration-200 motion-reduce:transition-none motion-reduce:transform-none">
+              <svg className="w-4 h-4 sm:w-5 sm:h-5 translate-x-0.5" width={20} height={20} viewBox="0 0 24 24" fill="currentColor">
                 <path d="M8 5v14l11-7z" />
               </svg>
             </div>
@@ -77,7 +74,7 @@ function VideoTile() {
           controls
           autoPlay
           playsInline
-          poster="/hero-poster.png"
+          poster="/spunkram-hero-poster.png"
         />
       )}
     </div>
@@ -93,16 +90,12 @@ function DownloadTile({ className }: { className?: string }) {
       <div className="card-sheen-pricing pointer-events-none absolute inset-0 z-0" aria-hidden="true" />
       <div className="relative z-[1] flex min-h-0 flex-1 flex-col p-4 sm:p-5">
         <div className="flex shrink-0 items-center justify-between">
-          <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-md bg-surface-2 text-muted border border-line">
-            Free download
-          </span>
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-md bg-surface-2 text-muted border border-line"><SpunkramText>{"Free download"}</SpunkramText></span>
           <span className="text-[11px] text-subtle">v2.1</span>
         </div>
 
-        <h3 className="mt-3 text-base sm:text-lg font-semibold tracking-tight shrink-0">Spunkram Extension</h3>
-        <p className="mt-1 text-xs sm:text-sm text-muted leading-relaxed shrink-0">
-          Install once, then browse and apply projects inside Premiere Pro &amp; After Effects.
-        </p>
+        <h3 className="mt-3 text-base sm:text-lg font-semibold tracking-tight shrink-0"><SpunkramText>{"Spunkram Extension"}</SpunkramText></h3>
+        <p className="mt-1 text-xs sm:text-sm text-muted leading-relaxed shrink-0"><SpunkramText>{"Install once, then browse and apply projects inside Premiere Pro & After Effects."}</SpunkramText></p>
 
         <div className="mt-auto grid shrink-0 grid-cols-2 gap-2 pt-6">
           <a
@@ -136,7 +129,7 @@ function DownloadTile({ className }: { className?: string }) {
 function AppIconBadge({ label }: { label: string }) {
   return (
     <span
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-brand-violet text-[9px] font-bold leading-none tracking-tight text-white shadow-[inset_0_1px_0_0_rgb(255_255_255/0.25)]"
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-brand-violet text-[11px] font-bold leading-none tracking-tight text-white shadow-[inset_0_1px_0_0_rgb(255_255_255/0.25)]"
       aria-hidden="true"
     >
       {label}
@@ -149,17 +142,17 @@ function TechnicalDetailsTile() {
     <div className="card relative shrink-0 overflow-hidden rounded-2xl border border-brand-500/25">
       <div className="card-sheen-pricing pointer-events-none absolute inset-0 z-0" aria-hidden="true" />
       <div className="relative z-[1] px-3.5 py-3 sm:px-4 sm:py-3.5">
-        <h3 className="text-xs font-semibold tracking-tight text-foreground">Technical Details</h3>
+        <h3 className="text-xs font-bold tracking-tight text-foreground"><SpunkramText>{"Technical Details"}</SpunkramText></h3>
         <div className="mt-2 divide-y divide-line">
           <div className="flex items-center gap-2 py-2">
             <AppIconBadge label="Pr" />
-            <span className="min-w-0 text-xs text-muted">Adobe Premiere</span>
-            <span className="ml-auto shrink-0 text-xs font-semibold text-foreground">CC 2023+</span>
+            <span className="min-w-0 text-xs font-semibold text-muted">Adobe Premiere</span>
+            <span className="ml-auto shrink-0 text-xs font-bold text-foreground">CC 2025+</span>
           </div>
           <div className="flex items-center gap-2 py-2">
             <AppIconBadge label="Ae" />
-            <span className="min-w-0 text-xs text-muted">Adobe After Effects</span>
-            <span className="ml-auto shrink-0 text-xs font-semibold text-foreground">CC 2023+</span>
+            <span className="min-w-0 text-xs font-semibold text-muted">Adobe After Effects</span>
+            <span className="ml-auto shrink-0 text-xs font-bold text-foreground">CC 2025+</span>
           </div>
         </div>
       </div>
@@ -181,9 +174,7 @@ function ExploreLibraryButton() {
         "hover:bg-brand-violet-soft-hover hover:shadow-[0_6px_28px_-6px_rgb(55_25_110/0.55),inset_0_1px_0_0_rgb(255_255_255/0.22)] light:hover:shadow-[0_6px_28px_-6px_rgb(55_25_110/0.4),inset_0_1px_0_0_rgb(0_0_0/0.1)]",
         "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500",
       )}
-    >
-      Explore Library
-      <svg className="w-4 h-4 shrink-0 opacity-90" width={16} height={16} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+    ><SpunkramText>{"Explore Library"}</SpunkramText><svg className="w-4 h-4 shrink-0 opacity-90" width={16} height={16} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path
           fillRule="evenodd"
           d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"

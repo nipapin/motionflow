@@ -98,8 +98,7 @@ export const spunkramSubscriptionTiers: SpunkramSubscriptionTier[] = [
       "Access to all existing packs",
       "Every new pack included for free",
       "Commercial license",
-      "Updates included",
-      "Cancel in 1 click",
+      "5 generations per month",
     ],
   },
   {
@@ -114,7 +113,7 @@ export const spunkramSubscriptionTiers: SpunkramSubscriptionTier[] = [
       "Full access to AI Tools",
       "Image, video & audio generation",
       "Commercial license",
-      "Cancel in 1 click",
+      "100 generations per month",
     ],
   },
 ];
@@ -155,7 +154,7 @@ export const faq = [
   },
   {
     q: "Which versions of Premiere Pro and After Effects are supported?",
-    a: "Adobe Premiere Pro and After Effects 2021 and newer are supported. Works on Windows 10/11 and macOS 11+ (Intel and Apple Silicon).",
+    a: "Adobe Premiere Pro and After Effects CC 2025 and newer are supported. Works on Windows 10/11 and macOS 11+ (Intel and Apple Silicon).",
   },
   {
     q: "Can I buy just a single project?",

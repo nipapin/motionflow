@@ -1,5 +1,7 @@
 "use client";
 
+import { SpunkramText, useSpunkramLanguage } from "@/components/spunkram-language";
+
 import { useMemo, useState } from "react";
 import { Lock } from "lucide-react";
 
@@ -8,6 +10,7 @@ type AiToolsTabId =
   | "auto-subtitles"
   | "chapters"
   | "silence-remover"
+  | "jump-cut"
   | "more-features";
 
 type ShowcaseTab = {
@@ -27,7 +30,7 @@ const tabs: Array<ShowcaseTab & { id: TabId }> = [
     title: "Everything you need in one panel",
     description:
       "Browse projects, preview results, and apply assets without leaving Premiere Pro or After Effects.",
-    posterSrc: "https://images.unsplash.com/photo-1611532736597-de2d4265fba3?w=1280&q=85&fit=crop",
+    videoSrc: "/spunkram/all-in-one.mp4",
   },
   {
     id: "one-click",
@@ -35,15 +38,15 @@ const tabs: Array<ShowcaseTab & { id: TabId }> = [
     title: "Install with a single click",
     description:
       "Download the extension and get it running in minutes. Updates are delivered automatically.",
-    posterSrc: "https://images.unsplash.com/photo-1555066931-4365d14431b9?w=1280&q=85&fit=crop",
+    videoSrc: "/spunkram/install.mp4",
   },
   {
     id: "drag-drop",
-    label: "Drag and Drop to apply",
-    title: "Apply assets with drag & drop",
+    label: "Double click to apply",
+    title: "Apply assets with a double click",
     description:
-      "Drag presets, transitions, and titles straight onto your timeline — no extra steps.",
-    posterSrc: "https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=1280&q=85&fit=crop",
+      "Double-click presets, transitions, and titles to apply them to your timeline — no extra steps.",
+    videoSrc: "/spunkram/double-click-apply.mp4",
   },
   {
     id: "customize",
@@ -51,7 +54,7 @@ const tabs: Array<ShowcaseTab & { id: TabId }> = [
     title: "Make it yours in seconds",
     description:
       "Swap colors, text, and timing quickly. Designed to be flexible for different styles and formats.",
-    posterSrc: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=1280&q=85&fit=crop",
+    videoSrc: "/spunkram/customize.mp4",
   },
   {
     id: "resize",
@@ -59,7 +62,7 @@ const tabs: Array<ShowcaseTab & { id: TabId }> = [
     title: "Resize without rebuilding",
     description:
       "Switch between 16:9, 9:16 and 1:1 with smart scaling rules so layouts stay clean.",
-    posterSrc: "https://images.unsplash.com/photo-1536240478700-b869ad10325f?w=1280&q=85&fit=crop",
+    videoSrc: "/spunkram/smart-resize.mp4",
   },
 ];
 
@@ -70,7 +73,7 @@ const aiToolsTabs: Array<ShowcaseTab & { id: AiToolsTabId }> = [
     title: "Captions in one click",
     description:
       "Generate accurate subtitles from speech and drop them onto your timeline automatically — no manual typing.",
-    posterSrc: "https://images.unsplash.com/photo-1598387993441-a364f854cfbd?w=1280&q=85&fit=crop",
+    videoSrc: "/spunkram/captions.mp4",
   },
   {
     id: "chapters",
@@ -78,7 +81,7 @@ const aiToolsTabs: Array<ShowcaseTab & { id: AiToolsTabId }> = [
     title: "Automatic chapter markers",
     description:
       "AI detects scene changes and inserts chapter points for easier navigation and exports.",
-    posterSrc: "https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=1280&q=85&fit=crop",
+    videoSrc: "/spunkram/chapters.mp4",
   },
   {
     id: "silence-remover",
@@ -86,7 +89,15 @@ const aiToolsTabs: Array<ShowcaseTab & { id: AiToolsTabId }> = [
     title: "Remove silence automatically",
     description:
       "Detect and remove silent gaps automatically to tighten edits and keep the pacing moving.",
-    posterSrc: "https://images.unsplash.com/photo-1478737270239-2f02b77fc618?w=1280&q=85&fit=crop",
+    videoSrc: "/spunkram/silence-remover.mp4",
+  },
+  {
+    id: "jump-cut",
+    videoSrc: "/spunkram/jump-cut.mp4",
+    label: "Jump Cut",
+    title: "Automatic zoom in & out",
+    description:
+      "Automatically create zoom-in and zoom-out edits to add movement and keep your videos engaging.",
   },
   {
     id: "more-features",
@@ -187,6 +198,7 @@ function ShowcaseExplorerPanel({
   onActiveChange,
   switcherSubtitle = "Switch feature",
   switcherTitle = "Explore",
+  showSwitcherHeading = true,
   footerAction,
   reversed = false,
 }: {
@@ -195,6 +207,7 @@ function ShowcaseExplorerPanel({
   onActiveChange: (id: string) => void;
   switcherSubtitle?: string;
   switcherTitle?: string;
+  showSwitcherHeading?: boolean;
   footerAction?: { label: string; onClick: () => void };
   reversed?: boolean;
 }) {
@@ -237,9 +250,9 @@ function ShowcaseExplorerPanel({
           </div>
           <div className="p-5 sm:p-6">
             <h3 className="text-lg sm:text-xl font-semibold tracking-tight text-foreground">
-              {tab.title}
+              <SpunkramText>{tab.title}</SpunkramText>
             </h3>
-            <p className="mt-1.5 text-sm text-muted">{tab.description}</p>
+            <p className="mt-1.5 text-sm text-muted"><SpunkramText>{tab.description}</SpunkramText></p>
           </div>
         </div>
       </div>
@@ -254,14 +267,14 @@ function ShowcaseExplorerPanel({
           aria-hidden="true"
         />
         <div className="relative z-[1] flex flex-1 flex-col p-3 sm:p-4 pointer-events-auto">
-          <div className="p-3 sm:p-4">
-            <div className="text-xs font-medium text-muted">{switcherSubtitle}</div>
+          {showSwitcherHeading && <div className="p-3 sm:p-4">
+            <div className="text-xs font-medium text-muted"><SpunkramText>{switcherSubtitle}</SpunkramText></div>
             <h2 className="mt-2 text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">
-              {switcherTitle}
+              <SpunkramText>{switcherTitle}</SpunkramText>
             </h2>
-          </div>
+          </div>}
 
-          <div className="relative z-[2] flex-1 space-y-1.5 px-2 pb-3 sm:px-3 sm:pb-4 pointer-events-auto">
+          <div className={`relative z-[2] flex-1 space-y-1.5 px-2 pb-3 sm:px-3 sm:pb-4 pointer-events-auto ${showSwitcherHeading ? "" : "pt-3 sm:pt-4"}`}>
             {panelTabs.map((t) => {
               const isActive = t.id === active;
               const isLocked = t.locked;
@@ -296,13 +309,11 @@ function ShowcaseExplorerPanel({
                           isLocked ? "text-muted" : "text-foreground"
                         }`}
                       >
-                        {t.label}
+                        <SpunkramText>{t.label}</SpunkramText>
                       </div>
                     </div>
                     {isLocked ? (
-                      <span className="shrink-0 rounded-full border border-line bg-surface-2 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-subtle">
-                        Coming soon
-                      </span>
+                      <span className="shrink-0 rounded-full border border-line bg-surface-2 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-subtle"><SpunkramText>{"Coming soon"}</SpunkramText></span>
                     ) : (
                       <svg
                         className={`w-4 h-4 shrink-0 transition-transform ${
@@ -316,7 +327,7 @@ function ShowcaseExplorerPanel({
                       </svg>
                     )}
                   </div>
-                  <div className="mt-1 text-sm text-muted line-clamp-2">{t.title}</div>
+                  <div className="mt-1 text-sm text-muted line-clamp-2"><SpunkramText>{t.title}</SpunkramText></div>
                 </button>
               );
             })}
@@ -329,7 +340,7 @@ function ShowcaseExplorerPanel({
                 onClick={footerAction.onClick}
                 className="w-full rounded-full px-5 py-3 text-sm font-semibold bg-brand-violet hover:bg-brand-violet-hover text-white shadow-[inset_0_1px_0_0_rgb(255_255_255/0.22),0_10px_32px_-18px_rgb(110_60_255/0.55)] transition-[background-image,box-shadow] duration-200"
               >
-                {footerAction.label}
+                <SpunkramText>{footerAction.label}</SpunkramText>
               </button>
             </div>
           )}
@@ -356,6 +367,7 @@ function ShowcaseExplorerPanel({
 }
 
 export function Showcase() {
+  const { t } = useSpunkramLanguage();
   const [active, setActive] = useState<TabId>("all-in-one");
   const [aiToolsActive, setAiToolsActive] = useState<AiToolsTabId>("auto-subtitles");
   const howToUseYouTubeId = "dQw4w9WgXcQ";
@@ -364,12 +376,8 @@ export function Showcase() {
     <section id="features" className="relative py-20">
       <div className="max-w-7xl mx-auto px-5 sm:px-8">
         <div className="mb-8">
-          <div className="text-xs font-medium text-muted uppercase tracking-[0.2em]">
-            Explore all features
-          </div>
-          <h2 className="mt-2 text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight text-foreground">
-            Everything is built into the workflow
-          </h2>
+          <div className="text-xs font-medium text-muted uppercase tracking-[0.2em]"><SpunkramText>{"Explore all features"}</SpunkramText></div>
+          <h2 className="mt-2 text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight text-foreground"><SpunkramText>{"Everything is built into the workflow"}</SpunkramText></h2>
         </div>
 
         <div className="space-y-4">
@@ -395,9 +403,9 @@ export function Showcase() {
                       {n.icon}
                     </div>
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-foreground">{n.title}</div>
+                      <div className="text-sm font-semibold text-foreground"><SpunkramText>{n.title}</SpunkramText></div>
                       {n.description && (
-                        <div className="mt-1.5 text-sm text-muted">{n.description}</div>
+                        <div className="mt-1.5 text-sm text-muted"><SpunkramText>{n.description}</SpunkramText></div>
                       )}
                     </div>
                   </div>
@@ -410,13 +418,8 @@ export function Showcase() {
             <div className="mb-8 grid grid-cols-1 lg:grid-cols-12 gap-4">
               <div className="hidden lg:block lg:col-span-4" aria-hidden="true" />
               <div className="lg:col-span-8 lg:text-right">
-                <h3 className="text-xl sm:text-2xl md:text-3xl font-semibold tracking-tight text-foreground">
-                  Edit faster with AI inside the extension
-                </h3>
-                <p className="mt-2 max-w-2xl text-sm text-muted lg:ml-auto">
-                  Smart tools that live in the same panel — generate subtitles,
-                  create chapters, and remove silence in one click.
-                </p>
+                <h3 className="text-xl sm:text-2xl md:text-3xl font-semibold tracking-tight text-foreground"><SpunkramText>{"Edit faster with AI inside the extension"}</SpunkramText></h3>
+                <p className="mt-2 max-w-2xl text-sm text-muted lg:ml-auto"><SpunkramText>{"Smart tools that live in the same panel — generate subtitles, create chapters, and remove silence in one click."}</SpunkramText></p>
               </div>
             </div>
 
@@ -424,8 +427,7 @@ export function Showcase() {
               tabs={aiToolsTabs}
               active={aiToolsActive}
               onActiveChange={(id) => setAiToolsActive(id as AiToolsTabId)}
-              switcherSubtitle="Switch AI tool"
-              switcherTitle="AI Tools"
+              showSwitcherHeading={false}
               footerAction={{ label: "Get started now", onClick: scrollToPricing }}
               reversed
             />
@@ -434,37 +436,31 @@ export function Showcase() {
           {/* Stock Footages block */}
           <div className="pt-10 sm:pt-12">
             <div className="mb-8">
-              <h3 className="text-xl sm:text-2xl md:text-3xl font-semibold tracking-tight text-foreground">
-                Search Stock Footage
-              </h3>
-              <p className="mt-2 max-w-2xl text-sm text-muted">
-                Millions of royalty-free photos and videos — right inside your panel.
-                No browser tabs, no import headaches.
-              </p>
+              <h3 className="text-xl sm:text-2xl md:text-3xl font-semibold tracking-tight text-foreground"><SpunkramText>{"Search Stock Footage"}</SpunkramText></h3>
+              <p className="mt-2 max-w-2xl text-sm text-muted"><SpunkramText>{"Millions of royalty-free photos and videos — right inside your panel. No browser tabs, no import headaches."}</SpunkramText></p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
-              {/* Media placeholder */}
+              {/* Stock footage preview */}
               <div className="lg:col-span-8">
                 <div className="card relative isolate h-full overflow-hidden rounded-3xl border border-brand-500/25">
                   <div className="card-sheen-pricing pointer-events-none absolute inset-0 z-0" aria-hidden="true" />
                   <div className="relative z-[1] h-full">
                     <div className="relative w-full aspect-video bg-surface-2">
-                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-page/80 via-page/20 to-transparent z-[1]" />
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src="https://images.unsplash.com/photo-1536240478700-b869ad10325f?w=1280&q=85&fit=crop"
-                        alt=""
-                        className="absolute inset-0 w-full h-full object-cover"
+                      <video
+                        src="/spunkram/stock-footages-v2.mp4"
+                        aria-label={t("Search Stock Footage")}
+                        autoPlay
+                        muted
+                        loop
+                        playsInline
+                        preload="metadata"
+                        className="absolute inset-0 w-full h-full object-contain"
                       />
                     </div>
                     <div className="p-5 sm:p-6">
-                      <h4 className="text-lg sm:text-xl font-semibold tracking-tight text-foreground">
-                        Find the perfect shot without leaving your editor
-                      </h4>
-                      <p className="mt-1.5 text-sm text-muted">
-                        Search, preview, and place footage directly on your timeline — no download folder, no drag-from-desktop.
-                      </p>
+                      <h4 className="text-lg sm:text-xl font-semibold tracking-tight text-foreground"><SpunkramText>{"Find the perfect shot without leaving your editor"}</SpunkramText></h4>
+                      <p className="mt-1.5 text-sm text-muted"><SpunkramText>{"Search, preview, and place footage directly on your timeline — no download folder, no drag-from-desktop."}</SpunkramText></p>
                     </div>
                   </div>
                 </div>
@@ -522,8 +518,8 @@ export function Showcase() {
                           {f.icon}
                         </span>
                         <div className="min-w-0">
-                          <div className="text-sm font-semibold text-foreground">{f.title}</div>
-                          <div className="mt-0.5 text-xs text-muted leading-relaxed">{f.desc}</div>
+                          <div className="text-sm font-semibold text-foreground"><SpunkramText>{f.title}</SpunkramText></div>
+                          <div className="mt-0.5 text-xs text-muted leading-relaxed"><SpunkramText>{f.desc}</SpunkramText></div>
                         </div>
                       </div>
                     ))}
@@ -532,9 +528,7 @@ export function Showcase() {
                       type="button"
                       onClick={scrollToPricing}
                       className="mt-auto w-full rounded-full px-5 py-3 text-sm font-semibold bg-brand-violet hover:bg-brand-violet-hover text-white shadow-[inset_0_1px_0_0_rgb(255_255_255/0.22),0_10px_32px_-18px_rgb(110_60_255/0.55)] transition-[background-image,box-shadow] duration-200"
-                    >
-                      Get started now
-                    </button>
+                    ><SpunkramText>{"Get started now"}</SpunkramText></button>
                   </div>
                 </div>
               </div>
@@ -547,12 +541,8 @@ export function Showcase() {
       <div id="how-to-use" className="mt-16 w-full scroll-mt-28 sm:mt-20 md:mt-24">
         <div className="max-w-7xl mx-auto px-5 sm:px-8 pt-8 sm:pt-10 pb-8 sm:pb-10 md:pb-12">
           <div>
-            <div className="text-xs font-medium text-muted uppercase tracking-[0.2em]">
-              How to use
-            </div>
-            <h3 className="mt-2 text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
-              Watch the quick walkthrough
-            </h3>
+            <div className="text-xs font-medium text-muted uppercase tracking-[0.2em]"><SpunkramText>{"How to use"}</SpunkramText></div>
+            <h3 className="mt-2 text-xl sm:text-2xl font-semibold tracking-tight text-foreground"><SpunkramText>{"Watch the quick walkthrough"}</SpunkramText></h3>
           </div>
 
           <div className="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 lg:items-center">
@@ -566,7 +556,7 @@ export function Showcase() {
                   <iframe
                     className="absolute inset-0 w-full h-full"
                     src={`https://www.youtube.com/embed/${howToUseYouTubeId}?rel=0&modestbranding=1`}
-                    title="How to use Spunkram"
+                    title={t("How to use Spunkram")}
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                     referrerPolicy="strict-origin-when-cross-origin"
                     allowFullScreen
@@ -577,10 +567,8 @@ export function Showcase() {
 
             <div className="lg:col-span-4 flex flex-col gap-3 self-center w-full">
               <div className="pb-1">
-                <div className="text-xs font-medium text-muted uppercase tracking-[0.2em]">
-                  3 simple steps
-                </div>
-                <h4 className="mt-2 text-lg font-semibold text-foreground">Install in minutes</h4>
+                <div className="text-xs font-medium text-muted uppercase tracking-[0.2em]"><SpunkramText>{"3 simple steps"}</SpunkramText></div>
+                <h4 className="mt-2 text-lg font-semibold text-foreground"><SpunkramText>{"Install in minutes"}</SpunkramText></h4>
               </div>
               {installSteps.map((step, i) => (
                 <div
@@ -605,10 +593,10 @@ export function Showcase() {
                           }}
                           className="font-medium text-brand-500 underline decoration-brand-500/40 underline-offset-2 hover:text-brand-400 hover:decoration-brand-400/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
                         >
-                          {step}
+                          <SpunkramText>{step}</SpunkramText>
                         </a>
                       ) : (
-                        step
+                        <SpunkramText>{step}</SpunkramText>
                       )}
                     </p>
                   </div>
@@ -619,11 +607,8 @@ export function Showcase() {
                 type="button"
                 onClick={scrollToContact}
                 className="mt-1 w-full rounded-2xl border border-line bg-surface/40 px-4 py-3.5 text-sm text-muted transition hover:border-line-strong hover:bg-surface-2"
-              >
-                Need any help?{" "}
-                <span className="font-semibold text-brand-500 underline decoration-brand-500/40 underline-offset-2">
-                  Contact us
-                </span>
+              ><SpunkramText>{"Need any help?"}</SpunkramText>{" "}
+                <span className="font-semibold text-brand-500 underline decoration-brand-500/40 underline-offset-2"><SpunkramText>{"Contact us"}</SpunkramText></span>
               </button>
             </div>
           </div>

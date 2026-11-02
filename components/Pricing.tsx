@@ -1,5 +1,7 @@
 "use client";
 
+import { SpunkramText, useSpunkramLanguage } from "@/components/spunkram-language";
+
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -31,11 +33,13 @@ function tierDisplayPrice(tier: SpunkramSubscriptionTier, billing: BillingPeriod
   }
   return {
     amount: tier.yearlyPrice / 12,
-    billingNote: `Billed yearly · $${Math.round(tier.yearlyPrice)} upfront`,
+    billingNote: "Billed yearly · ${amount} upfront",
+    billingAmount: `$${Math.round(tier.yearlyPrice)}`,
   };
 }
 
 export function Pricing() {
+  const { t } = useSpunkramLanguage();
   const router = useRouter();
   const { paddle, ready, subscribe } = usePaddle();
   const { user, openSignIn } = useAuth();
@@ -50,7 +54,7 @@ export function Pricing() {
       if (event.name === "checkout.completed") {
         awaitingCheckout.current = false;
         setOpeningTier(null);
-        toast.success("Payment successful! Your subscription is activating…");
+        toast.success(t("Payment successful! Your subscription is activating…"));
         const transactionId = event.data?.transaction_id ?? null;
         void (async () => {
           if (transactionId) {
@@ -75,14 +79,14 @@ export function Pricing() {
       if (event.name === "checkout.error") {
         awaitingCheckout.current = false;
         setOpeningTier(null);
-        toast.error("Checkout error. Please try again.");
+        toast.error(t("Checkout error. Please try again."));
       }
       if (event.name === "checkout.closed") {
         awaitingCheckout.current = false;
         setOpeningTier(null);
       }
     });
-  }, [subscribe, router]);
+  }, [subscribe, router, t]);
 
   const openSubscribeCheckout = (tierId: SpunkramSubscriptionTierId) => {
     if (!user) {
@@ -93,13 +97,13 @@ export function Pricing() {
     const priceId = SPUNKRAM_SUBSCRIPTION_PRICE_IDS[tierId][billing];
 
     if (!priceId?.startsWith("pri_")) {
-      toast.error("Subscription checkout is not configured.");
+      toast.error(t("Subscription checkout is not configured."));
       return;
     }
 
     if (!paddle) {
       toast.error(
-        ready ? "Checkout is not ready yet. Please try again." : "Checkout is still loading…",
+        t(ready ? "Checkout is not ready yet. Please try again." : "Checkout is still loading…"),
       );
       return;
     }
@@ -128,7 +132,7 @@ export function Pricing() {
       awaitingCheckout.current = false;
       setOpeningTier(null);
       console.error("[spunkram-pricing] paddle checkout open failed:", err);
-      toast.error("Could not open checkout. Please try again.");
+      toast.error(t("Could not open checkout. Please try again."));
     }
   };
 
@@ -151,13 +155,8 @@ export function Pricing() {
       </div>
       <div className="relative z-1 max-w-6xl mx-auto px-5 sm:px-8 pointer-events-auto">
         <div className="text-center max-w-xl mx-auto">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight text-foreground">
-            Choose your plan
-          </h2>
-          <p className="mt-2 text-muted">
-            Get the full Spunkram library or add AI Tools for image, video, and
-            audio generation. Cancel anytime.
-          </p>
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight text-foreground"><SpunkramText>{"Choose your plan"}</SpunkramText></h2>
+          <p className="mt-2 text-muted"><SpunkramText>{"Get the full Spunkram library or add AI Tools for image, video, and audio generation. Cancel anytime."}</SpunkramText></p>
         </div>
 
         <div className="relative z-[2] mt-8 flex justify-center pointer-events-auto">
@@ -170,9 +169,7 @@ export function Pricing() {
                   ? "bg-brand-violet-soft text-white shadow-[inset_0_1px_0_0_rgb(255_255_255/0.22)]"
                   : "text-muted hover:text-foreground"
               }`}
-            >
-              Monthly
-            </button>
+            ><SpunkramText>{"Monthly"}</SpunkramText></button>
             <button
               type="button"
               onClick={() => setBilling("yearly")}
@@ -181,9 +178,7 @@ export function Pricing() {
                   ? "bg-brand-violet-soft text-white shadow-[inset_0_1px_0_0_rgb(255_255_255/0.22)]"
                   : "text-muted hover:text-foreground"
               }`}
-            >
-              Yearly
-            </button>
+            ><SpunkramText>{"Yearly"}</SpunkramText></button>
           </div>
         </div>
 
@@ -191,7 +186,7 @@ export function Pricing() {
           {PRICING_DISPLAY_ORDER.map((tierId) => {
             const tier = spunkramSubscriptionTiers.find((t) => t.id === tierId);
             if (!tier) return null;
-            const { amount, billingNote } = tierDisplayPrice(tier, billing);
+            const { amount, billingNote, billingAmount } = tierDisplayPrice(tier, billing);
             const isOpening = openingTier === tier.id;
             const isFree = tier.id === "free";
 
@@ -199,9 +194,7 @@ export function Pricing() {
               <div key={tier.id} className="relative flex h-full flex-col">
                 {tier.highlight && (
                   <div className="pointer-events-none absolute left-1/2 top-0 z-[2] -translate-x-1/2 -translate-y-1/2">
-                    <span className="inline-flex items-center rounded-full border border-brand-500/40 bg-brand-violet px-4 py-1.5 text-xs font-semibold tracking-wide text-white shadow-[0_8px_24px_-12px_rgb(110_60_255/0.75)]">
-                      Most Popular
-                    </span>
+                    <span className="inline-flex items-center rounded-full border border-brand-500/40 bg-brand-violet px-4 py-1.5 text-xs font-semibold tracking-wide text-white shadow-[0_8px_24px_-12px_rgb(110_60_255/0.75)]"><SpunkramText>{"Most Popular"}</SpunkramText></span>
                   </div>
                 )}
 
@@ -218,9 +211,9 @@ export function Pricing() {
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
                       <h3 className="text-xl font-semibold tracking-tight text-foreground">
-                        {tier.name}
+                        <SpunkramText>{tier.name}</SpunkramText>
                       </h3>
-                      <p className="mt-1 text-sm text-muted">{billingNote}</p>
+                      <p className="mt-1 text-sm text-muted"><SpunkramText values={{ amount: billingAmount ?? "" }}>{billingNote}</SpunkramText></p>
                     </div>
                     {billing === "yearly" && tier.savings && (
                       <span className="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-brand-500/10 text-brand-500 border border-brand-500/25">
@@ -231,9 +224,9 @@ export function Pricing() {
 
                   <div className="mt-7 flex items-end gap-2">
                     <span className="text-5xl font-semibold tracking-tight text-foreground tabular-nums leading-none">
-                      {isFree ? "Free" : `$${amount.toFixed(1)}`}
+                      {isFree ? t("Free") : `$${amount.toFixed(1)}`}
                     </span>
-                    {!isFree && <span className="pb-1 text-sm text-subtle">/ month</span>}
+                    {!isFree && <span className="pb-1 text-sm text-subtle"><SpunkramText>{"/ month"}</SpunkramText></span>}
                   </div>
 
                   <div className="mt-7 border-t border-line/60" />
@@ -255,7 +248,7 @@ export function Pricing() {
                             <path d="M5 10.5l3 3 7-7" />
                           </svg>
                         </span>
-                        <span className="text-muted leading-snug">{f}</span>
+                        <span className="text-muted leading-snug"><SpunkramText>{f}</SpunkramText></span>
                       </li>
                     ))}
                   </ul>
@@ -265,9 +258,7 @@ export function Pricing() {
                       <a
                         href="#download"
                         className="block w-full rounded-full border border-line bg-surface/50 px-6 py-3 text-center text-sm font-semibold text-foreground transition hover:bg-surface"
-                      >
-                        Get Started Now
-                      </a>
+                      ><SpunkramText>{"Get Started Now"}</SpunkramText></a>
                     ) : (
                       <button
                         type="button"
@@ -279,7 +270,7 @@ export function Pricing() {
                             : "border border-line bg-surface/50 text-foreground hover:bg-surface"
                         }`}
                       >
-                        {isOpening ? "Opening checkout…" : "Get Started Now"}
+                        <SpunkramText>{isOpening ? "Opening checkout…" : "Get Started Now"}</SpunkramText>
                       </button>
                     )}
                   </div>
@@ -290,9 +281,7 @@ export function Pricing() {
           })}
         </div>
 
-        <p className="mt-8 text-center text-xs text-subtle">
-          Secure checkout · Prices in USD · Cancel anytime
-        </p>
+        <p className="mt-8 text-center text-xs text-subtle"><SpunkramText>{"Secure checkout · Prices in USD · Cancel anytime"}</SpunkramText></p>
       </div>
     </section>
   );

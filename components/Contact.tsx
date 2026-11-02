@@ -1,5 +1,7 @@
 "use client";
 
+import { SpunkramText, useSpunkramLanguage } from "@/components/spunkram-language";
+
 import { useEffect, useRef, useState } from "react";
 
 type Status = "idle" | "sending" | "sent" | "error";
@@ -41,6 +43,7 @@ function validateAttachment(file: File): string | null {
 }
 
 export function Contact() {
+  const { t } = useSpunkramLanguage();
   const [status, setStatus] = useState<Status>("idle");
   const [form, setForm] = useState({ name: "", email: "", message: "" });
   const [touched, setTouched] = useState({
@@ -166,12 +169,8 @@ export function Contact() {
     <section id="contact" className="relative py-20">
       <div className="max-w-7xl mx-auto px-5 sm:px-8">
         <div className="text-center">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight text-foreground">
-            Contact us
-          </h2>
-          <p className="mt-2 text-muted">
-            Have a question, bug or partnership idea? Drop us a line.
-          </p>
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight text-foreground"><SpunkramText>{"Contact us"}</SpunkramText></h2>
+          <p className="mt-2 text-muted"><SpunkramText>{"Have a question, bug or partnership idea? Drop us a line."}</SpunkramText></p>
         </div>
 
         <form
@@ -185,9 +184,7 @@ export function Contact() {
               <label
                 htmlFor="contact-name"
                 className="block text-xs font-medium text-muted mb-1.5"
-              >
-                Name
-              </label>
+              ><SpunkramText>{"Name"}</SpunkramText></label>
               <input
                 id="contact-name"
                 type="text"
@@ -203,7 +200,7 @@ export function Contact() {
                 placeholder="Ada Lovelace"
               />
               {touched.name && errors.name && (
-                <p className="mt-1.5 text-xs text-red-400">{errors.name}</p>
+                <p className="mt-1.5 text-xs text-red-400"><SpunkramText>{errors.name}</SpunkramText></p>
               )}
             </div>
 
@@ -211,9 +208,7 @@ export function Contact() {
               <label
                 htmlFor="contact-email"
                 className="block text-xs font-medium text-muted mb-1.5"
-              >
-                Email
-              </label>
+              ><SpunkramText>{"Email"}</SpunkramText></label>
               <input
                 id="contact-email"
                 type="email"
@@ -229,7 +224,7 @@ export function Contact() {
                 placeholder="you@example.com"
               />
               {touched.email && errors.email && (
-                <p className="mt-1.5 text-xs text-red-400">{errors.email}</p>
+                <p className="mt-1.5 text-xs text-red-400"><SpunkramText>{errors.email}</SpunkramText></p>
               )}
             </div>
           </div>
@@ -238,9 +233,7 @@ export function Contact() {
             <label
               htmlFor="contact-message"
               className="block text-xs font-medium text-muted mb-1.5"
-            >
-              Message
-            </label>
+            ><SpunkramText>{"Message"}</SpunkramText></label>
             <textarea
               id="contact-message"
               rows={5}
@@ -253,17 +246,15 @@ export function Contact() {
                   ? "border-red-500/50 focus:border-red-500 focus:ring-red-500/20"
                   : "border-line"
               }`}
-              placeholder="What would you like to talk about?"
+              placeholder={t("What would you like to talk about?")}
             />
             {touched.message && errors.message && (
-              <p className="mt-1.5 text-xs text-red-400">{errors.message}</p>
+              <p className="mt-1.5 text-xs text-red-400"><SpunkramText>{errors.message}</SpunkramText></p>
             )}
           </div>
 
           <div className="mt-4">
-            <label className="block text-xs font-medium text-muted mb-1.5">
-              Attachment (optional)
-            </label>
+            <label className="block text-xs font-medium text-muted mb-1.5"><SpunkramText>{"Attachment (optional)"}</SpunkramText></label>
             <div className="flex items-start gap-3 flex-wrap">
               <button
                 type="button"
@@ -283,7 +274,7 @@ export function Contact() {
                     clipRule="evenodd"
                   />
                 </svg>
-                {attachment ? "Replace file" : "Choose file"}
+                <SpunkramText>{attachment ? "Replace file" : "Choose file"}</SpunkramText>
               </button>
               <input
                 ref={fileInputRef}
@@ -310,7 +301,7 @@ export function Contact() {
                     type="button"
                     onClick={clearAttachment}
                     className="text-muted hover:text-foreground transition-colors"
-                    aria-label="Remove attachment"
+                    aria-label={t("Remove attachment")}
                   >
                     <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
                       <path
@@ -328,14 +319,13 @@ export function Contact() {
                 attachmentError ? "text-red-400" : "text-subtle"
               }`}
             >
-              {attachmentError ||
-                "PNG or JPG image (paste with Ctrl+V)"}
+              <SpunkramText>{attachmentError ||
+                "PNG or JPG image (paste with Ctrl+V)"}</SpunkramText>
             </p>
           </div>
 
           <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <p className="text-xs text-subtle">
-              Or email us at{" "}
+            <p className="text-xs text-subtle"><SpunkramText>{"Or email us at"}</SpunkramText>{" "}
               <a
                 href="mailto:spunkramhelp@gmail.com"
                 className="text-foreground underline decoration-line-strong underline-offset-4 hover:decoration-foreground"
@@ -357,14 +347,10 @@ export function Contact() {
                       d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
                       clipRule="evenodd"
                     />
-                  </svg>
-                  Message sent. Thank you!
-                </span>
+                  </svg><SpunkramText>{"Message sent. Thank you!"}</SpunkramText></span>
               )}
               {status === "error" && (
-                <span className="text-sm text-red-400">
-                  Something went wrong. Please try again.
-                </span>
+                <span className="text-sm text-red-400"><SpunkramText>{"Something went wrong. Please try again."}</SpunkramText></span>
               )}
               <button
                 type="submit"
@@ -384,13 +370,9 @@ export function Contact() {
                         d="M21 12a9 9 0 11-6.219-8.56"
                         strokeLinecap="round"
                       />
-                    </svg>
-                    Sending…
-                  </>
+                    </svg><SpunkramText>{"Sending…"}</SpunkramText></>
                 ) : (
-                  <>
-                    Send message
-                    <svg
+                  <><SpunkramText>{"Send message"}</SpunkramText><svg
                       className="w-4 h-4"
                       viewBox="0 0 20 20"
                       fill="currentColor"

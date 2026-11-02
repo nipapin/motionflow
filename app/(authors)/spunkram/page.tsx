@@ -1,3 +1,4 @@
+import { SpunkramLanguageProvider } from "@/components/spunkram-language";
 import { NavbarWithOffset } from "@/components/Navbar";
 import { Hero } from "@/components/Hero";
 import { Projects } from "@/components/Projects";
@@ -48,6 +49,7 @@ export default async function HomePage({
     .filter((item): item is Project => item != null);
 
   return (
+    <SpunkramLanguageProvider>
     <div className="min-w-0">
       <CepExtensionAuthDialog
         initialCode={code ?? ""}
@@ -69,5 +71,6 @@ export default async function HomePage({
         <Contact />
       </main>
     </div>
+    </SpunkramLanguageProvider>
   );
 }

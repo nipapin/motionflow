@@ -3,11 +3,7 @@ import { notFound } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
   FileArchive,
-  Layers,
-  Monitor,
-  Music2,
   Puzzle,
-  RefreshCw,
   ScanText,
 } from "lucide-react";
 import { getSessionUser } from "@/lib/auth/get-session-user";
@@ -156,28 +152,10 @@ export default async function SpunkramItemPage({
           icon: ScanText,
         },
         {
-          label: "Resolution",
-          value: readAttribute(item.attributes, "resolution") ?? "—",
-          variant: "lucide",
-          icon: Monitor,
-        },
-        {
-          label: "Associated music",
-          value: readAttribute(item.attributes, "assoc_music") ?? "No",
-          variant: "lucide",
-          icon: Music2,
-        },
-        {
           label: "File size",
           value: readAttribute(item.attributes, "file_size") ?? "—",
           variant: "lucide",
           icon: FileArchive,
-        },
-        {
-          label: "Current version",
-          value: readAttribute(item.attributes, "current_version") ?? "—",
-          variant: "lucide",
-          icon: RefreshCw,
         },
       ];
     }
@@ -191,28 +169,10 @@ export default async function SpunkramItemPage({
           host: "davinci-resolve",
         },
         {
-          label: "Resolution",
-          value: readAttribute(item.attributes, "resolution") ?? "—",
-          variant: "lucide",
-          icon: Monitor,
-        },
-        {
-          label: "Associated music",
-          value: readAttribute(item.attributes, "assoc_music") ?? "No",
-          variant: "lucide",
-          icon: Music2,
-        },
-        {
           label: "File size",
           value: readAttribute(item.attributes, "file_size") ?? "—",
           variant: "lucide",
           icon: FileArchive,
-        },
-        {
-          label: "Current version",
-          value: readAttribute(item.attributes, "current_version") ?? "—",
-          variant: "lucide",
-          icon: RefreshCw,
         },
       ];
     }
@@ -225,34 +185,10 @@ export default async function SpunkramItemPage({
         host: "premiere-pro",
       },
       {
-        label: "MOGRT",
-        value: toYesNo(readAttribute(item.attributes, "with_mogrt"), "No"),
-        variant: "lucide",
-        icon: Layers,
-      },
-      {
-        label: "Resolution",
-        value: readAttribute(item.attributes, "resolution") ?? "—",
-        variant: "lucide",
-        icon: Monitor,
-      },
-      {
-        label: "Associated music",
-        value: readAttribute(item.attributes, "assoc_music") ?? "No",
-        variant: "lucide",
-        icon: Music2,
-      },
-      {
         label: "File size",
         value: readAttribute(item.attributes, "file_size") ?? "—",
         variant: "lucide",
         icon: FileArchive,
-      },
-      {
-        label: "Current version",
-        value: readAttribute(item.attributes, "current_version") ?? "—",
-        variant: "lucide",
-        icon: RefreshCw,
       },
     ];
   })();
@@ -273,10 +209,15 @@ export default async function SpunkramItemPage({
 
       <article className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
         <div className="space-y-4">
-          <section className="card rounded-2xl p-5 sm:p-6">
-            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">
+          <section className="card flex items-center justify-between gap-4 rounded-2xl px-5 py-3 sm:px-6 sm:py-3">
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
               {item.name}
             </h1>
+            {readAttribute(item.attributes, "current_version") && (
+              <span className="shrink-0 text-sm font-medium text-muted">
+                v {readAttribute(item.attributes, "current_version")}
+              </span>
+            )}
           </section>
 
           <section className="card overflow-hidden rounded-2xl">
@@ -292,7 +233,19 @@ export default async function SpunkramItemPage({
         </div>
 
         <div className="space-y-4">
-          <aside className="card rounded-2xl p-5 sm:p-6">
+          <Link
+            href="/spunkram"
+            className="group flex items-center gap-3 rounded-2xl border border-brand-500/30 bg-brand-500/10 p-4 transition-colors hover:border-brand-500/60 hover:bg-brand-500/15"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/assets/spunkram-nav.svg" alt="" className="h-11 w-11 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-foreground">Works with Spunkram Library</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted">Use this project inside the Spunkram Library extension.</p>
+            </div>
+            <span aria-hidden="true" className="shrink-0 text-brand-400 transition-transform group-hover:translate-x-1">→</span>
+          </Link>
+          <aside className="card rounded-2xl px-5 py-3 sm:px-6 sm:py-3">
             <ItemCheckoutCard
               itemId={item.id}
               itemName={item.name}
@@ -302,7 +255,7 @@ export default async function SpunkramItemPage({
               // jsonArgs={`{"paddle_price_ids": ["pri_01kqyy24624agjp3hwq4n4xh0w", "pri_01kqyy3arwj0w5dk3rwk8zx305"]}`}
             />
 
-            <dl className="mt-4 space-y-2 text-sm">
+            <dl className="mt-3 space-y-1.5 text-sm">
               {details.map((detail) => (
                 <div key={detail.label} className="flex items-start justify-between gap-4">
                   <dt className="inline-flex items-center gap-2 text-muted">
