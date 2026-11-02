@@ -35,6 +35,7 @@ interface HeaderProps {
   showBrand?: boolean;
   /** Stock Assets / AI Tools popovers linking to the main Motion Flow site (author storefront headers). */
   authorNavPopovers?: boolean;
+  hideAuthorNavPopovers?: boolean;
 }
 
 export function Header({
@@ -48,6 +49,7 @@ export function Header({
   fixed = true,
   showBrand,
   authorNavPopovers = false,
+  hideAuthorNavPopovers = false,
 }: HeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -238,7 +240,7 @@ export function Header({
                 Motion Flow
               </span>
             </Link>
-            {authorNavPopovers ? <AuthorHeaderNavPopovers /> : null}
+            {authorNavPopovers && !hideAuthorNavPopovers ? <AuthorHeaderNavPopovers /> : null}
           </div>
         )}
 

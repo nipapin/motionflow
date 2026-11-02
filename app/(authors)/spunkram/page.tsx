@@ -1,4 +1,3 @@
-import { getSessionUser } from "@/lib/auth/get-session-user";
 import { SpunkramLanguageProvider } from "@/components/spunkram-language";
 import { NavbarWithOffset } from "@/components/Navbar";
 import { Hero } from "@/components/Hero";
@@ -12,7 +11,7 @@ import { CepExtensionAuthDialog } from "@/components/cep-extension-auth-dialog";
 import { SpunkramBuyExtraCredits } from "@/components/spunkram-buy-extra-credits";
 import type { Project, ProjectApp } from "@/lib/data";
 import type { Product } from "@/lib/product-types";
-import { getMarketItemsByAuthorId } from "@/lib/market-items";
+import { getSpunkramStorefrontItems } from "@/lib/market-items";
 import { productCardVideoSrc, productSoftwareLabel, productThumbnailUrl } from "@/lib/product-ui";
 import { SPUNKRAM_AUTHOR_ID } from "@/lib/spunkram-paddle-config";
 import { normalizeCepClient } from "@/lib/cep-client-registry";
@@ -45,7 +44,7 @@ export default async function HomePage({
   searchParams: Promise<{ code?: string; client?: string; buy?: string }>;
 }) {
   const { code, client: clientRaw, buy } = await searchParams;
-  const items = await getMarketItemsByAuthorId(SPUNKRAM_AUTHOR_ID, undefined, await getSessionUser());
+  const items = await getSpunkramStorefrontItems();
   const projects = items
     .map(toProject)
     .filter((item): item is Project => item != null);

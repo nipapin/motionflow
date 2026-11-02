@@ -408,3 +408,16 @@ export async function getSubCategorySlugs(indexCategorySlug: string): Promise<st
     return [];
   }
 }
+
+/** Public Next.js Spunkram storefront; does not change Laravel's private flags. */
+export async function getSpunkramStorefrontItems(itemId?: number): Promise<Product[]> {
+  const pool = getMysqlPool();
+  if (!pool) return [];
+  const table = sanitizedTableName();
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT * FROM \`${table}\` WHERE author_id = 1691 AND access = 1${itemId == null ? "" : " AND id = ?"} ORDER BY id DESC LIMIT 500`,
+    itemId == null ? [] : [itemId],
+  );
+  return rows.map((row) => rowToProduct({ ...row, admin_only: 0 } as RowDataPacket))
+    .filter((product): product is Product => product != null);
+}

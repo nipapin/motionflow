@@ -8,7 +8,7 @@ import {
   ScanText,
 } from "lucide-react";
 import { getSessionUser } from "@/lib/auth/get-session-user";
-import { getMarketItemsByIds } from "@/lib/market-items";
+import { getSpunkramStorefrontItems } from "@/lib/market-items";
 import { productPreviewVideoUrl, productCardVideoSrc, productThumbnailUrl } from "@/lib/product-ui";
 import { resolveItemShowcasePrefix } from "@/lib/item-showcase-source";
 import {
@@ -119,7 +119,7 @@ export default async function SpunkramItemPage({
   const itemId = Number(id);
   if (!Number.isInteger(itemId) || itemId <= 0) notFound();
 
-  const [item] = await getMarketItemsByIds([itemId], await getSessionUser());
+  const [item] = await getSpunkramStorefrontItems(itemId);
   if (!item || item.author_id !== SPUNKRAM_AUTHOR_ID || item.access !== 1) notFound();
 
   const showcase = await loadShowcase(itemId, await resolveItemShowcasePrefix(itemId));
