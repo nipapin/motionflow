@@ -31,6 +31,7 @@ const filters = [
 
 function ProjectCard({ project }: { project: Project }) {
   const { t } = useSpunkramLanguage();
+  const [previewing, setPreviewing] = useState(false);
   const titleBlock = (
     <div className="min-w-0">
       <h3 className="text-base font-semibold text-foreground leading-none">
@@ -54,6 +55,11 @@ function ProjectCard({ project }: { project: Project }) {
         className="object-cover"
         sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
       />
+      {previewing && project.previewVideo && (
+        <video src={project.previewVideo} autoPlay muted loop playsInline
+          onError={() => setPreviewing(false)}
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover" />
+      )}
       <div className="absolute top-3 right-3 z-10">
         <span
           title={t("Included in subscription")}
@@ -75,7 +81,7 @@ function ProjectCard({ project }: { project: Project }) {
   );
 
   return (
-    <article className="card card-hover rounded-2xl overflow-hidden flex flex-col">
+    <article onMouseEnter={() => setPreviewing(true)} onMouseLeave={() => setPreviewing(false)} onFocus={() => setPreviewing(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setPreviewing(false); }} className="card card-hover rounded-2xl overflow-hidden flex flex-col">
       {project.href ? (
         <Link href={project.href} className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/80">
           {coverBlock}

@@ -124,7 +124,7 @@ export async function getMarketItems(): Promise<Product[]> {
 }
 
 /** Public published items for a specific author (`access = 1`). */
-export async function getMarketItemsByAuthorId(authorId: number, limit?: number): Promise<Product[]> {
+export async function getMarketItemsByAuthorId(authorId: number, limit?: number, viewer?: MarketplaceViewer | null): Promise<Product[]> {
   const normalizedAuthorId = Number(authorId);
   if (!Number.isFinite(normalizedAuthorId)) return [];
 
@@ -141,12 +141,13 @@ export async function getMarketItemsByAuthorId(authorId: number, limit?: number)
     500
   );
 
+  const canViewPrivate = Number(viewer?.access) === 100 || Number(viewer?.id) === normalizedAuthorId;
   try {
     const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT * FROM \`${table}\` WHERE author_id = ? AND access = 1 AND admin_only = 0 ORDER BY id DESC LIMIT ?`,
+      `SELECT * FROM \`${table}\` WHERE author_id = ? AND access = 1${canViewPrivate ? "" : " AND admin_only = 0"} ORDER BY id DESC LIMIT ?`,
       [normalizedAuthorId, cappedLimit]
     );
-    return rows.map((row) => rowToProduct(row)).filter((p): p is Product => p != null);
+    return rows.map((row) => rowToProduct(row, viewer)).filter((p): p is Product => p != null);
   } catch (err) {
     console.error("[getMarketItemsByAuthorId] MySQL query failed:", err);
     return [];

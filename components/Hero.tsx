@@ -99,7 +99,8 @@ function DownloadTile({ className }: { className?: string }) {
 
         <div className="mt-auto grid shrink-0 grid-cols-2 gap-2 pt-6">
           <a
-            href="#"
+            href="/spunkram/downloads/SpunkramInstaller.exe"
+            download="SpunkramInstaller.exe"
             className="flex items-center justify-center gap-2 rounded-xl border border-line px-3 py-2 text-sm font-medium transition hover:border-line-strong hover:bg-surface-2"
           >
             <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
@@ -110,7 +111,8 @@ function DownloadTile({ className }: { className?: string }) {
             Windows
           </a>
           <a
-            href="#"
+            href="/spunkram/downloads/SpunkramInstaller-macOS.zip"
+            download="SpunkramInstaller-macOS.zip"
             className="flex items-center justify-center gap-2 rounded-xl border border-line px-3 py-2 text-sm font-medium transition hover:border-line-strong hover:bg-surface-2"
           >
             <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">

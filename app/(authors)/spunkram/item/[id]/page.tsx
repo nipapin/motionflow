@@ -1,3 +1,4 @@
+import { SpunkramProjectPreview } from "@/components/spunkram-project-preview";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
@@ -8,7 +9,7 @@ import {
 } from "lucide-react";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getMarketItemsByIds } from "@/lib/market-items";
-import { productThumbnailUrl } from "@/lib/product-ui";
+import { productPreviewVideoUrl, productCardVideoSrc, productThumbnailUrl } from "@/lib/product-ui";
 import { resolveItemShowcasePrefix } from "@/lib/item-showcase-source";
 import {
   getItemShowcaseCategories,
@@ -199,7 +200,7 @@ export default async function SpunkramItemPage({
     <main className="relative z-1 mx-auto max-w-7xl px-5 pb-20 pt-4 sm:px-8">
       <div className="mb-6">
         <Link
-          href="/"
+          href="/spunkram#projects"
           className="inline-flex items-center gap-2 text-sm text-muted hover:text-foreground transition-colors"
         >
           <span aria-hidden="true">←</span>
@@ -222,12 +223,7 @@ export default async function SpunkramItemPage({
 
           <section className="card overflow-hidden rounded-2xl">
             <div className="p-3 sm:p-4">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={previewImage}
-                alt={item.name}
-                className="h-auto w-full rounded-xl object-cover"
-              />
+<SpunkramProjectPreview image={previewImage} video={productPreviewVideoUrl(item) || productCardVideoSrc(item)} name={item.name} />
             </div>
           </section>
         </div>

@@ -7,6 +7,7 @@ export type Project = {
   price: number;
   /** Cover image path in /public (16:9 recommended) */
   coverImage: string;
+  previewVideo?: string;
   href?: string;
 };
 
