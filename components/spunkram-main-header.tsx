@@ -17,6 +17,7 @@ export function SpunkramMainHeader() {
       showSearch={false}
       showBrand={true}
       authorNavPopovers
+      hideAuthorNavPopovers
       searchQuery={searchQuery}
       onSearchChange={setSearchQuery}
       searchCategory={searchCategory}
