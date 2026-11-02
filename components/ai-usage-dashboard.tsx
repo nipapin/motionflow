@@ -178,10 +178,10 @@ export function AiUsageDashboard() {
       {data && !data.rows.length ? <div className="rounded-md border border-border p-6 text-sm text-muted-foreground">No predictions match this period and these filters.{!data.sync.complete ? " Sync Replicate to import available history." : ""}</div> : null}
       {data?.rows.length ? <>
         <div className="hidden overflow-x-auto md:block"><table className="w-full text-sm"><thead className="sticky top-0 bg-background text-xs text-muted-foreground"><tr>
-          {[["Model / prediction", false], ["Author", false], ["Status", false], ["Created", true], ["Compute", true], ["Tokens in / out", true]].map(([text, right]) => <th scope="col" key={String(text)} className={`whitespace-nowrap py-3 pr-4 font-normal last:pr-0 ${right ? "text-right" : "text-left"}`}>{text}</th>)}
+          {[["Model / prediction", false], ["Author / user", false], ["Status", false], ["Created", true], ["Compute", true], ["Tokens in / out", true]].map(([text, right]) => <th scope="col" key={String(text)} className={`whitespace-nowrap py-3 pr-4 font-normal last:pr-0 ${right ? "text-right" : "text-left"}`}>{text}</th>)}
         </tr></thead><tbody className="divide-y divide-border/40">{data.rows.map(row => <tr key={row.id} className="align-top">
           <td className="max-w-72 py-3 pr-4"><p className="truncate" title={row.model}>{row.model}</p><div className="mt-1"><ProviderLink row={row} /></div></td>
-          <td className="whitespace-nowrap py-3 pr-4"><p>{label(row.account)}</p><p className="mt-1 text-xs text-muted-foreground">{row.userRef || "No linked user"}</p></td>
+          <td className="max-w-72 py-3 pr-4"><p>{label(row.account)}</p><p className="mt-1 break-words text-xs" title={row.userEmail || undefined}>{row.userEmail || "Email unavailable"}</p><p className="mt-1 text-xs text-muted-foreground">{row.userRef || "No linked user"}</p></td>
           <td className="py-3 pr-4"><Status value={row.status} /></td>
           <td className="whitespace-nowrap py-3 pr-4 text-right text-xs tabular-nums">{stamp(row.createdAt)}<p className="mt-1 text-muted-foreground">{row.completedAt ? `Done ${new Date(row.completedAt).toLocaleTimeString()}` : "—"}</p></td>
           <td className="whitespace-nowrap py-3 pr-4 text-right font-mono text-xs tabular-nums">{seconds(row.predictSeconds)}<p className="mt-1 text-muted-foreground">{seconds(row.totalSeconds)} total</p></td>
@@ -190,6 +190,7 @@ export function AiUsageDashboard() {
         <ul className="divide-y divide-border/50 md:hidden">{data.rows.map(row => <li key={row.id} className="space-y-2 py-4">
           <div className="flex items-start justify-between gap-3"><p className="min-w-0 break-words text-sm">{row.model}</p><Status value={row.status} /></div>
           <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground"><span>{label(row.account)} · {row.userRef || "No linked user"}</span><span className="tabular-nums">{seconds(row.predictSeconds)}</span></div>
+          <p className="break-words text-xs">{row.userEmail || "Email unavailable"}</p>
           <p className="text-xs text-muted-foreground">{stamp(row.createdAt)} · {seconds(row.totalSeconds)} total · {num(row.inputTokens)} / {num(row.outputTokens)} tokens</p>
           <ProviderLink row={row} />
         </li>)}</ul>

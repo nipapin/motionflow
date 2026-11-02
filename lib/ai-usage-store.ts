@@ -21,6 +21,12 @@ export async function ensureAiUsageSchema(): Promise<void> {
       KEY idx_created (created_at, prediction_id), KEY idx_account_created (account_key, created_at),
       KEY idx_model_created (model, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+    try {
+      await getPool().query("ALTER TABLE ai_usage_predictions ADD COLUMN user_email VARCHAR(255) NULL AFTER user_ref");
+    } catch (error) {
+      // Existing installations and concurrent server processes may already have the column.
+      if ((error as { code?: string }).code !== "ER_DUP_FIELDNAME") throw error;
+    }
     await getPool().query(`CREATE TABLE IF NOT EXISTS ai_usage_sync_ranges (
       range_key CHAR(64) CHARACTER SET ascii PRIMARY KEY,
       next_cursor TEXT NULL, complete TINYINT NOT NULL DEFAULT 0,
@@ -50,8 +56,8 @@ export async function saveAiPrediction(raw: unknown, user?: AiUsageIdentity): Pr
   await ensureAiUsageSchema();
   await getPool().execute(`INSERT INTO ai_usage_predictions
     (prediction_id, account_key, model, status, created_at, completed_at, predict_seconds,
-     total_seconds, input_tokens, output_tokens, user_ref, client, observed_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(3))
+     total_seconds, input_tokens, output_tokens, user_ref, user_email, client, observed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(3))
     ON DUPLICATE KEY UPDATE
       account_key = IF(VALUES(account_key) = 'unknown', account_key, VALUES(account_key)),
       model = VALUES(model),
@@ -61,12 +67,14 @@ export async function saveAiPrediction(raw: unknown, user?: AiUsageIdentity): Pr
       total_seconds = COALESCE(VALUES(total_seconds), total_seconds),
       input_tokens = COALESCE(VALUES(input_tokens), input_tokens),
       output_tokens = COALESCE(VALUES(output_tokens), output_tokens),
-      user_ref = COALESCE(VALUES(user_ref), user_ref), client = COALESCE(VALUES(client), client),
+      user_ref = COALESCE(VALUES(user_ref), user_ref),
+      user_email = COALESCE(VALUES(user_email), user_email), client = COALESCE(VALUES(client), client),
       observed_at = UTC_TIMESTAMP(3)`, [p.id, user ? aiAccountForUser(user) : "unknown", p.model, String(p.status),
     date(p.created_at), date(p.completed_at), nonnegative(metrics.predict_time), nonnegative(metrics.total_time),
     tokenCount(metrics.input_token_count ?? metrics.token_input_count),
     tokenCount(metrics.output_token_count ?? metrics.token_output_count),
     user?.id == null ? null : `${user.source === "odin-bearer" ? "" : "mf:"}${user.id}`.slice(0, 191),
+    user?.email?.trim().slice(0, 255) || null,
     user?.cepClient?.slice(0, 64) ?? null]);
   await saveAiBillingMetrics(p.id, metrics);
   return true;
@@ -113,7 +121,10 @@ export async function readAiUsage(filters: AiUsageFilters): Promise<AiUsageOverv
       DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%s.%fZ') AS createdAt,
       DATE_FORMAT(completed_at,'%Y-%m-%dT%H:%i:%s.%fZ') AS completedAt,
       predict_seconds AS predictSeconds, total_seconds AS totalSeconds, input_tokens AS inputTokens,
-      output_tokens AS outputTokens, user_ref AS userRef, client
+      output_tokens AS outputTokens, user_ref AS userRef,
+      COALESCE(user_email, (SELECT u.email FROM users u
+        WHERE u.id = CAST(SUBSTRING(user_ref, 4) AS UNSIGNED)
+          AND user_ref = CONCAT('mf:', u.id) LIMIT 1)) AS userEmail, client
       FROM ai_usage_predictions WHERE ${where} ORDER BY created_at DESC, prediction_id DESC LIMIT 50 OFFSET ${(filters.page - 1) * 50}`, values),
     pool.execute<RowDataPacket[]>("SELECT DISTINCT model FROM ai_usage_predictions WHERE created_at >= ? AND created_at < ? ORDER BY model", modelValues),
     pool.execute<RowDataPacket[]>(`SELECT complete, DATE_FORMAT(updated_at,'%Y-%m-%dT%H:%i:%s.%fZ') AS updatedAt,

@@ -5,7 +5,7 @@ export const AI_ACCOUNTS = [
   { id: "odinpro", label: "Odin Pro", env: "REPLICATE_ODINPRO_API_TOKEN" },
 ] as const;
 export type AiAccount = typeof AI_ACCOUNTS[number]["id"];
-export type AiUsageIdentity = { id?: number | string; source?: string; cepClient?: string };
+export type AiUsageIdentity = { id?: number | string; email?: string | null; source?: string; cepClient?: string };
 export function aiAccountForUser(user: AiUsageIdentity): AiAccount {
   if (user.cepClient === "spunkram-cep") return "spunkram";
   if (user.cepClient === "gal-cep") return "toolkit";
@@ -22,7 +22,7 @@ export type AiUsageTotals = {
 export type AiUsageRow = {
   id: string; account: string; model: string; status: string; createdAt: string;
   completedAt: string | null; predictSeconds: number | null; totalSeconds: number | null;
-  inputTokens: number | null; outputTokens: number | null; userRef: string | null; client: string | null;
+  inputTokens: number | null; outputTokens: number | null; userRef: string | null; userEmail: string | null; client: string | null;
 };
 export type AiSyncState = { complete: boolean; updatedAt: string | null; running: boolean };
 export type AiUsageOverview = {

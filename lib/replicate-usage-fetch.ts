@@ -4,7 +4,7 @@ import { saveAiPrediction } from "@/lib/ai-usage-store";
 
 /** Attribute provider prediction IDs at creation, including each step of chained models. */
 export function trackedReplicateFetch(user: AiUsageIdentity): typeof fetch {
-  const identity = { id: user.id, source: user.source, cepClient: user.cepClient };
+  const identity = { id: user.id, email: user.email, source: user.source, cepClient: user.cepClient };
   return async (input, init) => {
     const response = await fetch(input, init);
     // Replicate passes a URL object, whereas Request exposes its address as .url.
