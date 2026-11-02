@@ -2,6 +2,8 @@
 
 import { SpunkramText, useSpunkramLanguage } from "@/components/spunkram-language";
 
+import { useAuth } from "@/components/auth-provider";
+
 import { useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 
@@ -82,6 +84,13 @@ function VideoTile() {
 }
 
 function DownloadTile({ className }: { className?: string }) {
+  const { user, loading, openSignIn } = useAuth();
+  const requireSignIn = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!user || loading) {
+      event.preventDefault();
+      if (!loading) openSignIn();
+    }
+  };
   return (
     <div
       id="download"
@@ -101,6 +110,7 @@ function DownloadTile({ className }: { className?: string }) {
           <a
             href="/spunkram/downloads/SpunkramInstaller.exe"
             download="SpunkramInstaller.exe"
+            onClick={requireSignIn}
             className="flex items-center justify-center gap-2 rounded-xl border border-line px-3 py-2 text-sm font-medium transition hover:border-line-strong hover:bg-surface-2"
           >
             <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
@@ -113,6 +123,7 @@ function DownloadTile({ className }: { className?: string }) {
           <a
             href="/spunkram/downloads/SpunkramInstaller-macOS.zip"
             download="SpunkramInstaller-macOS.zip"
+            onClick={requireSignIn}
             className="flex items-center justify-center gap-2 rounded-xl border border-line px-3 py-2 text-sm font-medium transition hover:border-line-strong hover:bg-surface-2"
           >
             <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
