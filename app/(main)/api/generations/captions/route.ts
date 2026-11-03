@@ -22,7 +22,7 @@ import {
 import { uploadBufferToR2 } from "@/lib/r2-storage";
 import { issueCaptionsChaptersReceipt } from "@/lib/captions-chapters-receipt";
 import { analyzeZoomPhrases, type ZoomPhrase, type ZoomFrequency } from "@/lib/jumpcut-analysis";
-import { highlightCaptionWords, parseHighlightWordRanges } from "@/lib/caption-highlights";
+import { highlightCaptionWords, parseHighlightWordRanges, parseHighlightedCaptionText, CAPTION_HIGHLIGHT_MAX_TOKENS } from "@/lib/caption-highlights";
 import {
   durationGenerationsCost,
   durationFromTimestampChunks,
@@ -269,9 +269,7 @@ async function translateChunks(
 
   const system_prompt = [
     "You translate video caption segments.",
-    highlights
-      ? 'Respond with ONLY a JSON array of objects {"text":"translated segment","highlights":[[firstWordIndex,wordCount]]}, no prose or markdown.'
-      : "Respond with ONLY a JSON array of strings, no prose, no markdown fences.",
+    "Respond with ONLY a JSON array of strings, no prose, no markdown fences.",
     `Translate every line into ${languageName}.`,
     "Return exactly one entry per input line, same order and same array length.",
     "Preserve meaning; keep punctuation natural for the target language.",
@@ -280,8 +278,9 @@ async function translateChunks(
     ...(highlights ? [
       "Also select meaningful phrases to emphasize in the TRANSLATED text using the entire transcript's context.",
       "Usually select key ideas, actions, names, numbers or contrasts in phrases of 1-3 words; avoid filler and excessive emphasis.",
-      "highlights contains sorted, non-overlapping [firstWordIndex,wordCount] pairs. Word indices are zero-based whitespace-split indices in that entry's text.",
-      "Use [] when no emphasis is needed. Do translation and highlight selection together in this response.",
+      "Wrap selected whole words or phrases in ** inside each translated string. Never return word indices or ranges.",
+      "Backslash-escape literal asterisks and backslashes in the translated text (and JSON-escape those backslashes). Only unescaped ** delimit emphasis.",
+      "When no emphasis is needed, return the full translated segment without markers. Do translation and highlight selection together in this response.",
     ] : []),
   ].join("\n");
 
@@ -292,7 +291,7 @@ async function translateChunks(
     input: {
       prompt,
       system_prompt,
-      max_tokens: highlights ? 16384 : Math.min(8192, Math.max(1024, chunks.length * 40)),
+      max_tokens: highlights ? CAPTION_HIGHLIGHT_MAX_TOKENS : Math.min(8192, Math.max(1024, chunks.length * 40)),
     },
   });
 
@@ -313,9 +312,17 @@ async function translateChunks(
   return chunks.map((c, i) => {
     const t = parsed[i];
     if (highlights) {
-      if (!t || typeof t.text !== "string" || !t.text.trim()) throw new Error("Invalid translated highlight response.");
-      parseHighlightWordRanges(JSON.stringify(t.highlights), t.text.trim().split(/\s+/).length);
-      return { text: t.text.trim(), timestamp: c.timestamp, highlights: t.highlights };
+      if (typeof t !== "string" || !t.trim()) throw new Error("Invalid translated highlight response.");
+      const annotated = parseHighlightedCaptionText(t);
+      if (!annotated.words.length) throw new Error("Empty translated highlight response.");
+      const ranges: [number, number][] = [];
+      annotated.words.forEach((word, index) => {
+        if (!word.highlight) return;
+        const previous = ranges[ranges.length - 1];
+        if (previous && previous[0] + previous[1] === index) previous[1]++;
+        else ranges.push([index, 1]);
+      });
+      return { text: annotated.text, timestamp: c.timestamp, highlights: ranges };
     }
     const translated =
       typeof t === "string" && t.trim() ? t.trim() : c.text;
@@ -537,7 +544,7 @@ export async function POST(req: NextRequest) {
             Number.isFinite(w.start) && Number.isFinite(w.end));
           const marked = await highlightCaptionWords(spoken, async (system_prompt, prompt) => {
             req.signal?.throwIfAborted();
-            const output = await replicate.run(TRANSLATE_MODEL, { input: { system_prompt, prompt, max_tokens: 16384 }, signal: req.signal });
+            const output = await replicate.run(TRANSLATE_MODEL, { input: { system_prompt, prompt, max_tokens: CAPTION_HIGHLIGHT_MAX_TOKENS }, signal: req.signal });
             return Array.isArray(output) ? output.join("") : String(output ?? "");
           });
           let index = 0;

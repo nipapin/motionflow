@@ -7,7 +7,7 @@ import { bearerFromRequest, requireCaptionsAuth } from "@/lib/auth/resolve-capti
 import { GENERATION_LIMIT_REACHED_CODE } from "@/lib/ai-generation-gate";
 import { generationsStatusForResolvedUser, consumeGenerationForResolvedUser,
   billableAccountRequiredResponse, isMeteredCaptionsUser } from "@/lib/cep-generations";
-import { analyzeCaptionHighlights, validateHighlightSegments, validateHighlightWords, highlightCaptionWords } from "@/lib/caption-highlights";
+import { analyzeCaptionHighlights, validateHighlightSegments, validateHighlightWords, highlightCaptionWords, CAPTION_HIGHLIGHT_MAX_TOKENS } from "@/lib/caption-highlights";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
       }, { status: 402 });
       const generate = async (system_prompt: string, prompt: string) => {
         req.signal?.throwIfAborted();
-        const output = await replicate.run(MODEL, { input: { system_prompt, prompt, max_tokens: 16384 }, signal: req.signal });
+        const output = await replicate.run(MODEL, { input: { system_prompt, prompt, max_tokens: CAPTION_HIGHLIGHT_MAX_TOKENS }, signal: req.signal });
         return Array.isArray(output) ? output.join("") : String(output ?? "");
       };
       const result = words ? { words: await highlightCaptionWords(words, generate) }
