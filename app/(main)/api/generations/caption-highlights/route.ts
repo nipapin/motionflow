@@ -7,11 +7,10 @@ import { bearerFromRequest, requireCaptionsAuth } from "@/lib/auth/resolve-capti
 import { GENERATION_LIMIT_REACHED_CODE } from "@/lib/ai-generation-gate";
 import { generationsStatusForResolvedUser, consumeGenerationForResolvedUser,
   billableAccountRequiredResponse, isMeteredCaptionsUser } from "@/lib/cep-generations";
-import { analyzeCaptionHighlights, validateHighlightSegments, validateHighlightWords, highlightCaptionWords, CAPTION_HIGHLIGHT_MAX_TOKENS } from "@/lib/caption-highlights";
+import { analyzeCaptionHighlights, validateHighlightSegments, validateHighlightWords, validateHighlightDisplaySegments, highlightCaptionWords, CAPTION_HIGHLIGHT_MODEL, CAPTION_HIGHLIGHT_MODEL_INPUT } from "@/lib/caption-highlights";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
-const MODEL = "anthropic/claude-4.5-haiku:1ad171f62532e2099a3ed7d8d80327911f5f8d332e83cf4c8959da0be9a8bf3e" as const;
 const cost = 1;
 
 export async function POST(req: NextRequest) {
@@ -26,8 +25,12 @@ export async function POST(req: NextRequest) {
       const body = await req.json().catch(() => null);
       let segments: string[][] | undefined;
       let words: ReturnType<typeof validateHighlightWords> | undefined;
+      let displaySegments: number[][] | undefined;
       try {
-        if (body?.words !== undefined) words = validateHighlightWords(body.words);
+        if (body?.words !== undefined) {
+          words = validateHighlightWords(body.words);
+          if (body.displaySegments !== undefined) displaySegments = validateHighlightDisplaySegments(body.displaySegments, words);
+        }
         else segments = validateHighlightSegments(body?.segments);
       }
       catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 400 }); }
@@ -37,10 +40,10 @@ export async function POST(req: NextRequest) {
       }, { status: 402 });
       const generate = async (system_prompt: string, prompt: string) => {
         req.signal?.throwIfAborted();
-        const output = await replicate.run(MODEL, { input: { system_prompt, prompt, max_tokens: CAPTION_HIGHLIGHT_MAX_TOKENS }, signal: req.signal });
+        const output = await replicate.run(CAPTION_HIGHLIGHT_MODEL, { input: { system_prompt, prompt, ...CAPTION_HIGHLIGHT_MODEL_INPUT }, signal: req.signal });
         return Array.isArray(output) ? output.join("") : String(output ?? "");
       };
-      const result = words ? { words: await highlightCaptionWords(words, generate) }
+      const result = words ? { words: await highlightCaptionWords(words, generate, displaySegments) }
         : { ranges: await analyzeCaptionHighlights(segments!, generate) };
       req.signal?.throwIfAborted();
       // Exactly one additional caption generation, independent of duration or batches.

@@ -100,14 +100,14 @@ test("successful AI highlighting consumes exactly one generation on the server",
 
 const timedWords = Array.from({ length: 1501 }, (_, i) => ({ text: i < 2 ? "same" : "word", start: i * .1, end: i * .1 + .08 }));
 
-test("full timestamped transcript reaches Haiku once and repeated words retain exact timings", async () => {
+test("full timestamped transcript reaches the highlight model once and repeated words retain exact timings", async () => {
   let calls = 0;
   const result = await analysis.highlightCaptionWords(timedWords, async (system, prompt) => {
     calls++;
     assert.match(system, /untrusted/);
-    assert.match(system, /each sentence in the full context/);
+    assert.match(system, /Analyze EACH segment INDEPENDENTLY/);
     const body = JSON.parse(prompt);
-    assert.deepEqual(Object.keys(body), ["transcript"]);
+    assert.deepEqual(Object.keys(body), ["transcript", "segments"]);
     assert.equal(body.transcript, timedWords.map(word => word.text).join(" "));
     return timedWords.map((word, id) => [1, 1499, 1500].includes(id) ? `**${word.text}**` : word.text).join(" ");
   });
@@ -117,17 +117,17 @@ test("full timestamped transcript reaches Haiku once and repeated words retain e
   assert.equal(timedWords.some(w => "highlight" in w), false);
 });
 
-test("sentence context follows complete transcript punctuation and retains a final unpunctuated sentence", async () => {
+test("local sentence segments preserve punctuation and retain a final unpunctuated segment", async () => {
   const texts = ["The", "most", "important", "rule", "is", "simple:", "emphasize", "a", "detail.", "Same", "same!", "Tail"];
   const input = texts.map((text, i) => ({ text, start: i, end: i + .8 }));
   const result = await analysis.highlightCaptionWords(input, async (system, prompt) => {
     const body = JSON.parse(prompt);
     assert.equal(body.transcript, texts.join(" "));
-    assert.match(system, /independent of visual caption layout/);
-    assert.match(system, /Infer sentence boundaries from meaning/);
-    return 'The **most important** rule is simple: emphasize a **detail.** Same **same!** Tail';
+    assert.match(system, /Every segment containing two or more words MUST have exactly ONE/);
+    assert.match(system, /Do not use the meaning of the full transcript/);
+    return 'The most important rule is simple: emphasize a **detail.** Same **same!** Tail';
   });
-  assert.deepEqual(plain(result.flatMap((word, id) => word.highlight ? [id] : [])), [1, 2, 8, 10]);
+  assert.deepEqual(plain(result.flatMap((word, id) => word.highlight ? [id] : [])), [8, 10]);
   assert.deepEqual(plain(result.map(({ highlight, ...word }) => word)), input);
 });
 
@@ -221,20 +221,20 @@ function transcriptionRoute({ left = 3, highlights = true, valid = true, transla
     metrics: () => ({ models, charges }) };
 }
 
-test("audio operation performs Scribe then one Haiku and returns original timestamped words plus highlight", async () => {
+test("audio operation performs Scribe then one GPT-5 nano and returns original timestamped words plus highlight", async () => {
   const r = transcriptionRoute(); const response = await r.call();
   assert.equal(response.status, 200);
   assert.equal(response.body.highlightsApplied, true);
-  assert.deepEqual(r.metrics(), { models: ["elevenlabs/scribe-v2", "anthropic/claude-4.5-haiku"], charges: [2] });
+  assert.deepEqual(r.metrics(), { models: ["elevenlabs/scribe-v2", "openai/gpt-5-nano"], charges: [2] });
   assert.deepEqual(plain(response.body.words), [{ ...r.words[0], highlight: false }, r.words[1], { ...r.words[2], highlight: true }]);
 });
 
-test("translation and highlights share one Haiku call and retain the source sentence time span", async () => {
+test("translation and highlights share one GPT-5 nano call and retain the source sentence time span", async () => {
   const r = transcriptionRoute({ translateTo: "ru" }); const response = await r.call();
   assert.equal(response.status, 200);
   assert.equal(response.body.translated, true);
   assert.equal(response.body.highlightsApplied, true);
-  assert.deepEqual(r.metrics(), { models: ["elevenlabs/scribe-v2", "anthropic/claude-4.5-haiku"], charges: [2] });
+  assert.deepEqual(r.metrics(), { models: ["elevenlabs/scribe-v2", "openai/gpt-5-nano"], charges: [2] });
   assert.equal(response.body.words[0].start, .2);
   assert.equal(response.body.words.at(-1).end, .8);
   assert.deepEqual(plain(response.body.words.map(w => [w.text, w.highlight])), [["важный", true], ["момент.", false]]);
@@ -255,10 +255,10 @@ test("failed highlights keep the transcription and charge only Scribe without re
   assert.equal(response.body.highlightsApplied, false);
   assert.ok(response.body.highlightError);
   assert.deepEqual(plain(response.body.words), r.words);
-  assert.deepEqual(r.metrics(), { models: ["elevenlabs/scribe-v2", "anthropic/claude-4.5-haiku"], charges: [1] });
+  assert.deepEqual(r.metrics(), { models: ["elevenlabs/scribe-v2", "openai/gpt-5-nano"], charges: [1] });
 });
 
-test("cancelling after Scribe prevents Haiku from starting", async () => {
+test("cancelling after Scribe prevents the highlight model from starting", async () => {
   const r = transcriptionRoute({ abortAfterScribe: true });
   assert.notEqual((await r.call()).status, 200);
   assert.deepEqual(r.metrics(), { models: ["elevenlabs/scribe-v2"], charges: [] });
