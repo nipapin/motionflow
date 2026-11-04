@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { guardStockRequest } from "@/lib/cep-stock-guard";
+import { parseUnsplashDownloadLocation, trackUnsplashDownload } from "@/lib/unsplash-download";
 import { withDownloadActivity } from "@/lib/user-activity";
 
 export const runtime = "nodejs";
@@ -77,7 +78,7 @@ function inferExtFromUrl(url: string): string | null {
   }
 }
 
-async function resolveUnsplashDownloadUrl(id: string): Promise<string> {
+async function resolveUnsplashDownload(id: string) {
   const accessKey = process.env.UNSPLASH_ACCESS_KEY;
   if (!accessKey) {
     throw new Error("Unsplash is not configured (missing UNSPLASH_ACCESS_KEY).");
@@ -97,23 +98,11 @@ async function resolveUnsplashDownloadUrl(id: string): Promise<string> {
   }
 
   const json = (await detail.json()) as UnsplashPhotoResponse;
-  const downloadLocation = json.links?.download_location;
+  const downloadLocation = parseUnsplashDownloadLocation(json.links?.download_location);
   const sourceUrl = json.urls?.full ?? json.urls?.regular ?? json.urls?.raw;
   if (!sourceUrl) throw new Error("Unsplash response did not include a downloadable image URL.");
 
-  if (downloadLocation) {
-    void fetch(downloadLocation, {
-      headers: {
-        Authorization: `Client-ID ${accessKey}`,
-        "Accept-Version": "v1",
-      },
-      cache: "no-store",
-    }).catch((err) => {
-      console.warn("[stock-download] Unsplash download_location ping failed", err);
-    });
-  }
-
-  return sourceUrl;
+  return { sourceUrl, downloadLocation };
 }
 
 async function resolvePexelsVideoUrl(id: string): Promise<string> {
@@ -184,10 +173,10 @@ export async function GET(req: NextRequest) {
       source: gate.caller.source === "cep-bearer" ? "extension" : "web", deviceId: gate.caller.deviceId,
       details: { provider, mediaKind: kind },
     }, async (activity) => {
-      const sourceUrl =
+      const { sourceUrl, downloadLocation } =
         provider === "unsplash"
-          ? await resolveUnsplashDownloadUrl(id)
-          : await resolvePexelsVideoUrl(id);
+          ? await resolveUnsplashDownload(id)
+          : { sourceUrl: await resolvePexelsVideoUrl(id), downloadLocation: null };
 
       const upstream = await fetch(sourceUrl, { cache: "no-store" });
       if (!upstream.ok || !upstream.body) {
@@ -203,6 +192,16 @@ export async function GET(req: NextRequest) {
       headers.set("Content-Type", contentType ?? "application/octet-stream");
       headers.set("Content-Disposition", `attachment; filename="${filename}"`);
       headers.set("Cache-Control", "no-store");
+
+      if (downloadLocation) {
+        after(async () => {
+          try {
+            await trackUnsplashDownload(downloadLocation);
+          } catch (err) {
+            console.warn("[stock-download] Unsplash download tracking failed", err);
+          }
+        });
+      }
 
       activity.issued("stream");
       return new NextResponse(upstream.body, {
