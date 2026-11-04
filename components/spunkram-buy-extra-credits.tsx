@@ -62,6 +62,7 @@ export function SpunkramBuyExtraCredits({ buyerId, packs }: { buyerId: number; p
       continueDisabled={purchaseDisabled}
       packs={packs}
       pricesUrl={PRICES_URL}
+      appearance="spunkram"
     />
   );
 }
