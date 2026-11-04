@@ -1,5 +1,4 @@
 import { notFound, redirect } from "next/navigation";
-import SpunkramItemPage from "@/app/(authors)/spunkram/item/[id]/page";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getMarketItemsByIds } from "@/lib/market-items";
 import { motionflowItemPageUrl } from "@/lib/motionflow-urls";
@@ -12,8 +11,10 @@ import { SPUNKRAM_AUTHOR_ID } from "@/lib/spunkram-paddle-config";
  */
 export default async function MainSiteItemByIdPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { id } = await params;
   const itemId = Number(id);
@@ -23,8 +24,13 @@ export default async function MainSiteItemByIdPage({
   if (!item || item.access !== 1) notFound();
 
   if (item.author_id === SPUNKRAM_AUTHOR_ID) {
-    // Render in place so the public URL stays /item/{id}.
-    return SpunkramItemPage({ params: Promise.resolve({ id: String(itemId) }) });
+    const url = new URL(`/spunkram/item/${itemId}`, "https://motionflow.pro");
+    for (const [key, values] of Object.entries(await searchParams)) {
+      for (const value of values === undefined ? [] : [values].flat()) {
+        url.searchParams.append(key, value);
+      }
+    }
+    redirect(url.pathname + url.search);
   }
 
   if (item.author_id === PREMIERE_GAL_AUTHOR_ID) {

@@ -2,12 +2,16 @@ import "server-only";
 import type { RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
 import { getTransaction, type PaddleApiAccount } from "@/lib/paddle-api";
+import { configuredSpunkramEnvironment, spunkramUsesDefaultLiveAccount } from "./paddle-accounting/spunkram-credentials.mjs";
 import { accountingCatalog } from "./paddle-accounting/catalog.mjs";
 import { createAccounting } from "./paddle-accounting/engine.mjs";
 
 export type AccountingSource = { account: PaddleApiAccount; environment: "production" | "sandbox" };
 export function accountingSource(account: PaddleApiAccount): AccountingSource {
-  const env = account === "spunkram" ? process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_ENVIRONMENT : process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT;
+  if (account === "spunkram" && spunkramUsesDefaultLiveAccount()) {
+    return { account: "default", environment: "production" };
+  }
+  const env = account === "spunkram" ? configuredSpunkramEnvironment() : process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT;
   return { account, environment: env === "production" ? "production" : "sandbox" };
 }
 
@@ -40,7 +44,7 @@ export async function actualAdjustment(data: Record<string, unknown>, source?: A
     throw error;
   }
   source ??= accountingSource("default");
-  const transaction = await getTransaction(data.transaction_id, { account: source.account });
+  const transaction = await getTransaction(data.transaction_id, source);
   return actualAccounting.adjustment(data, transaction, source);
 }
 

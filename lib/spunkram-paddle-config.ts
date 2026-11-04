@@ -6,28 +6,49 @@ export const SPUNKRAM_AUTHOR_ID = 1691;
 export type SpunkramSubscriptionTierId = "free" | "library" | "ai_toolkit";
 
 /**
- * Spunkram subscription checkout uses its own Paddle sandbox account until launch.
+ * Spunkram subscription prices for the selected Paddle environment.
  * Set in `.env`:
  *   NEXT_PUBLIC_SPUNKRAM_PADDLE_ENVIRONMENT=sandbox
- *   NEXT_PUBLIC_SPUNKRAM_PADDLE_CLIENT_TOKEN=test_…
- *   SPUNKRAM_PADDLE_API_KEY=pdl_sdbx_apikey_…
- *   SPUNKRAM_PADDLE_WEBHOOK_SECRET=…   (optional; for sandbox notification destination)
  *   NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_MONTHLY=pri_…
  *   NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_YEARLY=pri_…
+ *   NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_PRODUCTION_MONTHLY=pri_…
+ *   NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_PRODUCTION_YEARLY=pri_…
  *   NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_MONTHLY=pri_…
  *   NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_YEARLY=pri_…
+ *   NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_PRODUCTION_MONTHLY=pri_…
+ *   NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_PRODUCTION_YEARLY=pri_…
  *   NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_20=pri_…
  *   NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_50=pri_…
  *   NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_200=pri_…
+ *   NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_PRODUCTION_20=pri_…
+ *   NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_PRODUCTION_50=pri_…
+ *   NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_PRODUCTION_100=pri_…
  */
+export const spunkramPaddleEnvironment =
+  process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_ENVIRONMENT?.toLowerCase() === "production"
+    ? "production" : "sandbox";
+const isSpunkramPaddleProduction = spunkramPaddleEnvironment === "production";
+
 export const SPUNKRAM_LIBRARY_SUBSCRIPTION_PRICE_IDS = {
-  monthly: process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_MONTHLY ?? "",
-  yearly: process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_YEARLY ?? "",
+  monthly:
+    (isSpunkramPaddleProduction
+      ? process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_PRODUCTION_MONTHLY
+      : process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_MONTHLY) ?? "",
+  yearly:
+    (isSpunkramPaddleProduction
+      ? process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_PRODUCTION_YEARLY
+      : process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_YEARLY) ?? "",
 } as const;
 
 export const SPUNKRAM_AI_TOOLKIT_SUBSCRIPTION_PRICE_IDS = {
-  monthly: process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_MONTHLY ?? "",
-  yearly: process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_YEARLY ?? "",
+  monthly:
+    (isSpunkramPaddleProduction
+      ? process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_PRODUCTION_MONTHLY
+      : process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_MONTHLY) ?? "",
+  yearly:
+    (isSpunkramPaddleProduction
+      ? process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_PRODUCTION_YEARLY
+      : process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_YEARLY) ?? "",
 } as const;
 
 function envPri(value: string | undefined): string | undefined {
@@ -35,44 +56,39 @@ function envPri(value: string | undefined): string | undefined {
   return v?.startsWith("pri_") ? v : undefined;
 }
 
-/** One-time Additional Credits prices on the Spunkram Paddle account. */
-export function getSpunkramExtraGenPacks(): readonly {
-  count: number;
-  priceId: string | undefined;
-}[] {
-  return [
-    {
-      count: 20,
-      priceId: envPri(process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_20),
-    },
-    {
-      count: 50,
-      priceId: envPri(process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_50),
-    },
-    {
-      count: 200,
-      priceId: envPri(process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_200),
-    },
-  ];
-}
+const sandboxExtraPacks = [
+  { count: 20, priceId: envPri(process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_20) },
+  { count: 50, priceId: envPri(process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_50) },
+  { count: 200, priceId: envPri(process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_200) },
+];
+const productionExtraPacks = [
+  { count: 20, priceId: envPri(process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_PRODUCTION_20) },
+  { count: 50, priceId: envPri(process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_PRODUCTION_50) },
+  { count: 100, priceId: envPri(process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_PRODUCTION_100) },
+];
 
 export const SPUNKRAM_EXTRA_GEN_PACKS: readonly {
   count: number;
   priceId: string | undefined;
-}[] = getSpunkramExtraGenPacks();
+}[] = isSpunkramPaddleProduction ? productionExtraPacks : sandboxExtraPacks;
+
+/** One-time Additional Credits prices on the Spunkram Paddle account. */
+export function getSpunkramExtraGenPacks() {
+  return SPUNKRAM_EXTRA_GEN_PACKS;
+}
 
 export function isSpunkramExtraGenerationsPriceId(
   priceId: string | null | undefined,
 ): boolean {
-  if (!priceId?.startsWith("pri_")) return false;
-  return getSpunkramExtraGenPacks().some((pack) => pack.priceId === priceId);
+  return spunkramExtraPackCountForPriceId(priceId) !== null;
 }
 
 export function spunkramExtraPackCountForPriceId(
   priceId: string | null | undefined,
 ): number | null {
-  if (!priceId) return null;
-  return getSpunkramExtraGenPacks().find((pack) => pack.priceId === priceId)?.count ?? null;
+  if (!priceId?.startsWith("pri_")) return null;
+  return [...productionExtraPacks, ...sandboxExtraPacks]
+    .find((pack) => pack.priceId === priceId)?.count ?? null;
 }
 
 export const SPUNKRAM_SUBSCRIPTION_PRICE_IDS: Record<
@@ -85,38 +101,6 @@ export const SPUNKRAM_SUBSCRIPTION_PRICE_IDS: Record<
 };
 
 export type SpunkramPaddleEnvironment = "sandbox" | "production";
-
-/** Client-side Paddle.js settings for the Spunkram storefront. */
-export function getSpunkramPaddleClientConfig(): {
-  token: string;
-  environment: SpunkramPaddleEnvironment;
-} {
-  const environment = (
-    process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_ENVIRONMENT ?? "sandbox"
-  ).toLowerCase() as SpunkramPaddleEnvironment;
-
-  return {
-    token: process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_CLIENT_TOKEN?.trim() ?? "",
-    environment: environment === "production" ? "production" : "sandbox",
-  };
-}
-
-/** Server-side Spunkram Paddle Billing credentials (sandbox until launch). */
-export function getSpunkramPaddleServerConfig(): {
-  apiKey: string;
-  environment: SpunkramPaddleEnvironment;
-  webhookSecret: string;
-} {
-  const environment = (
-    process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_ENVIRONMENT ?? "sandbox"
-  ).toLowerCase() as SpunkramPaddleEnvironment;
-
-  return {
-    apiKey: process.env.SPUNKRAM_PADDLE_API_KEY?.trim() ?? "",
-    environment: environment === "production" ? "production" : "sandbox",
-    webhookSecret: process.env.SPUNKRAM_PADDLE_WEBHOOK_SECRET?.trim() ?? "",
-  };
-}
 
 export function listSpunkramSubscriptionPriceIds(): string[] {
   return [

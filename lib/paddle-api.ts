@@ -1,4 +1,7 @@
 import "server-only";
+import type { SpunkramPaddleEnvironment } from "@/lib/spunkram-paddle-config";
+import { getSpunkramPaddleCredentials } from "@/lib/spunkram-paddle-credentials";
+import { configuredSpunkramEnvironment } from "@/lib/paddle-accounting/spunkram-credentials.mjs";
 
 /**
  * Thin server-side wrapper over the Paddle Billing REST API.
@@ -17,9 +20,7 @@ import "server-only";
  *   PADDLE_API_KEY                — Server-side key (Dashboard → Developer tools → Authentication)
  *   NEXT_PUBLIC_PADDLE_ENVIRONMENT — "sandbox" | "production" (defaults to sandbox)
  *
- * Spunkram (sandbox until launch) — pass `account: "spunkram"`:
- *   SPUNKRAM_PADDLE_API_KEY
- *   NEXT_PUBLIC_SPUNKRAM_PADDLE_ENVIRONMENT
+ * Spunkram — pass `account: "spunkram"` to read its key from the database.
  */
 
 const SANDBOX_BASE = "https://sandbox-api.paddle.com";
@@ -27,34 +28,6 @@ const PRODUCTION_BASE = "https://api.paddle.com";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type PaddleApiAccount = "default" | "spunkram";
-
-function getBaseUrl(account: PaddleApiAccount = "default"): string {
-  if (account === "spunkram") {
-    const env = (process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_ENVIRONMENT ?? "sandbox").toLowerCase();
-    return env === "production" ? PRODUCTION_BASE : SANDBOX_BASE;
-  }
-  const env = (process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT ?? "sandbox").toLowerCase();
-  return env === "production" ? PRODUCTION_BASE : SANDBOX_BASE;
-}
-
-function getApiKey(account: PaddleApiAccount = "default"): string {
-  if (account === "spunkram") {
-    const key = process.env.SPUNKRAM_PADDLE_API_KEY?.trim();
-    if (!key) {
-      throw new Error(
-        "SPUNKRAM_PADDLE_API_KEY is not configured. Add the Spunkram sandbox API key to enable Spunkram subscription management.",
-      );
-    }
-    return key;
-  }
-  const key = process.env.PADDLE_API_KEY;
-  if (!key) {
-    throw new Error(
-      "PADDLE_API_KEY is not configured. Add it to your environment to enable subscription management.",
-    );
-  }
-  return key;
-}
 
 export class PaddleApiError extends Error {
   readonly status: number;
@@ -77,24 +50,35 @@ function extractPaddleErrorDetail(json: unknown): string | undefined {
 
 async function paddleFetch<T>(
   path: string,
-  init: RequestInit & { idempotencyKey?: string; account?: PaddleApiAccount } = {},
+  init: RequestInit & {
+    idempotencyKey?: string;
+    account?: PaddleApiAccount;
+    environment?: SpunkramPaddleEnvironment;
+  } = {},
 ): Promise<T> {
-  const account = init.account ?? "default";
-  const url = `${getBaseUrl(account)}${path}`;
+  const { account = "default", environment, idempotencyKey, ...fetchInit } = init;
+  const isSpunkram = account === "spunkram";
+  const paddleEnvironment = isSpunkram
+    ? environment ?? configuredSpunkramEnvironment()
+    : process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT?.toLowerCase();
+  const apiKey = isSpunkram
+    ? (await getSpunkramPaddleCredentials(environment)).apiKey
+    : process.env.PADDLE_API_KEY;
+  if (!apiKey) throw new Error(`Paddle API key is not configured for ${account}`);
+  const url = `${paddleEnvironment === "production" ? PRODUCTION_BASE : SANDBOX_BASE}${path}`;
   const headers = new Headers(init.headers);
-  headers.set("Authorization", `Bearer ${getApiKey(account)}`);
+  headers.set("Authorization", `Bearer ${apiKey}`);
   headers.set("Content-Type", "application/json");
-  if (init.idempotencyKey) {
+  if (idempotencyKey) {
     // HTTP headers are ByteString — every char must be in 0x00–0xFF. If a
     // caller accidentally interpolates a value with non-ASCII chars (e.g.
     // a JS Date stringified on a Windows locale that includes a Cyrillic
     // timezone name), `headers.set` throws and we'd lose the call. Strip
     // non-ASCII defensively while keeping the key recognisable.
-    const sanitized = init.idempotencyKey.replace(/[^\x20-\x7E]/g, "_");
+    const sanitized = idempotencyKey.replace(/[^\x20-\x7E]/g, "_");
     headers.set("Paddle-Idempotency-Key", sanitized);
   }
 
-  const { account: _account, idempotencyKey: _idempotencyKey, ...fetchInit } = init;
   const res = await fetch(url, { ...fetchInit, headers, cache: "no-store" });
   const text = await res.text();
   let json: unknown = null;
@@ -339,11 +323,11 @@ export interface PaddleApiTransaction {
  */
 export async function getTransaction(
   id: string,
-  options: { account?: PaddleApiAccount } = {},
+  options: { account?: PaddleApiAccount; environment?: SpunkramPaddleEnvironment } = {},
 ): Promise<PaddleApiTransaction> {
   return paddleFetch<PaddleApiTransaction>(
     `/transactions/${encodeURIComponent(id)}`,
-    { account: options.account },
+    options,
   );
 }
 

@@ -6,7 +6,8 @@ import { AuthProvider } from "@/components/auth-provider";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { SpunkramMainHeader } from "@/components/spunkram-main-header";
 import { PaddleProvider } from "@/lib/paddle";
-import { getSpunkramPaddleClientConfig } from "@/lib/spunkram-paddle-config";
+import { spunkramPaddleEnvironment } from "@/lib/spunkram-paddle-config";
+import { getSpunkramPaddleCredentials, isSpunkramStorefrontEnabled } from "@/lib/spunkram-paddle-credentials";
 import { SiteFooter } from "@/components/site-footer";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -34,16 +35,29 @@ export const metadata: Metadata = {
 // Inline script to apply theme before first paint (prevents flash)
 const themeScript = `(function(){try{var t=localStorage.getItem('theme');var m=window.matchMedia('(prefers-color-scheme: light)').matches;var light=t==='light'||(!t&&m);if(light){document.documentElement.classList.add('light');}}catch(e){}})();`;
 
+async function getCheckoutToken() {
+  const enabled = await isSpunkramStorefrontEnabled();
+  if (spunkramPaddleEnvironment === "sandbox") {
+    if (enabled) return "";
+    return (await getSpunkramPaddleCredentials("sandbox")).clientToken;
+  }
+  if (!enabled) return "";
+  const { clientToken } = await getSpunkramPaddleCredentials("production");
+  return clientToken.startsWith("live_") ? clientToken : "";
+}
+
 export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const sessionUser = await getSessionUser();
-  const initialUser = sessionUser
-    ? sessionUser
-    : null;
-  const spunkramPaddle = getSpunkramPaddleClientConfig();
+  const [sessionUser, checkoutToken] = await Promise.all([
+    getSessionUser(),
+    getCheckoutToken().catch((error) => {
+      console.error("[spunkram] Paddle credentials unavailable", error);
+      return "";
+    }),
+  ]);
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -72,10 +86,10 @@ export default async function RootLayout({
           disableTransitionOnChange
           storageKey="motionflow-theme"
         >
-          <AuthProvider initialUser={initialUser}>
+          <AuthProvider initialUser={sessionUser ?? null}>
             <PaddleProvider
-              token={spunkramPaddle.token}
-              environment={spunkramPaddle.environment}
+              token={checkoutToken}
+              environment={spunkramPaddleEnvironment}
             >
               <div className="relative min-h-screen overflow-x-clip">
                 {/* Decorative layer first so it never stacks above app content in edge cases */}

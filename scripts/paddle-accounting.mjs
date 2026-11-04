@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import mysql from 'mysql2/promise';
 import { createAccounting } from '../lib/paddle-accounting/engine.mjs';
 import { accountingCatalog } from '../lib/paddle-accounting/catalog.mjs';
+import { configuredSpunkramEnvironment, readSpunkramCredentials, spunkramUsesDefaultLiveAccount } from '../lib/paddle-accounting/spunkram-credentials.mjs';
 
 try { process.loadEnvFile('.env'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
 const command = process.argv[2] ?? 'status';
@@ -12,10 +13,21 @@ const pool = mysql.createPool({ host: process.env.DB_HOST, port: Number(process.
   connectionLimit: 2, dateStrings: true });
 const accounting = createAccounting({ getConnection: () => pool.getConnection(), catalog: accountingCatalog,
   marketTable: process.env.DB_MARKET_ITEMS_TABLE ?? 'marketplace_items' });
-async function paddle(account, environment, path) {
-  const configured = (account === 'spunkram' ? process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_ENVIRONMENT : process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT) ?? 'sandbox';
+const spunkramKeys = new Map();
+async function paddleKey(account, environment) {
+  if (account === 'spunkram') {
+    if (!spunkramKeys.has(environment)) {
+      const { apiKey } = await readSpunkramCredentials(pool, environment);
+      spunkramKeys.set(environment, apiKey);
+    }
+    return spunkramKeys.get(environment);
+  }
+  const configured = process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT ?? 'sandbox';
   if (configured !== environment) throw new Error('Stored Paddle environment differs from configured API key');
-  const key = account === 'spunkram' ? process.env.SPUNKRAM_PADDLE_API_KEY : process.env.PADDLE_API_KEY;
+  return process.env.PADDLE_API_KEY;
+}
+async function paddle(environment, path, key) {
+  if (!key) throw new Error('Paddle API key is not configured for the stored environment');
   const base = environment === 'production' ? 'https://api.paddle.com' : 'https://sandbox-api.paddle.com';
   const url = new URL(path, base);
   if (url.origin !== base) throw new Error('Unexpected Paddle pagination host');
@@ -54,24 +66,27 @@ try {
     const [pending] = await pool.query("SELECT * FROM paddle_accounting_transactions WHERE status='pending' ORDER BY updated_at,id LIMIT 100");
     for (const row of pending) {
       try {
-        const { data } = await paddle(row.account, row.environment, `/transactions/${row.transaction_id}`);
+        const key = await paddleKey(row.account, row.environment);
+        const { data } = await paddle(row.environment, `/transactions/${row.transaction_id}`, key);
         const result = await accounting.transaction(data, row);
         console.log(row.transaction_id, result.status, result.reason ?? '');
       } catch (error) { console.error(row.transaction_id, error.message); process.exitCode = 1; }
     }
     // Read Paddle's new payments as well as durable pending records. This
     // recovers a missing webhook without revisiting historical financial rows.
-    for (const account of ['default', 'spunkram']) {
-      const environment = (account === 'spunkram' ? process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_ENVIRONMENT : process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT) ?? 'sandbox';
-      const key = account === 'spunkram' ? process.env.SPUNKRAM_PADDLE_API_KEY : process.env.PADDLE_API_KEY;
-      if (!boundary || !key) continue;
+    const accounts = spunkramUsesDefaultLiveAccount() ? ['default'] : ['default', 'spunkram'];
+    for (const account of accounts) {
+      if (!boundary) continue;
+      const environment = account === 'spunkram' ? configuredSpunkramEnvironment() : process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT ?? 'sandbox';
       try {
+        const key = await paddleKey(account, environment);
+        if (!key) continue;
         const cutoff = new Date(boundary.replace(' ', 'T') + 'Z').getTime();
         const transactions = [], adjustments = [], cache = new Map();
         for (const [path, collected] of [['/transactions?status=completed&per_page=30&order_by=created_at%5BDESC%5D', transactions], ['/adjustments?per_page=50', adjustments]]) {
           let next = path;
           while (next) {
-            const response = await paddle(account, environment, next);
+            const response = await paddle(environment, next, key);
             const recent = response.data.filter(r => new Date(r.created_at).getTime() >= cutoff);
             collected.push(...recent);
             next = recent.length === response.data.length && response.meta?.pagination?.has_more ? response.meta.pagination.next : null;
@@ -88,7 +103,7 @@ try {
           const [owned] = await pool.execute('SELECT id FROM paddle_accounting_transactions WHERE account=? AND environment=? AND transaction_id=?', [account,environment,adj.transaction_id]);
           if (!owned.length) continue;
           let txn = cache.get(adj.transaction_id);
-          if (!txn) { txn = (await paddle(account,environment,`/transactions/${adj.transaction_id}`)).data; cache.set(txn.id,txn); }
+          if (!txn) { txn = (await paddle(environment, `/transactions/${adj.transaction_id}`, key)).data; cache.set(txn.id,txn); }
           await accounting.adjustment(adj,txn,source);
         }
       } catch (error) { console.error(account, error.message); process.exitCode = 1; }

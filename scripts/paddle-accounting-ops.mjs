@@ -7,7 +7,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import assert from 'node:assert/strict';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const [operation, expectedNext, expectedLaravel] = process.argv.slice(2);
 assert(['inspect','backup','prepare','verify','enable','status','disable'].includes(operation));
@@ -42,6 +42,12 @@ async function backupPath() {
 async function settings() {
   const [tables]=await db.query("SHOW TABLES LIKE 'paddle_accounting_settings'");
   return tables.length ? (await db.query('SELECT * FROM paddle_accounting_settings WHERE id=1'))[0][0] : null;
+}
+async function spunkramCredentials() {
+  const credentials = await import(pathToFileURL(path.join(next,'lib/paddle-accounting/spunkram-credentials.mjs')).href)
+    .catch(error => { if (error.code !== 'ERR_MODULE_NOT_FOUND') throw error; return null; });
+  if (credentials) return credentials.readSpunkramCredentials(db, credentials.configuredSpunkramEnvironment());
+  return { apiKey: process.env.SPUNKRAM_PADDLE_API_KEY, webhookSecret: process.env.SPUNKRAM_PADDLE_WEBHOOK_SECRET };
 }
 async function invariants() {
   // Fingerprint historical financial rows, without updating or exporting PII.
@@ -94,10 +100,13 @@ try {
     const [engines]=await db.query('SELECT ENGINE,COUNT(*) AS tables_count,ROUND(SUM(DATA_LENGTH+INDEX_LENGTH)/1024/1024) AS size_mb FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() GROUP BY ENGINE');
     const [migrations]=await db.query('SELECT migration,batch FROM migrations ORDER BY id DESC LIMIT 12');
     const pm=JSON.parse(run('pm2',['jlist'])).map(p=>({name:p.name,status:p.pm2_env.status,cwd:p.pm2_env.pm_cwd}));
-    const configured=Object.fromEntries(['PADDLE_API_KEY','PADDLE_WEBHOOK_SECRET','SPUNKRAM_PADDLE_API_KEY','SPUNKRAM_PADDLE_WEBHOOK_SECRET',
+    const configured=Object.fromEntries(['PADDLE_API_KEY','PADDLE_WEBHOOK_SECRET',
       'NEXT_PUBLIC_PADDLE_ENVIRONMENT','NEXT_PUBLIC_SPUNKRAM_PADDLE_ENVIRONMENT','NEXT_PUBLIC_PADDLE_PRICE_CREATOR_MONTHLY',
       'NEXT_PUBLIC_PADDLE_PRICE_CREATOR_YEARLY','NEXT_PUBLIC_PADDLE_PRICE_CREATOR_AI_MONTHLY','NEXT_PUBLIC_PADDLE_PRICE_CREATOR_AI_YEARLY']
       .map(k=>[k,k.endsWith('ENVIRONMENT')?process.env[k]:Boolean(process.env[k])]));
+    const spunkram=await spunkramCredentials();
+    configured.SPUNKRAM_PADDLE_API_KEY=Boolean(spunkram.apiKey);
+    configured.SPUNKRAM_PADDLE_WEBHOOK_SECRET=Boolean(spunkram.webhookSecret);
     console.log(JSON.stringify({engines,migrations,pm,configured},null,2));
     console.log(run('php',['artisan','migrate:status','--no-ansi'],{cwd:laravel}));
     console.log('dump utility:',run('sh',['-c','command -v mysqldump || command -v mariadb-dump']).trim());
@@ -146,7 +155,7 @@ try {
     const [[{count}]]=await db.query('SELECT COUNT(*) AS count FROM paddle_accounting_transactions'); assert.equal(Number(count),0);
     const laravelSecrets={},nextValues={};
     const bootstrap=JSON.parse(await fs.readFile(path.join(opsRoot,'bootstrap.json'),'utf8').catch(()=>'{}'));
-    if(!process.env.SPUNKRAM_PADDLE_API_KEY && bootstrap.spunkramKey) {
+    if(!(await spunkramCredentials()).apiKey && bootstrap.spunkramKey) {
       process.env.SPUNKRAM_PADDLE_API_KEY=bootstrap.spunkramKey;
       process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_ENVIRONMENT='sandbox';
       nextValues.SPUNKRAM_PADDLE_API_KEY=bootstrap.spunkramKey;
@@ -154,7 +163,8 @@ try {
     }
     for(const account of ['default','spunkram']) {
       const prefix=account==='default'?'':'SPUNKRAM_';
-      const key=process.env[prefix+'PADDLE_API_KEY']; if(!key) continue;
+      const key=account==='spunkram'?(await spunkramCredentials()).apiKey:process.env.PADDLE_API_KEY;
+      if(!key) continue;
       const environment=process.env['NEXT_PUBLIC_'+prefix+'PADDLE_ENVIRONMENT']??'sandbox';
       const response=await fetch((environment==='production'?'https://api.paddle.com':'https://sandbox-api.paddle.com')+'/notification-settings',
         {headers:{Authorization:'Bearer '+key},signal:AbortSignal.timeout(15000)});

@@ -56,13 +56,40 @@
 
 ### M01. Универсальные товары и авторские витрины — P0
 
-**Сейчас.** [app/(main)/item/[id]/page.tsx](<../app/(main)/item/[id]/page.tsx>) обслуживает Spunkram, отправляет Gal на `/premiere-gal`, а остальных авторов перенаправляет через `motionflowItemPageUrl()` на Laravel `/item/{slug}/{id}`. В [proxy.ts](../proxy.ts) специальные host rewrites есть для `spunkramv2.motionflow.pro` и `premieregal.motionflow.pro`. Laravel продолжает иметь wildcard-профили авторов и slug-маршруты товаров.
+**Сейчас.** [app/(main)/item/[id]/page.tsx](<../app/(main)/item/[id]/page.tsx>) отправляет Spunkram на `/spunkram/item/<id>`, Gal на `/premiere-gal`, а остальных авторов перенаправляет через `motionflowItemPageUrl()` на Laravel `/item/{slug}/{id}`. В [proxy.ts](../proxy.ts) специальные host rewrites есть для `spunkramv2.motionflow.pro` и `premieregal.motionflow.pro`. Laravel продолжает иметь wildcard-профили авторов и slug-маршруты товаров.
 
 **Перенести:** общую страницу товара для всех оставшихся авторов; описания в старых форматах HTML/Editor.js, атрибуты категории, превью, demo, внешние ссылки, цену, варианты лицензии, покупку и скачивание. Публичный профиль автора должен включать его каталог и нужные метаданные. Новые пути не обязаны повторять старые, но каждый сохраняемый старый URL должен иметь прямой рабочий маршрут или точный redirect.
 
 **Готово, когда:** товар автора вне Gal/Spunkram открывается и покупается без PHP; старые `/item/{slug}/{id}` и авторские поддомены не возвращают 404 и не создают циклы. Отдельно согласовать `spunkram.motionflow.pro` и `spunkramv2.motionflow.pro`, wildcard-домены и профиль `enamalamin`.
 
 **Источники:** [Laravel web routes](../../laravel/routes/web.php), [MarketplaceItemController](../../laravel/app/Http/Controllers/MarketplaceItemController.php), [MarketplaceProfileController](../../laravel/app/Http/Controllers/MarketplaceProfileController.php), [motionflow-urls.ts](../lib/motionflow-urls.ts).
+
+#### Переключение Spunkram
+
+Флаг `spunkram_storefront_settings.enabled` с `id = 1` читают оба приложения из одной MySQL-базы. При `0` старый поддомен обслуживает Laravel, а production checkout Next.js закрыт. При `1` Laravel перенаправляет витрину и карточки товаров на `https://motionflow.pro/spunkram` и `/spunkram/item/<id>`, а Next.js выдаёт live-токен checkout. На старом хосте остаётся Laravel. Редирект временный и не кешируется, чтобы флаг можно было вернуть в `0`.
+
+Реквизиты Paddle Spunkram хранятся в зашифрованном виде в `spunkram_paddle_credentials`, отдельной строкой для `sandbox` и `production`. Добавьте в серверный `.env` постоянный ключ шифрования `SPUNKRAM_PADDLE_CREDENTIALS_KEY` из 32 случайных байт в hex. Приложение и процесс сверки должны использовать один ключ.
+
+Для live передайте JSON с полями `apiKey`, `clientToken`, `webhookSecret` из защищённого источника на stdin команды `node scripts/configure-spunkram-paddle.mjs production`. Команда применяет миграцию, создаёт флаг со значением `0` при первом запуске и обновляет реквизиты выбранной среды. Повторный импорт сохраняет значение флага. Для sandbox импорт из старого `.env` выполняется командой `node scripts/configure-spunkram-paddle.mjs sandbox --from-env`.
+
+Пока флаг равен `0`, настройте live Paddle и разверните оба релиза.
+
+1. Подготовьте live API key, токен `live_…`, одобренный домен `motionflow.pro` и Default payment link на страницу с Paddle.js.
+2. Для текущего общего live-аккаунта установите в серверном Next.js `SPUNKRAM_PADDLE_ACCOUNT=default` и используйте существующую live-конфигурацию основного Paddle-аккаунта (`NEXT_PUBLIC_PADDLE_ENVIRONMENT=production`). Next.js ведёт учёт под `default`, и worker опрашивает этот аккаунт один раз. Сохраните действующий маршрут вебхуков через Laravel и его секрет. В записи Spunkram в БД поле `webhookSecret` для этого маршрута можно оставить пустым. Если в будущем подключится отдельный аккаунт, используйте `SPUNKRAM_PADDLE_ACCOUNT=spunkram` и секрет его собственного destination при прямой доставке на `/api/paddle/webhook`.
+3. Перед выкладкой установите `NEXT_PUBLIC_SPUNKRAM_PADDLE_ENVIRONMENT=production` в серверном `.env` и GitHub `BUILD_PUBLIC_ENV`. Для Library используются `NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_PRODUCTION_MONTHLY` и `NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_PRODUCTION_YEARLY`, для AI Toolkit — `NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_PRODUCTION_MONTHLY` и `NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_PRODUCTION_YEARLY`. Разовые товары читают live ID из `json_args.paddle_price_ids`, пакеты на 20, 50 и 100 кредитов — из `NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_PRODUCTION_*`. После импорта удалите старые переменные с реквизитами Spunkram из конфигурации Next.js, а публичный токен также из `BUILD_PUBLIC_ENV`. Ключ шифрования остаётся в серверном `.env`.
+4. Продублируйте переменные с четырьмя ID подписок в серверном `.env` Laravel, чтобы его обработчик узнавал новые цены. Для Paddle-продуктов подписки укажите `custom_data.author_id = 1691` и `custom_data.subs_system = 1`. Старые ID остаются в конфигурации для продлений.
+5. Разверните Next.js со сборкой для production и Laravel с обновлённой конфигурацией и маршрутами, читающими флаг. Публичная витрина Next.js находится на `motionflow.pro/spunkram`, а старый поддомен до переключения продолжает обслуживать покупателей в Laravel.
+
+В момент запуска выполните в общей БД:
+
+```sql
+UPDATE spunkram_storefront_settings
+SET enabled = 1
+WHERE id = 1
+  AND EXISTS (SELECT 1 FROM spunkram_paddle_credentials WHERE environment = 'production');
+```
+
+Для возврата переключите `enabled` обратно в `0`. Изменение действует для новых запросов без пересборки и перезапуска. Уже открытые checkout и входящие вебхуки продолжают обрабатываться.
 
 ### M02. Скачивание без Laravel fallback — P0
 
