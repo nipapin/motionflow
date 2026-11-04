@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
+import { getAccountingBridgeConfig } from "@/lib/paddle-accounting-config";
 import { actualAccounting, actualAdjustment, accountingSource, isActualSubscription } from "@/lib/paddle-actual";
 import { forwardActualAccountingPurchase, handlePaddleEvent, type PaddleWebhookEvent } from "@/lib/paddle-server";
 
@@ -10,7 +11,10 @@ export const dynamic = "force-dynamic";
  * second signature authenticates the bridge and binds account + environment.
  */
 export async function POST(request: Request) {
-  const secret = process.env.PADDLE_ACCOUNTING_BRIDGE_SECRET;
+  const { bridgeSecret: secret, environment } = await getAccountingBridgeConfig().catch((error) => {
+    console.error("[paddle-accounting-bridge] Configuration unavailable", error);
+    return { bridgeSecret: undefined, environment: undefined };
+  });
   if (!secret || secret.length < 32) return NextResponse.json({ error: "Bridge unavailable" }, { status: 503 });
   const raw = await request.text();
   if (Buffer.byteLength(raw) > 2_000_000) return NextResponse.json({ error: "Too large" }, { status: 413 });
@@ -24,7 +28,7 @@ export async function POST(request: Request) {
   try {
     const body = JSON.parse(raw) as { account: "default" | "spunkram"; environment: string; event: PaddleWebhookEvent };
     if (!["default", "spunkram"].includes(body.account)) throw new Error("Invalid account");
-    const source = accountingSource(body.account);
+    const source = await accountingSource(body.account, environment ?? "sandbox");
     if (source.environment !== body.environment) throw new Error("Environment mismatch");
     const event = body.event;
     if (event.event_type === "transaction.completed") {

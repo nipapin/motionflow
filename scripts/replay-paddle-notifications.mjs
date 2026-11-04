@@ -22,9 +22,10 @@
  *   PADDLE_API_KEY
  *   PADDLE_WEBHOOK_SECRET
  *   PADDLE_REPLAY_WEBHOOK_URL   e.g. https://next.motionflow.pro/api/paddle/webhook
- *   NEXT_PUBLIC_PADDLE_ENVIRONMENT — "production" | "sandbox" (defaults sandbox)
+ *   DB_*                       — Next.js database connection for the Paddle environment
  */
 import crypto from "node:crypto";
+import { readCliPaddleEnvironment } from "./lib/paddle-environment.mjs";
 
 const NOTIFICATION_IDS = [
   "ntf_01ks7dh3rxzw0n2hmv580dz774",
@@ -45,11 +46,6 @@ const NOTIFICATION_IDS = [
 
 const SANDBOX_BASE = "https://sandbox-api.paddle.com";
 const PRODUCTION_BASE = "https://api.paddle.com";
-
-function getPaddleBaseUrl() {
-  const env = String(process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT ?? "sandbox").toLowerCase();
-  return env === "production" ? PRODUCTION_BASE : SANDBOX_BASE;
-}
 
 function hasFlag(name) {
   return process.argv.slice(2).some((a) => a === name || a.startsWith(`${name}=`));
@@ -76,8 +72,8 @@ function summarizePayload(payload) {
   };
 }
 
-async function fetchNotification(ntfId) {
-  const url = `${getPaddleBaseUrl()}/notifications/${encodeURIComponent(ntfId)}`;
+async function fetchNotification(ntfId, base) {
+  const url = `${base}/notifications/${encodeURIComponent(ntfId)}`;
   const res = await fetch(url, {
     headers: {
       Authorization: `Bearer ${process.env.PADDLE_API_KEY}`,
@@ -155,10 +151,12 @@ async function main() {
   }
 
   const ntfIds = NOTIFICATION_IDS;
+  const environment = await readCliPaddleEnvironment();
+  const base = environment === "production" ? PRODUCTION_BASE : SANDBOX_BASE;
   const mode = dumpOnly ? "DUMP" : resolveOnly ? "RESOLVE" : "REPLAY";
   console.log(
     `[replay] mode=${mode} count=${ntfIds.length} ` +
-      `env=${process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT ?? "sandbox"}` +
+      `env=${environment}` +
       (mode === "REPLAY" ? ` target=${webhookUrl}` : ""),
   );
 
@@ -171,7 +169,7 @@ async function main() {
     if (i > 0 && delayMs > 0) await sleep(delayMs);
 
     try {
-      const resolved = await fetchNotification(ntfId);
+      const resolved = await fetchNotification(ntfId, base);
       const { summary, payload } = resolved;
 
       if (resolveOnly) {

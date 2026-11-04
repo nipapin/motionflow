@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import type { PoolConnection, RowDataPacket } from "mysql2/promise";
 import { assertCampaignMailConfigured, campaignListMemberSubscribed, campaignMailClient, validateCampaignDelivery } from "./mail";
 import { getPool } from "@/lib/db";
+import { getDefaultPaddleEnvironment } from "@/lib/paddle-accounting-config";
 import { marketplaceItemsTable } from "@/lib/author/marketplace-table";
 import { getSubscription, moveCampaignBillingDate } from "@/lib/paddle-api";
 import { mailFromAddress } from "@/lib/mail/resend-mailer";
@@ -25,10 +26,10 @@ export function ensureCampaignTables() {
   return schemaReady;
 }
 
-export function campaignCatalog(subscription: string, duration: string) {
+function campaignCatalog(subscription: string, duration: string, defaultEnvironment?: "sandbox" | "production") {
   const yearly = duration !== "month";
   const account = subscription.startsWith("spunkram") ? "spunkram" as const : "default" as const;
-  const environment = (account === "spunkram" ? process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_ENVIRONMENT : process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT)?.toLowerCase();
+  const environment = account === "spunkram" ? process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_ENVIRONMENT?.toLowerCase() : defaultEnvironment;
   if (!["sandbox","production"].includes(environment || "")) throw new Error("Paddle environment must be explicitly configured");
   const creator = {monthly:process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_MONTHLY || "",yearly:process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_YEARLY || ""};
   const creatorAi = {monthly:process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_AI_MONTHLY || "",yearly:process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_AI_YEARLY || ""};
@@ -45,6 +46,8 @@ export function campaignCatalog(subscription: string, duration: string) {
 }
 
 async function servicesFor(campaign: CampaignDraft & {environment?:string|null}) {
+  const defaultEnvironment = campaign.grant.kind === "subscription" && !campaign.grant.subscription.startsWith("spunkram")
+    ? await getDefaultPaddleEnvironment() : undefined;
   let item: {id:number;name:string;author_id:number}|null = null;
   if (campaign.grant.kind === "item") {
     const [items] = await getPool().execute<RowDataPacket[]>(`SELECT id,name,author_id FROM \`${marketplaceItemsTable()}\` WHERE id=? AND deleted_at IS NULL`,[campaign.grant.itemId]);
@@ -54,7 +57,7 @@ async function servicesFor(campaign: CampaignDraft & {environment?:string|null})
   return {
     item,
     catalog:(name:string,duration:string) => {
-      const catalog = campaignCatalog(name,duration);
+      const catalog = campaignCatalog(name,duration,defaultEnvironment);
       if (campaign.environment && catalog.environment !== campaign.environment) throw new Error("Campaign Paddle environment changed; use the original environment");
       return catalog;
     },

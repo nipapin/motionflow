@@ -21,7 +21,7 @@
  *   PADDLE_WEBHOOK_SECRET          — used to sign the self-POST to our webhook
  *   PADDLE_REPLAY_WEBHOOK_URL      — full webhook URL, e.g.
  *                                    https://motionflow.app/api/paddle/webhook
- *   NEXT_PUBLIC_PADDLE_ENVIRONMENT — "production" | "sandbox" (defaults sandbox)
+ *   DB_*                         — Next.js database connection for the Paddle environment
  *
  * Notes:
  *   - Paddle retains events for ~90 days. Older IDs return 404 from `GET /events`.
@@ -31,14 +31,10 @@
  *     5-minute tolerance window enforced by `verifyPaddleSignature`.
  */
 import crypto from "node:crypto";
+import { readCliPaddleEnvironment } from "./lib/paddle-environment.mjs";
 
 const SANDBOX_BASE = "https://sandbox-api.paddle.com";
 const PRODUCTION_BASE = "https://api.paddle.com";
-
-function getPaddleBaseUrl() {
-  const env = String(process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT ?? "sandbox").toLowerCase();
-  return env === "production" ? PRODUCTION_BASE : SANDBOX_BASE;
-}
 
 const apiKey = process.env.PADDLE_API_KEY;
 const webhookSecret = process.env.PADDLE_WEBHOOK_SECRET;
@@ -102,8 +98,8 @@ function summarizeEvent(evt) {
   };
 }
 
-async function paddleEventsPage(after) {
-  const url = new URL("/events", getPaddleBaseUrl());
+async function paddleEventsPage(after, base) {
+  const url = new URL("/events", base);
   url.searchParams.set("per_page", "200");
   url.searchParams.set("order_by", "id[DESC]");
   if (after) url.searchParams.set("after", after);
@@ -117,13 +113,13 @@ async function paddleEventsPage(after) {
   return res.json();
 }
 
-async function fetchEventsByIds(targetIds, maxPages = 50) {
+async function fetchEventsByIds(targetIds, base, maxPages = 50) {
   const targets = new Set(targetIds);
   const found = new Map();
   let after = null;
   let pages = 0;
   while (targets.size > 0 && pages < maxPages) {
-    const page = await paddleEventsPage(after);
+    const page = await paddleEventsPage(after, base);
     pages += 1;
     const items = Array.isArray(page?.data) ? page.data : [];
     for (const evt of items) {
@@ -188,17 +184,19 @@ async function replayToWebhook(evtPayload) {
     );
     process.exit(1);
   }
+  const environment = await readCliPaddleEnvironment();
+  const base = environment === "production" ? PRODUCTION_BASE : SANDBOX_BASE;
   if (!dumpOnly) {
     console.log(
-      `Replaying ${ids.length} event(s) via ${webhookUrl} (env=${process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT ?? "sandbox"})…`,
+      `Replaying ${ids.length} event(s) via ${webhookUrl} (env=${environment})…`,
     );
   } else {
     console.log(
-      `Fetching ${ids.length} event(s) for inspection (env=${process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT ?? "sandbox"})…`,
+      `Fetching ${ids.length} event(s) for inspection (env=${environment})…`,
     );
   }
 
-  const { found, missing, pagesScanned } = await fetchEventsByIds(ids);
+  const { found, missing, pagesScanned } = await fetchEventsByIds(ids, base);
   console.log(`Scanned ${pagesScanned} page(s); found ${found.size}/${ids.length}.`);
   if (missing.length) {
     console.warn(

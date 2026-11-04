@@ -280,7 +280,7 @@ export async function main(args = process.argv.slice(2)) {
         const results = [];
         for (const plan of billingPlans) {
           const grant = grants.find(g => Number(g.user_id) === plan.userId);
-          const result = publicBillingPlan(await applyBilling(conn, grant, plan, billingEnvironment()));
+          const result = publicBillingPlan(await applyBilling(conn, grant, plan, await billingEnvironment(conn)));
           results.push(result); console.log(JSON.stringify(result));
         }
         if (values.report) writeFileSync(resolve(values.report), JSON.stringify({ command, campaign, subscriptions: results }, null, 2));

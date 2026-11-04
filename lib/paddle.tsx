@@ -35,8 +35,8 @@ type PaddleProviderProps = {
   children: ReactNode;
   /** Override client token (e.g. Spunkram sandbox). Defaults to NEXT_PUBLIC_PADDLE_CLIENT_TOKEN. */
   token?: string;
-  /** Override environment. Defaults to NEXT_PUBLIC_PADDLE_ENVIRONMENT. */
-  environment?: Environments;
+  /** A null environment disables checkout when its configuration is unavailable. */
+  environment: Environments | null;
 };
 
 export function PaddleProvider({ children, token: tokenProp, environment: environmentProp }: PaddleProviderProps) {
@@ -46,16 +46,13 @@ export function PaddleProvider({ children, token: tokenProp, environment: enviro
 
   useEffect(() => {
     if (initialized.current) return;
+    if (!environmentProp) return;
     initialized.current = true;
 
     const token =
       tokenProp !== undefined
         ? tokenProp.trim()
         : process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN;
-    const environment = (environmentProp ??
-      process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT ??
-      "sandbox") as Environments;
-
     if (!token) {
       console.warn(
         "[Paddle] Client token is not set; checkout will not load.",
@@ -67,7 +64,7 @@ export function PaddleProvider({ children, token: tokenProp, environment: enviro
     }
 
     initializePaddle({
-      environment,
+      environment: environmentProp,
       token,
       eventCallback: (event) => {
         listeners.current.forEach((cb) => {

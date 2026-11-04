@@ -2,11 +2,12 @@ import fs from 'node:fs/promises';
 import mysql from 'mysql2/promise';
 import { createAccounting } from '../lib/paddle-accounting/engine.mjs';
 import { accountingCatalog } from '../lib/paddle-accounting/catalog.mjs';
+import { readDefaultPaddleEnvironment, writePaddleAccountingConfig } from '../lib/paddle-accounting/config.mjs';
 import { configuredSpunkramEnvironment, readSpunkramCredentials, spunkramUsesDefaultLiveAccount } from '../lib/paddle-accounting/spunkram-credentials.mjs';
 
 try { process.loadEnvFile('.env'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
 const command = process.argv[2] ?? 'status';
-const allowed = ['schema', 'status', 'enable', 'disable', 'retry'];
+const allowed = ['schema', 'configure', 'status', 'enable', 'disable', 'retry'];
 if (!allowed.includes(command)) throw new Error(`Use: ${allowed.join('|')}`);
 const pool = mysql.createPool({ host: process.env.DB_HOST, port: Number(process.env.DB_PORT ?? 3306),
   user: process.env.DB_USERNAME, password: process.env.DB_PASSWORD, database: process.env.DB_DATABASE,
@@ -14,7 +15,7 @@ const pool = mysql.createPool({ host: process.env.DB_HOST, port: Number(process.
 const accounting = createAccounting({ getConnection: () => pool.getConnection(), catalog: accountingCatalog,
   marketTable: process.env.DB_MARKET_ITEMS_TABLE ?? 'marketplace_items' });
 const spunkramKeys = new Map();
-async function paddleKey(account, environment) {
+async function paddleKey(account, environment, defaultEnvironment) {
   if (account === 'spunkram') {
     if (!spunkramKeys.has(environment)) {
       const { apiKey } = await readSpunkramCredentials(pool, environment);
@@ -22,8 +23,7 @@ async function paddleKey(account, environment) {
     }
     return spunkramKeys.get(environment);
   }
-  const configured = process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT ?? 'sandbox';
-  if (configured !== environment) throw new Error('Stored Paddle environment differs from configured API key');
+  if (defaultEnvironment !== environment) throw new Error('Stored Paddle environment differs from configured API key');
   return process.env.PADDLE_API_KEY;
 }
 async function paddle(environment, path, key) {
@@ -42,6 +42,15 @@ try {
     // No multi-statements connection permission, no historical backfill.
     for (const statement of sql.split(';').map(s => s.replace(/^\s*--.*$/gm, '').trim()).filter(Boolean)) await pool.query(statement);
     console.log('Additive journal schema ready. Accounting is not activated.');
+  } else if (command === 'configure') {
+    const sql = await fs.readFile(new URL('../db/migrations/2026_11_04_paddle_accounting_config.sql', import.meta.url), 'utf8');
+    await pool.query(sql);
+    await writePaddleAccountingConfig(pool, process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT, {
+      bridgeSecret: process.env.PADDLE_ACCOUNTING_BRIDGE_SECRET ?? '',
+      defaultWebhookSecret: process.env.PADDLE_ACCOUNTING_DEFAULT_WEBHOOK_SECRET ?? '',
+      spunkramWebhookSecret: process.env.PADDLE_ACCOUNTING_SPUNKRAM_WEBHOOK_SECRET ?? '',
+    });
+    console.log('Paddle accounting configuration saved.');
   } else if (command === 'enable') {
     if (accountingCatalog().corePriceIds.length !== 4) throw new Error('Configure all four Creator / Creator AI Price IDs before enabling');
     const required = ['users','sold_items','subscription_systems','subscription_payments','paddle_accounting_settings',
@@ -57,6 +66,7 @@ try {
     await pool.execute('UPDATE paddle_accounting_settings SET accept_new=0 WHERE id=1');
     console.log('New ownership disabled. Existing v2 payments still use their journal.');
   } else if (command === 'retry') {
+    const defaultEnvironment = await readDefaultPaddleEnvironment(pool) ?? 'sandbox';
     const [settings] = await pool.query('SELECT * FROM paddle_accounting_settings WHERE id=1');
     const boundary = settings[0]?.enabled_from;
     const guard = await pool.getConnection();
@@ -66,7 +76,7 @@ try {
     const [pending] = await pool.query("SELECT * FROM paddle_accounting_transactions WHERE status='pending' ORDER BY updated_at,id LIMIT 100");
     for (const row of pending) {
       try {
-        const key = await paddleKey(row.account, row.environment);
+        const key = await paddleKey(row.account, row.environment, defaultEnvironment);
         const { data } = await paddle(row.environment, `/transactions/${row.transaction_id}`, key);
         const result = await accounting.transaction(data, row);
         console.log(row.transaction_id, result.status, result.reason ?? '');
@@ -77,9 +87,9 @@ try {
     const accounts = spunkramUsesDefaultLiveAccount() ? ['default'] : ['default', 'spunkram'];
     for (const account of accounts) {
       if (!boundary) continue;
-      const environment = account === 'spunkram' ? configuredSpunkramEnvironment() : process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT ?? 'sandbox';
+      const environment = account === 'spunkram' ? configuredSpunkramEnvironment() : defaultEnvironment;
       try {
-        const key = await paddleKey(account, environment);
+        const key = await paddleKey(account, environment, defaultEnvironment);
         if (!key) continue;
         const cutoff = new Date(boundary.replace(' ', 'T') + 'Z').getTime();
         const transactions = [], adjustments = [], cache = new Map();
@@ -113,8 +123,14 @@ try {
       await guard.query("SELECT RELEASE_LOCK('paddle_accounting_reconcile_v2')"); guard.release();
     }
   }
-  const [settings] = await pool.query('SELECT * FROM paddle_accounting_settings WHERE id=1');
-  const [counts] = await pool.query('SELECT status,COUNT(*) AS count FROM paddle_accounting_transactions GROUP BY status');
-  const [adjustments] = await pool.query('SELECT status,COUNT(*) AS count FROM paddle_accounting_adjustments GROUP BY status');
-  console.log(JSON.stringify({ settings, transactions: counts, adjustments }, null, 2));
+  if (command !== 'configure') {
+    const [settings] = await pool.query('SELECT * FROM paddle_accounting_settings WHERE id=1');
+    const [counts] = await pool.query('SELECT status,COUNT(*) AS count FROM paddle_accounting_transactions GROUP BY status');
+    const [adjustments] = await pool.query('SELECT status,COUNT(*) AS count FROM paddle_accounting_adjustments GROUP BY status');
+    console.log(JSON.stringify({ settings, transactions: counts, adjustments }, null, 2));
+  }
+} catch (error) {
+  if (command !== 'configure') throw error;
+  console.error('Could not save Paddle accounting configuration:', error.code ?? error.message);
+  process.exitCode = 1;
 } finally { await pool.end(); }

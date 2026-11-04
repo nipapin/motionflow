@@ -66,7 +66,7 @@
 
 #### Переключение Spunkram
 
-Флаг `spunkram_storefront_settings.enabled` с `id = 1` читают оба приложения из одной MySQL-базы. При `0` старый поддомен обслуживает Laravel, а production checkout Next.js закрыт. При `1` Laravel перенаправляет витрину и карточки товаров на `https://motionflow.pro/spunkram` и `/spunkram/item/<id>`, а Next.js выдаёт live-токен checkout. На старом хосте остаётся Laravel. Редирект временный и не кешируется, чтобы флаг можно было вернуть в `0`.
+В `spunkram_storefront_settings` запись с `id = 1` управляет временным редиректом Laravel. При `0` старый поддомен обслуживает Laravel. При `1` Laravel перенаправляет витрину и карточки товаров на `https://motionflow.pro/spunkram` и `/spunkram/item/<id>`. Запись с `id = 2` отдельно управляет production checkout в Next.js. До её создания Next.js использует значение `id = 1` для совместимости с прежней конфигурацией.
 
 Реквизиты Paddle Spunkram хранятся в зашифрованном виде в `spunkram_paddle_credentials`, отдельной строкой для `sandbox` и `production`. Добавьте в серверный `.env` постоянный ключ шифрования `SPUNKRAM_PADDLE_CREDENTIALS_KEY` из 32 случайных байт в hex. Приложение и процесс сверки должны использовать один ключ.
 
@@ -75,21 +75,20 @@
 Пока флаг равен `0`, настройте live Paddle и разверните оба релиза.
 
 1. Подготовьте live API key, токен `live_…`, одобренный домен `motionflow.pro` и Default payment link на страницу с Paddle.js.
-2. Для текущего общего live-аккаунта установите в серверном Next.js `SPUNKRAM_PADDLE_ACCOUNT=default` и используйте существующую live-конфигурацию основного Paddle-аккаунта (`NEXT_PUBLIC_PADDLE_ENVIRONMENT=production`). Next.js ведёт учёт под `default`, и worker опрашивает этот аккаунт один раз. Сохраните действующий маршрут вебхуков через Laravel и его секрет. В записи Spunkram в БД поле `webhookSecret` для этого маршрута можно оставить пустым. Если в будущем подключится отдельный аккаунт, используйте `SPUNKRAM_PADDLE_ACCOUNT=spunkram` и секрет его собственного destination при прямой доставке на `/api/paddle/webhook`.
+2. Для текущего общего live-аккаунта установите в серверном Next.js `SPUNKRAM_PADDLE_ACCOUNT=default` и режим `production` в `paddle_accounting_config`. Next.js ведёт учёт под `default`, и worker опрашивает этот аккаунт один раз. Сохраните действующий маршрут вебхуков через Laravel и его секрет. В записи Spunkram в БД поле `webhookSecret` для этого маршрута можно оставить пустым. Если в будущем подключится отдельный аккаунт, используйте `SPUNKRAM_PADDLE_ACCOUNT=spunkram` и секрет его собственного destination при прямой доставке на `/api/paddle/webhook`.
 3. Перед выкладкой установите `NEXT_PUBLIC_SPUNKRAM_PADDLE_ENVIRONMENT=production` в серверном `.env` и GitHub `BUILD_PUBLIC_ENV`. Для Library используются `NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_PRODUCTION_MONTHLY` и `NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_PRODUCTION_YEARLY`, для AI Toolkit — `NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_PRODUCTION_MONTHLY` и `NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_PRODUCTION_YEARLY`. Разовые товары читают live ID из `json_args.paddle_price_ids`, пакеты на 20, 50 и 100 кредитов — из `NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_PRODUCTION_*`. После импорта удалите старые переменные с реквизитами Spunkram из конфигурации Next.js, а публичный токен также из `BUILD_PUBLIC_ENV`. Ключ шифрования остаётся в серверном `.env`.
 4. Продублируйте переменные с четырьмя ID подписок в серверном `.env` Laravel, чтобы его обработчик узнавал новые цены. Для Paddle-продуктов подписки укажите `custom_data.author_id = 1691` и `custom_data.subs_system = 1`. Старые ID остаются в конфигурации для продлений.
 5. Разверните Next.js со сборкой для production и Laravel с обновлённой конфигурацией и маршрутами, читающими флаг. Публичная витрина Next.js находится на `motionflow.pro/spunkram`, а старый поддомен до переключения продолжает обслуживать покупателей в Laravel.
 
-В момент запуска выполните в общей БД:
+Для запуска checkout на Next.js выполните в общей БД:
 
 ```sql
-UPDATE spunkram_storefront_settings
-SET enabled = 1
-WHERE id = 1
-  AND EXISTS (SELECT 1 FROM spunkram_paddle_credentials WHERE environment = 'production');
+INSERT INTO spunkram_storefront_settings (id, enabled)
+SELECT 2, 1 FROM spunkram_paddle_credentials WHERE environment = 'production'
+ON DUPLICATE KEY UPDATE enabled = 1;
 ```
 
-Для возврата переключите `enabled` обратно в `0`. Изменение действует для новых запросов без пересборки и перезапуска. Уже открытые checkout и входящие вебхуки продолжают обрабатываться.
+Для отключения checkout установите `enabled = 0` у записи с `id = 2`. Изменение действует для новых запросов без пересборки и перезапуска. Уже открытые checkout и входящие вебхуки продолжают обрабатываться.
 
 ### M02. Скачивание без Laravel fallback — P0
 

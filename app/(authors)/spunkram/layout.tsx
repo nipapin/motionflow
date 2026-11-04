@@ -6,8 +6,10 @@ import { AuthProvider } from "@/components/auth-provider";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { SpunkramMainHeader } from "@/components/spunkram-main-header";
 import { PaddleProvider } from "@/lib/paddle";
+import { getDefaultPaddleEnvironment } from "@/lib/paddle-accounting-config";
+import { spunkramUsesDefaultLiveAccount } from "@/lib/paddle-accounting/spunkram-credentials.mjs";
 import { spunkramPaddleEnvironment } from "@/lib/spunkram-paddle-config";
-import { getSpunkramPaddleCredentials, isSpunkramStorefrontEnabled } from "@/lib/spunkram-paddle-credentials";
+import { getSpunkramPaddleCredentials, isSpunkramCheckoutEnabled } from "@/lib/spunkram-paddle-credentials";
 import { SiteFooter } from "@/components/site-footer";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -36,13 +38,14 @@ export const metadata: Metadata = {
 const themeScript = `(function(){try{var t=localStorage.getItem('theme');var m=window.matchMedia('(prefers-color-scheme: light)').matches;var light=t==='light'||(!t&&m);if(light){document.documentElement.classList.add('light');}}catch(e){}})();`;
 
 async function getCheckoutToken() {
-  const enabled = await isSpunkramStorefrontEnabled();
+  const enabled = await isSpunkramCheckoutEnabled();
   if (spunkramPaddleEnvironment === "sandbox") {
     if (enabled) return "";
     return (await getSpunkramPaddleCredentials("sandbox")).clientToken;
   }
   if (!enabled) return "";
-  const { clientToken } = await getSpunkramPaddleCredentials("production");
+  if (spunkramUsesDefaultLiveAccount() && await getDefaultPaddleEnvironment() !== "production") return "";
+  const { clientToken } = await getSpunkramPaddleCredentials("production", false);
   return clientToken.startsWith("live_") ? clientToken : "";
 }
 

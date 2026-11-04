@@ -25,6 +25,7 @@ const require = createRequire(path.join(next,'package.json'));
 const mysql = require('mysql2/promise');
 const db = await mysql.createConnection({host:process.env.DB_HOST,port:Number(process.env.DB_PORT??3306),
   user:process.env.DB_USERNAME,password:process.env.DB_PASSWORD,database:process.env.DB_DATABASE,dateStrings:true});
+const configModule = pathToFileURL(path.join(next,'lib/paddle-accounting/config.mjs')).href;
 const run = (cmd,args,options={}) => execFileSync(cmd,args,{encoding:'utf8',maxBuffer:20*1024*1024,...options});
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 async function hashFile(file) {
@@ -100,10 +101,15 @@ try {
     const [engines]=await db.query('SELECT ENGINE,COUNT(*) AS tables_count,ROUND(SUM(DATA_LENGTH+INDEX_LENGTH)/1024/1024) AS size_mb FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() GROUP BY ENGINE');
     const [migrations]=await db.query('SELECT migration,batch FROM migrations ORDER BY id DESC LIMIT 12');
     const pm=JSON.parse(run('pm2',['jlist'])).map(p=>({name:p.name,status:p.pm2_env.status,cwd:p.pm2_env.pm_cwd}));
+    const config=await import(configModule).catch(error => {
+      if(error.code!=='ERR_MODULE_NOT_FOUND') throw error;
+      return null;
+    });
     const configured=Object.fromEntries(['PADDLE_API_KEY','PADDLE_WEBHOOK_SECRET',
-      'NEXT_PUBLIC_PADDLE_ENVIRONMENT','NEXT_PUBLIC_SPUNKRAM_PADDLE_ENVIRONMENT','NEXT_PUBLIC_PADDLE_PRICE_CREATOR_MONTHLY',
+      'NEXT_PUBLIC_SPUNKRAM_PADDLE_ENVIRONMENT','NEXT_PUBLIC_PADDLE_PRICE_CREATOR_MONTHLY',
       'NEXT_PUBLIC_PADDLE_PRICE_CREATOR_YEARLY','NEXT_PUBLIC_PADDLE_PRICE_CREATOR_AI_MONTHLY','NEXT_PUBLIC_PADDLE_PRICE_CREATOR_AI_YEARLY']
       .map(k=>[k,k.endsWith('ENVIRONMENT')?process.env[k]:Boolean(process.env[k])]));
+    configured.NEXT_PUBLIC_PADDLE_ENVIRONMENT=config ? await config.readDefaultPaddleEnvironment(db) : process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT;
     const spunkram=await spunkramCredentials();
     configured.SPUNKRAM_PADDLE_API_KEY=Boolean(spunkram.apiKey);
     configured.SPUNKRAM_PADDLE_WEBHOOK_SECRET=Boolean(spunkram.webhookSecret);
@@ -151,6 +157,8 @@ try {
     console.log(run('node',['scripts/paddle-accounting.mjs','disable'],{cwd:next}));
   } else if(operation==='prepare') {
     await checkExpected();
+    const { readAccountingBridgeConfig, writePaddleAccountingConfig } = await import(configModule);
+    const currentConfig = await readAccountingBridgeConfig(db);
     const s=await settings(); assert(s && !s.accept_new && !s.enabled_from,'Accounting must remain disabled during preparation');
     const [[{count}]]=await db.query('SELECT COUNT(*) AS count FROM paddle_accounting_transactions'); assert.equal(Number(count),0);
     const laravelSecrets={},nextValues={};
@@ -165,7 +173,7 @@ try {
       const prefix=account==='default'?'':'SPUNKRAM_';
       const key=account==='spunkram'?(await spunkramCredentials()).apiKey:process.env.PADDLE_API_KEY;
       if(!key) continue;
-      const environment=process.env['NEXT_PUBLIC_'+prefix+'PADDLE_ENVIRONMENT']??'sandbox';
+      const environment=(account==='default' ? currentConfig.environment : process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_ENVIRONMENT)??'sandbox';
       const response=await fetch((environment==='production'?'https://api.paddle.com':'https://sandbox-api.paddle.com')+'/notification-settings',
         {headers:{Authorization:'Bearer '+key},signal:AbortSignal.timeout(15000)});
       assert(response.ok,'Cannot read Paddle destination configuration'); const body=await response.json();
@@ -177,12 +185,19 @@ try {
       laravelSecrets['NEXT_PUBLIC_'+prefix+'PADDLE_ENVIRONMENT']=environment;
       console.log('Laravel destination verified:',account,environment,dest.id,'active='+dest.active);
     }
-    const secret=process.env.PADDLE_ACCOUNTING_BRIDGE_SECRET??crypto.randomBytes(48).toString('hex'); assert(secret.length>=32);
+    const secret=currentConfig.bridgeSecret??crypto.randomBytes(48).toString('hex'); assert(secret.length>=32);
     const values={PADDLE_ACCOUNTING_BRIDGE_SECRET:secret};
     for(const type of ['CREATOR_MONTHLY','CREATOR_YEARLY','CREATOR_AI_MONTHLY','CREATOR_AI_YEARLY']) {
       const key='NEXT_PUBLIC_PADDLE_PRICE_'+type;assert(process.env[key]);laravelSecrets[key]=process.env[key];
     }
-    await writeEnv(path.join(next,'.env'),{...values,...nextValues});
+    const configSql = await fs.readFile(path.join(next,'db/migrations/2026_11_04_paddle_accounting_config.sql'),'utf8');
+    await db.query(configSql);
+    await writePaddleAccountingConfig(db,currentConfig.environment??'sandbox',{
+      bridgeSecret:secret,
+      defaultWebhookSecret:laravelSecrets.PADDLE_ACCOUNTING_DEFAULT_WEBHOOK_SECRET??currentConfig.defaultWebhookSecret??'',
+      spunkramWebhookSecret:laravelSecrets.PADDLE_ACCOUNTING_SPUNKRAM_WEBHOOK_SECRET??currentConfig.spunkramWebhookSecret??'',
+    });
+    if(Object.keys(nextValues).length) await writeEnv(path.join(next,'.env'),nextValues);
     await writeEnv(path.join(laravel,'.env'),{...values,...laravelSecrets,PADDLE_ACCOUNTING_BRIDGE_URL:'http://127.0.0.1:3000/api/internal/paddle-accounting'});
     run('runuser',['-u','motionflow_p_usr','--','php',path.join(laravel,'artisan'),'config:cache'],{cwd:laravel});
     run('pm2',['restart','motionflow']);

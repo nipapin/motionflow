@@ -15,6 +15,7 @@ import { AffiliateRefTracker } from "@/components/affiliate-ref-tracker";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import "./globals.css";
 import { PaddleProvider } from "@/lib/paddle";
+import { getDefaultPaddleCheckoutEnvironment } from "@/lib/paddle-accounting-config";
 
 const geistSans = Geist({
   subsets: ["latin"],
@@ -68,7 +69,10 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const sessionUser = await getSessionUser();
+  const [sessionUser, paddleEnvironment] = await Promise.all([
+    getSessionUser(),
+    getDefaultPaddleCheckoutEnvironment(),
+  ]);
   const initialUser = sessionUser ?? null;
   const heatRate = process.env.MOTIONFLOW_HEATMAP === "0" ? 0 : Math.min(1, Math.max(0,
     Number(process.env.MOTIONFLOW_HEATMAP_SAMPLE_RATE ?? "0.2") || 0));
@@ -86,7 +90,7 @@ export default async function RootLayout({
         >
           <VideoMuteProvider>
             <AuthProvider initialUser={initialUser}>
-              <PaddleProvider>
+              <PaddleProvider environment={paddleEnvironment}>
                 <FavoritesProvider>{children}</FavoritesProvider>
               </PaddleProvider>
             </AuthProvider>

@@ -96,7 +96,7 @@ export async function POST(request: Request) {
 
     const result = await upsertFromTransaction(
       txn as unknown as Parameters<typeof upsertFromTransaction>[0],
-      accountingSource(account),
+      await accountingSource(account),
     );
 
     return NextResponse.json({

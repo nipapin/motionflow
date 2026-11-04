@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { AppRouterCacheProvider } from "@mui/material-nextjs/v15-appRouter";
 import { AuthProvider } from "@/components/auth-provider";
 import { PaddleProvider } from "@/lib/paddle";
+import { getDefaultPaddleCheckoutEnvironment } from "@/lib/paddle-accounting-config";
 import { Toaster } from "@/components/ui/sonner";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { PremiereGalThemeProvider } from "./theme-provider";
@@ -22,7 +23,10 @@ export const metadata: Metadata = {
 };
 
 export default async function PremiereGalLayout({ children }: { children: React.ReactNode }) {
-  const sessionUser = await getSessionUser();
+  const [sessionUser, paddleEnvironment] = await Promise.all([
+    getSessionUser(),
+    getDefaultPaddleCheckoutEnvironment(),
+  ]);
 
   return (
     <html lang="en">
@@ -30,7 +34,7 @@ export default async function PremiereGalLayout({ children }: { children: React.
         <AppRouterCacheProvider options={{ key: "premiere-gal" }}>
           <PremiereGalThemeProvider>
             <AuthProvider initialUser={sessionUser}>
-              <PaddleProvider>
+              <PaddleProvider environment={paddleEnvironment}>
                 {children}
                 <Toaster />
               </PaddleProvider>

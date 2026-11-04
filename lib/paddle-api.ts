@@ -1,4 +1,5 @@
 import "server-only";
+import { getDefaultPaddleEnvironment } from "@/lib/paddle-accounting-config";
 import type { SpunkramPaddleEnvironment } from "@/lib/spunkram-paddle-config";
 import { getSpunkramPaddleCredentials } from "@/lib/spunkram-paddle-credentials";
 import { configuredSpunkramEnvironment } from "@/lib/paddle-accounting/spunkram-credentials.mjs";
@@ -13,12 +14,10 @@ import { configuredSpunkramEnvironment } from "@/lib/paddle-accounting/spunkram-
  * leftover active subscriptions when the buyer purchases a new plan
  * (so the "one active subscription per buyer_id" invariant holds).
  *
- * The base URL is derived from `NEXT_PUBLIC_PADDLE_ENVIRONMENT` so that
- * the client and the server target the same environment.
+ * The main checkout and server API use the same configured Paddle environment.
  *
  * Required env:
  *   PADDLE_API_KEY                — Server-side key (Dashboard → Developer tools → Authentication)
- *   NEXT_PUBLIC_PADDLE_ENVIRONMENT — "sandbox" | "production" (defaults to sandbox)
  *
  * Spunkram — pass `account: "spunkram"` to read its key from the database.
  */
@@ -60,7 +59,7 @@ async function paddleFetch<T>(
   const isSpunkram = account === "spunkram";
   const paddleEnvironment = isSpunkram
     ? environment ?? configuredSpunkramEnvironment()
-    : process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT?.toLowerCase();
+    : await getDefaultPaddleEnvironment();
   const apiKey = isSpunkram
     ? (await getSpunkramPaddleCredentials(environment)).apiKey
     : process.env.PADDLE_API_KEY;

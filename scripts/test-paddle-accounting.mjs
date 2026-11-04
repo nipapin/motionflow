@@ -380,8 +380,9 @@ test('Laravel bridge: HMAC, timestamp and environment are checked before financi
   const route={};let calls=0;
   const code=ts.transpileModule(await fs.readFile(new URL('../app/(main)/api/internal/paddle-accounting/route.ts',import.meta.url),'utf8'),
     {compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
-  vm.runInNewContext(code,{exports:route,process:{env:{PADDLE_ACCOUNTING_BRIDGE_SECRET:secret}},console:{error(){}},Buffer,require:name=>{
+  vm.runInNewContext(code,{exports:route,console:{error(){}},Buffer,require:name=>{
     if(name==='next/server')return {NextResponse:{json:(body,options)=>({body,status:options?.status??200})}};
+    if(name==='@/lib/paddle-accounting-config')return {getAccountingBridgeConfig:async()=>({bridgeSecret:secret,environment:'production'})};
     if(name==='@/lib/paddle-actual')return {accountingSource:()=>source,actualAccounting:{transaction:async()=>{calls++;return {handled:true,status:'pending'};}}};
     if(name==='@/lib/paddle-server')return {forwardActualAccountingPurchase:async()=>{}};
     return require(name);

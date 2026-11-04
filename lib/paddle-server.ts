@@ -828,7 +828,7 @@ export async function upsertFromTransaction(txnInput: PaddleTransaction, source?
   const txn = await resolveTransactionForUpsert(txnInput);
 
   if (txn.origin !== PAYMENT_METHOD_CHANGE_ORIGIN) {
-    const actual = await actualAccounting.transaction(txn, source ?? accountingSource(paddleAccountForTransaction(txn)));
+    const actual = await actualAccounting.transaction(txn, source ?? await accountingSource(paddleAccountForTransaction(txn)));
     if (actual.handled && !actual.passthrough) {
       // Financial errors remain durably pending; the legacy formula must never
       // run for a transaction already owned by the new journal.

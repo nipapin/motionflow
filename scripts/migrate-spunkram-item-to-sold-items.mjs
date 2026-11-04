@@ -45,6 +45,7 @@
  */
 import crypto from "node:crypto";
 import mysql from "mysql2/promise";
+import { readDefaultPaddleEnvironment } from "../lib/paddle-accounting/config.mjs";
 
 const SANDBOX_BASE = "https://sandbox-api.paddle.com";
 const PRODUCTION_BASE = "https://api.paddle.com";
@@ -64,11 +65,6 @@ function stripQuotes(value) {
     return t.slice(1, -1);
   }
   return t;
-}
-
-function getPaddleBaseUrl() {
-  const env = String(process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT ?? "sandbox").toLowerCase();
-  return env === "production" ? PRODUCTION_BASE : SANDBOX_BASE;
 }
 
 function parseFlags(argv) {
@@ -110,11 +106,12 @@ function parseFlags(argv) {
   return out;
 }
 
-async function fetchPaddleTransaction(id) {
+async function fetchPaddleTransaction(id, environment) {
   const apiKey = process.env.PADDLE_API_KEY;
   if (!apiKey) throw new Error("PADDLE_API_KEY not configured");
   // custom_data is a top-level field on the transaction — not an `include` value.
-  const url = `${getPaddleBaseUrl()}/transactions/${encodeURIComponent(id)}`;
+  const base = environment === "production" ? PRODUCTION_BASE : SANDBOX_BASE;
+  const url = `${base}/transactions/${encodeURIComponent(id)}`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${apiKey}` },
   });
@@ -281,7 +278,7 @@ async function main() {
 
     // 2. Fetch the Paddle transaction so we know item_id / license / etc.
     const txnId = String(sub.payment_id ?? flags.txnId);
-    const txn = await fetchPaddleTransaction(txnId);
+    const txn = await fetchPaddleTransaction(txnId, await readDefaultPaddleEnvironment(conn));
     const customData = txn.custom_data ?? {};
     console.log(`[migrate] Paddle txn ${txnId} custom_data:`, customData);
 

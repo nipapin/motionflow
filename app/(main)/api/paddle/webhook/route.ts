@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
-    const result = await handlePaddleEvent(event, accountingSource(account));
+    const result = await handlePaddleEvent(event, await accountingSource(account));
     if (!result.handled) {
       console.info(
         `[paddle-webhook] Skipped ${event.event_type} (${event.event_id}): ${result.reason ?? "unhandled"}`,

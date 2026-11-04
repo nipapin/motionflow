@@ -1,18 +1,24 @@
 import "server-only";
 import type { RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
+import { getDefaultPaddleEnvironment } from "@/lib/paddle-accounting-config";
 import { getTransaction, type PaddleApiAccount } from "@/lib/paddle-api";
 import { configuredSpunkramEnvironment, spunkramUsesDefaultLiveAccount } from "./paddle-accounting/spunkram-credentials.mjs";
 import { accountingCatalog } from "./paddle-accounting/catalog.mjs";
 import { createAccounting } from "./paddle-accounting/engine.mjs";
 
 export type AccountingSource = { account: PaddleApiAccount; environment: "production" | "sandbox" };
-export function accountingSource(account: PaddleApiAccount): AccountingSource {
+export async function accountingSource(
+  account: PaddleApiAccount,
+  defaultEnvironment?: AccountingSource["environment"],
+): Promise<AccountingSource> {
   if (account === "spunkram" && spunkramUsesDefaultLiveAccount()) {
     return { account: "default", environment: "production" };
   }
-  const env = account === "spunkram" ? configuredSpunkramEnvironment() : process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT;
-  return { account, environment: env === "production" ? "production" : "sandbox" };
+  const environment = account === "spunkram"
+    ? configuredSpunkramEnvironment()
+    : defaultEnvironment ?? await getDefaultPaddleEnvironment() ?? "sandbox";
+  return { account, environment };
 }
 
 export function actualAccountingCatalog() {
@@ -33,7 +39,7 @@ export async function actualAdjustment(data: Record<string, unknown>, source?: A
     if (!source) {
       const [owners] = await getPool().execute<RowDataPacket[]>("SELECT DISTINCT account,environment FROM paddle_accounting_transactions WHERE transaction_id=?", [data.transaction_id]);
       if (owners.length > 1) throw new Error("Ambiguous Paddle account for adjustment");
-      source = owners[0] ? { account: owners[0].account, environment: owners[0].environment } : accountingSource("default");
+      source = owners[0] ? { account: owners[0].account, environment: owners[0].environment } : await accountingSource("default");
     }
     const [rows] = await getPool().execute<RowDataPacket[]>(`SELECT s.accept_new,
       EXISTS(SELECT 1 FROM paddle_accounting_transactions t WHERE t.account=? AND t.environment=? AND t.transaction_id=?) AS owned
@@ -43,7 +49,7 @@ export async function actualAdjustment(data: Record<string, unknown>, source?: A
     if ((error as { code?: string }).code === "ER_NO_SUCH_TABLE") return { handled: false };
     throw error;
   }
-  source ??= accountingSource("default");
+  source ??= await accountingSource("default");
   const transaction = await getTransaction(data.transaction_id, source);
   return actualAccounting.adjustment(data, transaction, source);
 }

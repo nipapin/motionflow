@@ -1,22 +1,23 @@
 import { createHash } from 'node:crypto';
 import { PREMIERE_GAL_AUTHOR_ID, PREMIERE_GAL_PRICE_IDS } from '../../lib/premiere-gal-paddle-config.ts';
+import { readDefaultPaddleEnvironment } from '../../lib/paddle-accounting/config.mjs';
 import { CAMPAIGN_TABLE, addYear, asDate, sqlDate } from './premieregal-course.mjs';
 
 export const BILLING_TABLE = 'premieregal_course_billing';
 const decode = value => typeof value === 'string' ? JSON.parse(value) : value;
 const sameDate = (a, b) => Boolean(a && b) && asDate(a).getTime() === asDate(b).getTime();
 
-export function billingEnvironment() {
-  const environment = process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT?.toLowerCase();
-  if (!['sandbox', 'production'].includes(environment)) throw new Error('Set NEXT_PUBLIC_PADDLE_ENVIRONMENT explicitly to sandbox or production');
+export async function billingEnvironment(conn) {
+  const environment = await readDefaultPaddleEnvironment(conn);
+  if (!environment) throw new Error('Configure the default Paddle environment explicitly');
   return environment;
 }
 
 // Standalone CLI counterpart of lib/paddle-api.ts (which imports Next's server-only guard).
 export function createPaddleClient(fetchImpl = globalThis.fetch) {
-  async function request(id, body) {
+  async function request(id, body, environment) {
     if (!/^sub_[a-z0-9]{26}$/.test(id)) throw new Error('Invalid Paddle subscription id');
-    const environment = billingEnvironment();
+    environment ??= await billingEnvironment();
     const key = process.env.PADDLE_API_KEY?.trim();
     if (!key) throw new Error('Missing PADDLE_API_KEY');
     const base = environment === 'production' ? 'https://api.paddle.com' : 'https://sandbox-api.paddle.com';
@@ -28,9 +29,9 @@ export function createPaddleClient(fetchImpl = globalThis.fetch) {
     if (!response.ok || !json.data) throw new Error(`Paddle ${response.status}: ${json.error?.code || 'invalid_response'}`);
     return json.data;
   }
-  return { getSubscription: id => request(id), moveBillingDate: (id, target) => {
+  return { getSubscription: (id, environment) => request(id, undefined, environment), moveBillingDate: (id, target, environment) => {
     if (!Number.isFinite(Date.parse(target))) throw new Error('Invalid Paddle billing date');
-    return request(id, { next_billed_at: target, proration_billing_mode: 'do_not_bill' });
+    return request(id, { next_billed_at: target, proration_billing_mode: 'do_not_bill' }, environment);
   } };
 }
 
@@ -115,8 +116,8 @@ export async function previewBilling(conn, grants, client = paddleClient, enviro
     const unique = new Map(rows.map(row => [row.subscription_id, row]));
     for (const row of unique.values()) {
       if (!/^sub_[a-z0-9]{26}$/.test(row.subscription_id)) throw new Error('Legacy or missing Paddle Billing subscription id; review manually');
-      environment ||= billingEnvironment();
-      const live = await client.getSubscription(row.subscription_id);
+      environment ||= await billingEnvironment(conn);
+      const live = await client.getSubscription(row.subscription_id, environment);
       plans.push(planBilling(row, live, savedRows.find(saved => saved.subscription_id === row.subscription_id), environment, now));
     }
   }
@@ -139,10 +140,10 @@ export async function applyBilling(conn, grant, initialPlan, environment, client
         saved.target_next_billed_at, JSON.stringify(saved.snapshot)],
     );
   }
-  let live = await client.getSubscription(saved.subscription_id);
+  let live = await client.getSubscription(saved.subscription_id, environment);
   const plan = planBilling(initialPlan.row, live, saved, environment, now);
   if (plan.action === 'move_billing') {
-    live = await client.moveBillingDate(saved.subscription_id, saved.target_next_billed_at);
+    live = await client.moveBillingDate(saved.subscription_id, saved.target_next_billed_at, environment);
     const confirmed = planBilling(initialPlan.row, live, saved, environment, now);
     if (confirmed.action !== 'reconcile') throw new Error('Paddle did not confirm the target billing date');
   }

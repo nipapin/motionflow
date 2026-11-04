@@ -10,14 +10,15 @@ import type { SpunkramPaddleEnvironment } from "@/lib/spunkram-paddle-config";
 
 export function getSpunkramPaddleCredentials(
   environment: SpunkramPaddleEnvironment = configuredSpunkramEnvironment(),
+  allowEnvFallback = true,
 ) {
-  return withDbRetry(() => readSpunkramCredentials(getPool(), environment));
+  return withDbRetry(() => readSpunkramCredentials(getPool(), environment, allowEnvFallback));
 }
 
-export async function isSpunkramStorefrontEnabled(): Promise<boolean> {
+export async function isSpunkramCheckoutEnabled(): Promise<boolean> {
   try {
     const [rows] = await withDbRetry(() => getPool().execute<(RowDataPacket & { enabled: number })[]>(
-      "SELECT enabled FROM spunkram_storefront_settings WHERE id = 1",
+      "SELECT enabled FROM spunkram_storefront_settings WHERE id IN (1, 2) ORDER BY id DESC LIMIT 1",
     ));
     return Number(rows[0]?.enabled) === 1;
   } catch (error) {

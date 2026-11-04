@@ -56,7 +56,7 @@ node scripts/premieregal-course-students.mjs apply --csv "$courseCsv"
 
 После `apply` скрипт читает реальные подписки PremiereGal из Paddle по сохранённым в базе `sub_...`. Новая дата вычисляется **от `current_billing_period.ends_at` Paddle**, а не от сегодняшней даты или уже продлённого бесплатного доступа. Например, `2027-01-15` переходит в `2028-01-15` с сохранением времени. Для месячного тарифа после отложенного списания остаётся месячная периодичность.
 
-Нужны `PADDLE_API_KEY` с доступом чтения и изменения подписок и явно заданная `NEXT_PUBLIC_PADDLE_ENVIRONMENT=sandbox` или `production`. Используется основной аккаунт Paddle проекта, в котором находятся подписки PremiereGal.
+Нужны `PADDLE_API_KEY` с доступом чтения и изменения подписок и режим `sandbox` или `production` в `paddle_accounting_config`. Используется основной аккаунт Paddle проекта, в котором находятся подписки PremiereGal.
 
 Просмотр исходных и новых дат, только чтение базы и Paddle:
 
