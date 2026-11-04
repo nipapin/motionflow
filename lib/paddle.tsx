@@ -57,7 +57,6 @@ export function PaddleProvider({ children, token: tokenProp, environment: enviro
   useEffect(() => {
     if (initialized.current) return;
     if (!environmentProp) return;
-    initialized.current = true;
     const preview = localSandboxPreview && environmentProp === "sandbox";
     let previewActive = false;
     let previewCheckout: Paddle["Checkout"] | undefined;
@@ -75,6 +74,7 @@ export function PaddleProvider({ children, token: tokenProp, environment: enviro
       );
       return;
     }
+    initialized.current = true;
 
     initializePaddle({
       environment: environmentProp,

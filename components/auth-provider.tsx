@@ -46,9 +46,11 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({
   children,
   initialUser,
+  reloadAfterSignIn = false,
 }: {
   children: ReactNode;
   initialUser?: AuthUser | null;
+  reloadAfterSignIn?: boolean;
 }) {
   const [user, setUser] = useState<AuthUser | null>(initialUser ?? null);
   const [loading, setLoading] = useState(!initialUser);
@@ -116,7 +118,10 @@ export function AuthProvider({
         open={signInOpen}
         onOpenChange={setSignInOpen}
         initialMode={signInMode}
-        onAuthSuccess={() => setSignInOpen(false)}
+        onAuthSuccess={() => {
+          setSignInOpen(false);
+          if (reloadAfterSignIn) window.location.reload();
+        }}
       />
     </AuthContext.Provider>
   );

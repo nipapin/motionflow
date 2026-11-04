@@ -90,7 +90,7 @@ export default async function RootLayout({
           disableTransitionOnChange
           storageKey="motionflow-theme"
         >
-          <AuthProvider initialUser={sessionUser ?? null}>
+          <AuthProvider initialUser={sessionUser ?? null} reloadAfterSignIn>
             <PaddleProvider
               token={checkoutToken}
               environment={sandboxBuyer ? "sandbox" : spunkramPaddleEnvironment}

@@ -237,7 +237,7 @@ const TABLE = "subscription_systems";
 
 const LIST_SUBSCRIPTION_SQL = `SELECT id, author_id, status, subscription_id, plan, ends_at, created_at,
             paddle_product_id, paddle_price_id, paddle_product_name,
-            paddle_billing_period_ends_at
+            paddle_billing_period_ends_at, scheduled_change_action
      FROM \`${TABLE}\`
      WHERE buyer_id = ? AND paddle_refunded_at IS NULL
      ORDER BY id DESC`;
@@ -270,6 +270,7 @@ function computeRowActiveState(r: SubRow): { active: boolean; cancelled: boolean
     }
   } else if (r.status === 1) {
     active = endsAtStillValid(periodEnd);
+    cancelled = r.scheduled_change_action === "cancel";
   }
 
   return { active, cancelled };

@@ -44,6 +44,7 @@ type SubRow = RowDataPacket & {
   plan: string | null;
   ends_at: string | null;
   paddle_billing_period_ends_at: string | null;
+  scheduled_change_action: string | null;
   paddle_product_name: string | null;
   paddle_price_id: string | null;
 };
@@ -90,11 +91,11 @@ export async function getActiveAuthorSubscription(
 ): Promise<CepAuthorSubscription> {
   const pool = connection ?? getPool();
   const [rows] = await pool.execute<SubRow[]>(
-    `SELECT id, author_id, status, plan, ends_at, paddle_billing_period_ends_at,
+    { sql: `SELECT id, author_id, status, plan, ends_at, paddle_billing_period_ends_at, scheduled_change_action,
             paddle_product_name, paddle_price_id
      FROM \`${SUB_TABLE}\`
      WHERE buyer_id = ? AND author_id = ?
-     ORDER BY id DESC`,
+     ORDER BY id DESC`, dateStrings: true, timezone: "Z" },
     [userId, authorId],
   );
   const active = rows.find((r) => rowIsActive(r));
@@ -107,7 +108,7 @@ export async function getActiveAuthorSubscription(
       tierId: null,
     };
   }
-  const cancelled = active.status === -1;
+  const cancelled = active.status === -1 || active.scheduled_change_action === "cancel";
   const planLabel =
     active.paddle_product_name?.trim() ||
     active.plan?.trim() ||
