@@ -3,7 +3,7 @@ import "server-only";
 import { sendResendEmail } from "@/lib/mail/resend-mailer";
 
 const SPUNKRAM_CONTACT_EMAIL =
-  process.env.SPUNKRAM_CONTACT_EMAIL?.trim() || "spunkramhelp@gmail.com";
+  process.env.SPUNKRAM_CONTACT_EMAIL?.trim() || "support@spunkram.com";
 
 function escapeHtml(input: string): string {
   return input

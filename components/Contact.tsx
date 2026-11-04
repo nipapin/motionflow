@@ -327,10 +327,10 @@ export function Contact() {
           <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <p className="text-xs text-subtle"><SpunkramText>{"Or email us at"}</SpunkramText>{" "}
               <a
-                href="mailto:spunkramhelp@gmail.com"
+                href="mailto:support@spunkram.com"
                 className="text-foreground underline decoration-line-strong underline-offset-4 hover:decoration-foreground"
               >
-                spunkramhelp@gmail.com
+                support@spunkram.com
               </a>
             </p>
 
