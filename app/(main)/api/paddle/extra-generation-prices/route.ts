@@ -3,6 +3,7 @@ import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getExtraGenPacks } from "@/lib/extra-generation-packs";
 import { getPrice, type PaddleApiAccount } from "@/lib/paddle-api";
 import { getSpunkramExtraGenPacks } from "@/lib/spunkram-paddle-config";
+import { spunkramSourceForBuyer } from "@/lib/paddle-actual";
 
 export const runtime = "nodejs";
 
@@ -28,15 +29,12 @@ export async function GET(request: Request) {
       ? "spunkram"
       : "default";
 
-  if (account !== "spunkram") {
-    const user = await getSessionUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-  }
+  const user = await getSessionUser();
+  if (account !== "spunkram" && !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const source = account === "spunkram" ? await spunkramSourceForBuyer(user?.id ?? 0) : { account };
 
   const packs =
-    account === "spunkram" ? getSpunkramExtraGenPacks() : getExtraGenPacks();
+    account === "spunkram" ? getSpunkramExtraGenPacks("environment" in source ? source.environment : undefined) : getExtraGenPacks();
 
   if (!packs.some((pack) => pack.priceId)) {
     console.error(
@@ -63,7 +61,7 @@ export async function GET(request: Request) {
       continue;
     }
     try {
-      const p = await getPrice(pack.priceId, { account });
+      const p = await getPrice(pack.priceId, source);
       const amount = p.unit_price?.amount ?? null;
       const cur = p.unit_price?.currency_code ?? "USD";
       const label =

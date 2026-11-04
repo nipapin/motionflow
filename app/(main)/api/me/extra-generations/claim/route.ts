@@ -1,26 +1,31 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
-import { getGenerationsStatus } from "@/lib/generations";
+import { getCepSpunkramGenerationsStatus, getGenerationsStatus } from "@/lib/generations";
+import { cepAiGenerationsLimit, getActiveAuthorSubscription } from "@/lib/cep-entitlements";
+import { requireCepClientConfig } from "@/lib/cep-client-registry";
 import {
   applyExtraGenerationsCredit,
   extraGenerationsPackCountForPriceId,
 } from "@/lib/paddle-server";
-import { getTransaction, PaddleApiError } from "@/lib/paddle-api";
+import { getTransaction, PaddleApiError, type PaddleApiAccount } from "@/lib/paddle-api";
+import { accountingSource, actualAccountingCatalog, spunkramSourceForBuyer } from "@/lib/paddle-actual";
 import { isSpunkramExtraGenerationsPriceId, SPUNKRAM_AUTHOR_ID } from "@/lib/spunkram-paddle-config";
 import { MOTIONFLOW_CREDITS_AUTHOR_ID } from "@/lib/user-generation-credits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function loadExtraGenerationsTransaction(transactionId: string) {
-  try {
-    return await getTransaction(transactionId);
-  } catch (err) {
-    if (err instanceof PaddleApiError && err.status === 404) {
-      return getTransaction(transactionId, { account: "spunkram" });
+async function loadExtraGenerationsTransaction(transactionId: string, preferred: PaddleApiAccount, buyerId: number) {
+  const accounts: PaddleApiAccount[] = preferred === "spunkram" ? ["spunkram", "default"] : ["default", "spunkram"];
+  for (const account of accounts) {
+    const source = account === "spunkram" ? await spunkramSourceForBuyer(buyerId) : await accountingSource(account);
+    try {
+      return { txn: await getTransaction(transactionId, source), source };
+    } catch (err) {
+      if (account !== preferred || !(err instanceof PaddleApiError) || err.status !== 404) throw err;
     }
-    throw err;
   }
+  throw new Error("Paddle account unavailable");
 }
 
 /**
@@ -44,14 +49,16 @@ export async function POST(request: Request) {
   }
 
   let transactionId: string | null = null;
+  let preferred: PaddleApiAccount = "default";
   try {
     const body = (await request.json().catch(() => null)) as
-      | { transactionId?: unknown; transaction_id?: unknown }
+      | { transactionId?: unknown; transaction_id?: unknown; authorId?: unknown }
       | null;
     const raw = body?.transactionId ?? body?.transaction_id;
     if (typeof raw === "string" && raw.trim()) {
       transactionId = raw.trim();
     }
+    if (body?.authorId === SPUNKRAM_AUTHOR_ID) preferred = "spunkram";
   } catch {
     // fall-through: handled below
   }
@@ -64,13 +71,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    const txn = await loadExtraGenerationsTransaction(transactionId);
+    const { txn, source } = await loadExtraGenerationsTransaction(transactionId, preferred, user.id);
 
-    // Only credit on terminal-success states. `completed` is the canonical
-    // value for paid one-time charges; we accept `paid`/`billed` defensively
-    // because Paddle has historically used both for instant captures.
     const status = String(txn.status ?? "").toLowerCase();
-    if (status !== "completed" && status !== "paid" && status !== "billed") {
+    if (status !== "completed") {
       return NextResponse.json(
         { ok: false, reason: `transaction_not_completed:${status || "unknown"}` },
         { status: 409 },
@@ -113,6 +117,11 @@ export async function POST(request: Request) {
       ? SPUNKRAM_AUTHOR_ID
       : MOTIONFLOW_CREDITS_AUTHOR_ID;
 
+    if (source.environment === "sandbox" &&
+        (authorId !== SPUNKRAM_AUTHOR_ID || !actualAccountingCatalog().sandboxBuyerIds.includes(Number(user.id)))) {
+      return NextResponse.json({ ok: false, reason: "sandbox_buyer_not_enabled" }, { status: 403 });
+    }
+
     const result = await applyExtraGenerationsCredit(
       txn.id,
       Number(user.id),
@@ -120,7 +129,13 @@ export async function POST(request: Request) {
       authorId,
     );
 
-    const generationStatus = await getGenerationsStatus(Number(user.id));
+    const subscription = authorId === SPUNKRAM_AUTHOR_ID
+      ? await getActiveAuthorSubscription(Number(user.id), authorId)
+      : null;
+    const generationStatus = subscription
+      ? await getCepSpunkramGenerationsStatus(Number(user.id),
+        cepAiGenerationsLimit(requireCepClientConfig("spunkram-cep"), subscription), subscription.active, authorId)
+      : await getGenerationsStatus(Number(user.id));
     return NextResponse.json({
       ok: result.ok,
       credited:

@@ -1,5 +1,5 @@
 import "server-only";
-import type { RowDataPacket } from "mysql2/promise";
+import type { PoolConnection, RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
 import type { CepClientConfig } from "@/lib/cep-client-registry";
 import {
@@ -50,7 +50,7 @@ type SubRow = RowDataPacket & {
 
 function endsAtStillValid(endsAt: string | null): boolean {
   if (!endsAt) return true;
-  return new Date(endsAt) > new Date();
+  return Date.parse(toIsoDate(endsAt) ?? "") > Date.now();
 }
 
 function rowPeriodEnd(r: SubRow): string | null {
@@ -58,7 +58,7 @@ function rowPeriodEnd(r: SubRow): string | null {
   const b = r.paddle_billing_period_ends_at;
   if (!a) return b ?? null;
   if (!b) return a;
-  return new Date(a) >= new Date(b) ? a : b;
+  return Date.parse(toIsoDate(a) ?? "") >= Date.parse(toIsoDate(b) ?? "") ? a : b;
 }
 
 function rowIsActive(r: SubRow): boolean {
@@ -86,8 +86,9 @@ function toIsoDate(value: unknown): string | null {
 export async function getActiveAuthorSubscription(
   userId: number,
   authorId: number,
+  connection?: PoolConnection,
 ): Promise<CepAuthorSubscription> {
-  const pool = getPool();
+  const pool = connection ?? getPool();
   const [rows] = await pool.execute<SubRow[]>(
     `SELECT id, author_id, status, plan, ends_at, paddle_billing_period_ends_at,
             paddle_product_name, paddle_price_id

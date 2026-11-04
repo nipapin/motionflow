@@ -8,10 +8,24 @@ import {
 } from "@/lib/paddle-accounting/spunkram-credentials.mjs";
 import type { SpunkramPaddleEnvironment } from "@/lib/spunkram-paddle-config";
 
-export function getSpunkramPaddleCredentials(
+export const spunkramLocalSandbox =
+  process.env.NODE_ENV === "development" &&
+  process.env.SPUNKRAM_LOCAL_SANDBOX === "1" &&
+  configuredSpunkramEnvironment() === "sandbox";
+
+export async function getSpunkramPaddleCredentials(
   environment: SpunkramPaddleEnvironment = configuredSpunkramEnvironment(),
   allowEnvFallback = true,
 ) {
+  if (spunkramLocalSandbox && environment === "sandbox") {
+    const apiKey = process.env.SPUNKRAM_PADDLE_API_KEY?.trim() ?? "";
+    const clientToken = process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_CLIENT_TOKEN?.trim() ?? "";
+    return {
+      apiKey: apiKey.startsWith("pdl_sdbx_") ? apiKey : "",
+      clientToken: clientToken.startsWith("test_") ? clientToken : "",
+      webhookSecret: process.env.SPUNKRAM_PADDLE_WEBHOOK_SECRET?.trim() ?? "",
+    };
+  }
   return withDbRetry(() => readSpunkramCredentials(getPool(), environment, allowEnvFallback));
 }
 

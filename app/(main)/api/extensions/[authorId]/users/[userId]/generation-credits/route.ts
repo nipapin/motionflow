@@ -43,11 +43,14 @@ export async function POST(req: NextRequest, context: Context) {
   try {
     const { admin, userId, authorId, extensionName } = await authorize(context);
     const body = await req.json().catch(() => null);
+    const replace = body?.expectedBalance !== undefined;
     if (!body || typeof body !== "object" || Array.isArray(body)
-      || !Number.isSafeInteger(body.amount) || body.amount < 1 || body.amount > 1_000_000
+      || !Number.isSafeInteger(body.amount) || body.amount < (replace ? 0 : 1)
+      || body.amount > (replace ? 2_147_483_647 : 1_000_000)
+      || (replace && (!Number.isSafeInteger(body.expectedBalance) || body.expectedBalance < 0))
       || typeof body.requestId !== "string"
       || (body.note !== undefined && (typeof body.note !== "string" || body.note.length > 500))) throw new AuthorCreditGrantError("INVALID_GRANT", 400);
-    const result = await addAuthorExtraGenerations({ userId, authorId, adminUserId: admin.id, amount: body.amount, requestId: body.requestId, note: body.note });
+    const result = await addAuthorExtraGenerations({ userId, authorId, adminUserId: admin.id, amount: body.amount, requestId: body.requestId, note: body.note, expectedBalance: body.expectedBalance });
     return NextResponse.json({ ok: true, authorId, extensionName, ...result }, { headers: responseHeaders });
   } catch (error) { return fail(error); }
 }

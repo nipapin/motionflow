@@ -89,7 +89,7 @@ export function BuyExtraGenerationsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="data-[state=closed]:animate-none sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Buy extra generations</DialogTitle>
           <DialogDescription>

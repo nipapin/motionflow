@@ -13,8 +13,13 @@ import type { Project, ProjectApp } from "@/lib/data";
 import type { Product } from "@/lib/product-types";
 import { getSpunkramStorefrontItems } from "@/lib/market-items";
 import { productCardVideoSrc, productSoftwareLabel, productThumbnailUrl } from "@/lib/product-ui";
-import { SPUNKRAM_AUTHOR_ID } from "@/lib/spunkram-paddle-config";
+import { getSpunkramExtraGenPacks, SPUNKRAM_AUTHOR_ID } from "@/lib/spunkram-paddle-config";
 import { normalizeCepClient } from "@/lib/cep-client-registry";
+import { extraCheckoutBuyer } from "@/lib/spunkram-extra-checkout";
+import { isSpunkramSandboxBuyer, spunkramSourceForBuyer } from "@/lib/paddle-actual";
+import { getSessionUser } from "@/lib/auth/get-session-user";
+import { PaddleProvider } from "@/lib/paddle";
+import { getSpunkramPaddleCredentials, isSpunkramCheckoutEnabled, spunkramLocalSandbox } from "@/lib/spunkram-paddle-credentials";
 
 function toProjectApp(product: Product): ProjectApp | null {
   const label = productSoftwareLabel(product);
@@ -41,13 +46,30 @@ function toProject(product: Product): Project | null {
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ code?: string; client?: string; buy?: string }>;
+  searchParams: Promise<{ code?: string; client?: string; extraCheckout?: string }>;
 }) {
-  const { code, client: clientRaw, buy } = await searchParams;
-  const items = await getSpunkramStorefrontItems();
+  const { code, client: clientRaw, extraCheckout } = await searchParams;
+  const [items, extraBuyerId] = await Promise.all([getSpunkramStorefrontItems(), extraCheckoutBuyer(extraCheckout)]);
   const projects = items
     .map(toProject)
     .filter((item): item is Project => item != null);
+
+  let extraCheckoutDialog = null;
+  if (extraBuyerId !== null) {
+    const [source, user, storefrontEnabled] = await Promise.all([
+      spunkramSourceForBuyer(extraBuyerId), getSessionUser(), isSpunkramCheckoutEnabled(),
+    ]);
+    const packs = getSpunkramExtraGenPacks(source.environment);
+    extraCheckoutDialog = <SpunkramBuyExtraCredits buyerId={extraBuyerId} packs={packs} />;
+    const usingParentCheckout = spunkramLocalSandbox ||
+      (source.environment === "sandbox" ? user?.id === extraBuyerId && isSpunkramSandboxBuyer(extraBuyerId) : storefrontEnabled);
+    if (!usingParentCheckout) {
+      const { clientToken } = await getSpunkramPaddleCredentials(source.environment, false);
+      extraCheckoutDialog = <PaddleProvider token={clientToken} environment={source.environment}>
+        {extraCheckoutDialog}
+      </PaddleProvider>;
+    }
+  }
 
   return (
     <SpunkramLanguageProvider>
@@ -56,7 +78,7 @@ export default async function HomePage({
         initialCode={code ?? ""}
         initialClient={normalizeCepClient(clientRaw)}
       />
-      <SpunkramBuyExtraCredits openOnLoad={buy === "extra"} />
+      {extraCheckoutDialog}
       <NavbarWithOffset
         topClassName="top-3"
         position="sticky"

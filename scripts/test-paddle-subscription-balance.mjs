@@ -41,7 +41,9 @@ function fixture({ status = 1, credit = 'txn_paid', balance = 100 } = {}) {
   const port = load('paddle-laravel-port', { '@/lib/db': db });
   const server = load('paddle-server', {
     '@/lib/db': db,
-    '@/lib/paddle-actual': { actualAdjustment: async () => ({ handled: false }), isActualSubscription: async () => false },
+    '@/lib/paddle-actual': { actualAdjustment: async () => ({ handled: false }), isActualSubscription: async () => false,
+      accountingSource: async () => ({ account: 'default', environment: 'production' }) },
+    '@/lib/paddle-api': { getTransaction: async () => ({ id: 'txn_paid', items: [] }) },
     '@/lib/paddle-laravel-port': { ...port, lookupSubscriptionForGhl: async () => null,
       handleAdjustmentRefund: async () => { state.refundCalls++; return { ok: true, reason: 'not_direct_sale' }; },
       // A regression sentinel: the old event router called this and erased paid income.

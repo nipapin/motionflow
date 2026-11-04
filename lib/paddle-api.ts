@@ -57,9 +57,9 @@ async function paddleFetch<T>(
 ): Promise<T> {
   const { account = "default", environment, idempotencyKey, ...fetchInit } = init;
   const isSpunkram = account === "spunkram";
-  const paddleEnvironment = isSpunkram
-    ? environment ?? configuredSpunkramEnvironment()
-    : await getDefaultPaddleEnvironment();
+  const paddleEnvironment = environment ?? (isSpunkram
+    ? configuredSpunkramEnvironment()
+    : await getDefaultPaddleEnvironment());
   const apiKey = isSpunkram
     ? (await getSpunkramPaddleCredentials(environment)).apiKey
     : process.env.PADDLE_API_KEY;
@@ -163,11 +163,11 @@ export interface PaddleApiPrice {
 
 export async function getSubscription(
   id: string,
-  options: { account?: PaddleApiAccount; signal?: AbortSignal } = {},
+  options: { account?: PaddleApiAccount; environment?: SpunkramPaddleEnvironment; signal?: AbortSignal } = {},
 ): Promise<PaddleApiSubscription> {
   return paddleFetch<PaddleApiSubscription>(
     `/subscriptions/${encodeURIComponent(id)}?include=next_transaction`,
-    { account: options.account, signal: options.signal },
+    options,
   );
 }
 
@@ -266,13 +266,14 @@ export async function clearScheduledChange(
  */
 export async function cancelSubscriptionImmediately(
   subscriptionId: string,
-  options: { idempotencyKey?: string; account?: PaddleApiAccount } = {},
+  options: { idempotencyKey?: string; account?: PaddleApiAccount; environment?: SpunkramPaddleEnvironment } = {},
 ): Promise<PaddleApiSubscription> {
   return paddleFetch<PaddleApiSubscription>(
     `/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`,
     {
       method: "POST",
       account: options.account,
+      environment: options.environment,
       idempotencyKey: options.idempotencyKey,
       body: JSON.stringify({ effective_from: "immediately" }),
     },
@@ -330,6 +331,29 @@ export async function getTransaction(
   );
 }
 
+export function createCheckoutTransaction(
+  priceId: string,
+  customData: Record<string, unknown>,
+  source: { account: PaddleApiAccount; environment: SpunkramPaddleEnvironment },
+) {
+  return paddleFetch<PaddleApiTransaction>("/transactions", {
+    ...source,
+    method: "POST",
+    body: JSON.stringify({ items: [{ price_id: priceId, quantity: 1 }], collection_mode: "automatic", custom_data: customData }),
+  });
+}
+
+export function cancelCheckoutTransaction(
+  id: string,
+  source: { account: PaddleApiAccount; environment: SpunkramPaddleEnvironment },
+) {
+  return paddleFetch<PaddleApiTransaction>(`/transactions/${encodeURIComponent(id)}`, {
+    ...source,
+    method: "PATCH",
+    body: JSON.stringify({ status: "canceled" }),
+  });
+}
+
 /**
  * Create a billed transaction for a recurring price using the customer's
  * saved payment method. Paddle bills the card and, for recurring prices,
@@ -385,10 +409,10 @@ export async function createBilledRecurringTransaction(
 
 export async function getPrice(
   priceId: string,
-  options: { account?: PaddleApiAccount } = {},
+  options: { account?: PaddleApiAccount; environment?: SpunkramPaddleEnvironment } = {},
 ): Promise<PaddleApiPrice> {
   return paddleFetch<PaddleApiPrice>(`/prices/${encodeURIComponent(priceId)}`, {
-    account: options.account,
+    ...options,
   });
 }
 

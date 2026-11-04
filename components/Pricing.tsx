@@ -46,6 +46,7 @@ export function Pricing() {
   const [billing, setBilling] = useState<BillingPeriod>("yearly");
   const [openingTier, setOpeningTier] = useState<SpunkramSubscriptionTierId | null>(null);
   const awaitingCheckout = useRef(false);
+  const checkoutAttempt = useRef<string | null>(null);
   const libraryTier = spunkramSubscriptionTiers.find((t) => t.id === "library");
 
   useEffect(() => {
@@ -53,7 +54,9 @@ export function Pricing() {
       if (!awaitingCheckout.current) return;
       if (event.name === "checkout.completed") {
         awaitingCheckout.current = false;
+        checkoutAttempt.current = null;
         setOpeningTier(null);
+        paddle?.Checkout.close();
         toast.success(t("Payment successful! Your subscription is activating…"));
         const transactionId = event.data?.transaction_id ?? null;
         void (async () => {
@@ -73,31 +76,36 @@ export function Pricing() {
               );
             }
           }
-          router.push("/account?checkout=success");
+          router.refresh();
         })();
       }
       if (event.name === "checkout.error") {
         awaitingCheckout.current = false;
+        releaseCheckout();
         setOpeningTier(null);
         toast.error(t("Checkout error. Please try again."));
       }
       if (event.name === "checkout.closed") {
         awaitingCheckout.current = false;
+        releaseCheckout();
         setOpeningTier(null);
       }
     });
-  }, [subscribe, router, t]);
+  }, [subscribe, paddle, router, t]);
 
-  const openSubscribeCheckout = (tierId: SpunkramSubscriptionTierId) => {
+  function releaseCheckout() {
+    const attemptId = checkoutAttempt.current;
+    checkoutAttempt.current = null;
+    if (!attemptId) return;
+    void fetch("/api/spunkram/subscription-checkout", {
+      method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ attemptId }),
+    }).catch(() => {});
+  }
+
+  const openSubscribeCheckout = async (tierId: SpunkramSubscriptionTierId) => {
+    if (openingTier !== null) return;
     if (!user) {
       openSignIn("signin");
-      return;
-    }
-
-    const priceId = SPUNKRAM_SUBSCRIPTION_PRICE_IDS[tierId][billing];
-
-    if (!priceId?.startsWith("pri_")) {
-      toast.error(t("Subscription checkout is not configured."));
       return;
     }
 
@@ -109,27 +117,54 @@ export function Pricing() {
     }
 
     setOpeningTier(tierId);
-    awaitingCheckout.current = true;
 
     try {
+      const attemptId = crypto.randomUUID();
+      const response = await fetch("/api/spunkram/subscription-checkout", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attemptId, tier: tierId, billing }),
+      });
+      const result = await response.json();
+      if (result.error === "subscription_active") {
+        setOpeningTier(null);
+        toast.info("You already have a Spunkram subscription.", {
+          action: { label: "Manage subscription", onClick: () => router.push("/profile/subscriptions?client=spunkram-cep") },
+        });
+        return;
+      }
+      if (result.error === "checkout_pending") {
+        setOpeningTier(null);
+        toast.info("A Spunkram checkout is already open. Finish or close it before trying again.");
+        return;
+      }
+      if (!response.ok) throw new Error(result.error ?? "Could not start checkout");
+      const priceId = SPUNKRAM_SUBSCRIPTION_PRICE_IDS[tierId][billing];
+      if (!result.transactionId && (!result.preview || !priceId?.startsWith("pri_"))) {
+        throw new Error("Subscription checkout is not configured");
+      }
+      checkoutAttempt.current = result.transactionId ? attemptId : null;
+      awaitingCheckout.current = true;
       paddle.Checkout.open({
         settings: {
           displayMode: "overlay",
           theme: "light",
           allowLogout: false,
         },
-        items: [{ priceId, quantity: 1 }],
         customer: { email: user.email ?? undefined },
-        customData: {
+        ...(result.transactionId ? { transactionId: result.transactionId } : {
+          items: [{ priceId, quantity: 1 }],
+          customData: {
           buyer_id: String(user.id),
           kind: "spunkram_subscription",
           author_id: String(SPUNKRAM_AUTHOR_ID),
           billingPeriod: billing,
           tier: tierId,
-        },
+          },
+        }),
       });
     } catch (err) {
       awaitingCheckout.current = false;
+      releaseCheckout();
       setOpeningTier(null);
       console.error("[spunkram-pricing] paddle checkout open failed:", err);
       toast.error(t("Could not open checkout. Please try again."));

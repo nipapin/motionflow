@@ -7,9 +7,10 @@ import { getSessionUser } from "@/lib/auth/get-session-user";
 import { SpunkramMainHeader } from "@/components/spunkram-main-header";
 import { PaddleProvider } from "@/lib/paddle";
 import { getDefaultPaddleEnvironment } from "@/lib/paddle-accounting-config";
+import { actualAccountingCatalog, isSpunkramSandboxBuyer } from "@/lib/paddle-actual";
 import { spunkramUsesDefaultLiveAccount } from "@/lib/paddle-accounting/spunkram-credentials.mjs";
 import { spunkramPaddleEnvironment } from "@/lib/spunkram-paddle-config";
-import { getSpunkramPaddleCredentials, isSpunkramCheckoutEnabled } from "@/lib/spunkram-paddle-credentials";
+import { getSpunkramPaddleCredentials, isSpunkramCheckoutEnabled, spunkramLocalSandbox } from "@/lib/spunkram-paddle-credentials";
 import { SiteFooter } from "@/components/site-footer";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -37,7 +38,8 @@ export const metadata: Metadata = {
 // Inline script to apply theme before first paint (prevents flash)
 const themeScript = `(function(){try{var t=localStorage.getItem('theme');var m=window.matchMedia('(prefers-color-scheme: light)').matches;var light=t==='light'||(!t&&m);if(light){document.documentElement.classList.add('light');}}catch(e){}})();`;
 
-async function getCheckoutToken() {
+async function getCheckoutToken(sandboxBuyer: boolean) {
+  if (spunkramLocalSandbox || sandboxBuyer) return (await getSpunkramPaddleCredentials("sandbox")).clientToken;
   const enabled = await isSpunkramCheckoutEnabled();
   if (spunkramPaddleEnvironment === "sandbox") {
     if (enabled) return "";
@@ -54,13 +56,12 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [sessionUser, checkoutToken] = await Promise.all([
-    getSessionUser(),
-    getCheckoutToken().catch((error) => {
-      console.error("[spunkram] Paddle credentials unavailable", error);
-      return "";
-    }),
-  ]);
+  const sessionUser = await getSessionUser();
+  const sandboxBuyer = !!sessionUser && isSpunkramSandboxBuyer(sessionUser.id);
+  const checkoutToken = await getCheckoutToken(sandboxBuyer).catch((error) => {
+    console.error("[spunkram] Paddle credentials unavailable", error);
+    return "";
+  });
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -92,7 +93,9 @@ export default async function RootLayout({
           <AuthProvider initialUser={sessionUser ?? null}>
             <PaddleProvider
               token={checkoutToken}
-              environment={spunkramPaddleEnvironment}
+              environment={sandboxBuyer ? "sandbox" : spunkramPaddleEnvironment}
+              localSandboxPreview={spunkramLocalSandbox}
+              sandboxBuyerIds={spunkramLocalSandbox ? actualAccountingCatalog().sandboxBuyerIds : undefined}
             >
               <div className="relative min-h-screen overflow-x-clip">
                 {/* Decorative layer first so it never stacks above app content in edge cases */}

@@ -322,6 +322,8 @@ test('MySQL: both cabinets read stored movements, pending states and current use
       if(name==='server-only')return {};
       if(name==='@/lib/db')return {getPool:()=>({execute:f.conn.execute.bind(f.conn)})};
       if(name==='@/lib/paddle-api')return {};
+      if(name==='@/lib/paddle-accounting-config')return {};
+      if(name.endsWith('spunkram-credentials.mjs'))return {};
       if(name.endsWith('catalog.mjs'))return {accountingCatalog};
       if(name.endsWith('engine.mjs'))return {createAccounting};
       return require(name);
@@ -383,6 +385,7 @@ test('Laravel bridge: HMAC, timestamp and environment are checked before financi
   vm.runInNewContext(code,{exports:route,console:{error(){}},Buffer,require:name=>{
     if(name==='next/server')return {NextResponse:{json:(body,options)=>({body,status:options?.status??200})}};
     if(name==='@/lib/paddle-accounting-config')return {getAccountingBridgeConfig:async()=>({bridgeSecret:secret,environment:'production'})};
+    if(name==='@/lib/spunkram-paddle-config')return {SPUNKRAM_AUTHOR_ID:1691};
     if(name==='@/lib/paddle-actual')return {accountingSource:()=>source,actualAccounting:{transaction:async()=>{calls++;return {handled:true,status:'pending'};}}};
     if(name==='@/lib/paddle-server')return {forwardActualAccountingPurchase:async()=>{}};
     return require(name);

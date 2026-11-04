@@ -99,14 +99,14 @@ export const spunkramSubscriptionTiers: SpunkramSubscriptionTier[] = [
       "Access to all existing packs",
       "Every new pack included for free",
       "Commercial license",
-      "5 generations per month",
+      "10 generations per month",
     ],
   },
   {
     id: "ai_toolkit",
     name: "Editor AI",
     monthlyPrice: 19.9,
-    yearlyPrice: 190.8,
+    yearlyPrice: 191,
     savings: "−20%",
     highlight: true,
     features: [

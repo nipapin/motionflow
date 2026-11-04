@@ -14,9 +14,14 @@ export class AuthorCreditGrantError extends Error {
 export async function addAuthorExtraGenerations(input: {
   userId: number; authorId: number; adminUserId: number;
   amount: number; requestId: string; note?: string;
+  expectedBalance?: number;
 }): Promise<{ extraBalance: number; added: number; duplicate: boolean }> {
+  const replace = input.expectedBalance !== undefined;
+  const action = replace ? "admin_set_extra" : "admin_add_extra";
   if (![input.userId, input.authorId, input.adminUserId].every(id => Number.isSafeInteger(id) && id > 0)
-    || !Number.isSafeInteger(input.amount) || input.amount < 1 || input.amount > 1_000_000
+    || !Number.isSafeInteger(input.amount) || input.amount < (replace ? 0 : 1)
+    || input.amount > (replace ? 2_147_483_647 : 1_000_000)
+    || (replace && (!Number.isSafeInteger(input.expectedBalance) || input.expectedBalance! < 0))
     || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.requestId)) {
     throw new AuthorCreditGrantError("INVALID_GRANT", 400);
   }
@@ -34,26 +39,33 @@ export async function addAuthorExtraGenerations(input: {
       // The credits-row lock serializes grants, retries and concurrent CEP debits.
       const [previous] = await conn.execute<RowDataPacket[]>(
         `SELECT payload FROM user_generation_credit_audit
-         WHERE user_id = ? AND author_id = ? AND action = 'admin_add_extra'
+         WHERE user_id = ? AND author_id = ? AND action IN ('admin_add_extra', 'admin_set_extra')
            AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.requestId')) = ? LIMIT 1`,
         [input.userId, input.authorId, input.requestId],
       );
       if (previous[0]) {
         const payload = typeof previous[0].payload === "string" ? JSON.parse(previous[0].payload) : previous[0].payload;
-        if (Number(payload.amount) !== input.amount || Number(payload.adminUserId) !== input.adminUserId) throw new AuthorCreditGrantError("REQUEST_CONFLICT", 409);
+        if (Number(payload.amount) !== input.amount || Number(payload.adminUserId) !== input.adminUserId
+          || payload.expectedBalance !== input.expectedBalance) throw new AuthorCreditGrantError("REQUEST_CONFLICT", 409);
         await conn.commit();
         return { extraBalance: before, added: 0, duplicate: true };
       }
-      const after = before + input.amount;
+      if (replace && before !== input.expectedBalance) throw new AuthorCreditGrantError("BALANCE_CHANGED", 409);
+      const after = replace ? input.amount : before + input.amount;
       if (!Number.isSafeInteger(after) || after > 2_147_483_647) throw new AuthorCreditGrantError("BALANCE_LIMIT", 400);
-      await incrementPurchasedExtraBalance(input.userId, input.amount, conn, input.authorId);
+      if (replace) {
+        await conn.execute("UPDATE user_generation_credits SET extra_balance = ? WHERE user_id = ? AND author_id = ?",
+          [after, input.userId, input.authorId]);
+      } else {
+        await incrementPurchasedExtraBalance(input.userId, input.amount, conn, input.authorId);
+      }
       await conn.execute(
         `INSERT INTO user_generation_credit_audit (user_id, author_id, action, payload, note)
-         VALUES (?, ?, 'admin_add_extra', ?, ?)`,
-        [input.userId, input.authorId, JSON.stringify({ requestId: input.requestId, adminUserId: input.adminUserId, amount: input.amount, before, after }), input.note?.trim() || null],
+         VALUES (?, ?, ?, ?, ?)`,
+        [input.userId, input.authorId, action, JSON.stringify({ requestId: input.requestId, adminUserId: input.adminUserId, amount: input.amount, expectedBalance: input.expectedBalance, before, after }), input.note?.trim() || null],
       );
       await conn.commit();
-      return { extraBalance: after, added: input.amount, duplicate: false };
+      return { extraBalance: after, added: after - before, duplicate: false };
     } catch (error) {
       await conn.rollback();
       throw error;

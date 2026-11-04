@@ -3,11 +3,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import ts from "typescript";
 const require = createRequire(import.meta.url);
 const { NextRequest } = require("next/server");
-const root = path.resolve(new URL("../", import.meta.url).pathname);
+const root = fileURLToPath(new URL("../", import.meta.url));
 function loader(mocks) {
   const cache = new Map();
   function load(id) {
@@ -38,9 +39,13 @@ function fixture({ admin = { id: 6, email: "admin@example.test" }, failAudit = f
     execute: async (sql, values) => {
       if (sql.startsWith("SELECT id FROM users")) return [userExists ? [{ id: 7 }] : []];
       if (sql.includes("SELECT payload")) return [audits.filter(row => row.user === values[0] && row.author === values[1] && row.payload.requestId === values[2]).map(row => ({ payload: JSON.stringify(row.payload) }))];
+      if (sql.startsWith("UPDATE user_generation_credits SET extra_balance")) {
+        balances.set(`${values[1]}:${values[2]}`, values[0]);
+        return [{ affectedRows: 1 }];
+      }
       if (sql.includes("INSERT INTO user_generation_credit_audit")) {
         if (failAudit) throw new Error("fixture audit failure");
-        audits.push({ user: values[0], author: values[1], payload: JSON.parse(values[2]), note: values[3] });
+        audits.push({ user: values[0], author: values[1], payload: JSON.parse(values[3]), note: values[4] });
         return [{ affectedRows: 1 }];
       }
       throw new Error(`Unexpected test SQL: ${sql}`);
@@ -80,6 +85,21 @@ test("only packages administrators can read or change author credits", async () 
     assert.equal(f.balances.get("7:1691"), 20);
     assert.equal(f.audits.length, 0);
   }
+});
+
+test("setting Extra to zero is idempotent and rejects a stale balance", async () => {
+  const f = fixture();
+  const set = { amount: 0, expectedBalance: 20, requestId };
+  const response = await f.route.POST(postRequest(set), ctx());
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).extraBalance, 0);
+  const retry = await f.route.POST(postRequest(set), ctx());
+  assert.equal((await retry.json()).duplicate, true);
+  const stale = await f.route.POST(postRequest({ ...set, requestId: "22222222-2222-4222-8222-222222222222" }), ctx());
+  assert.equal(stale.status, 409);
+  assert.equal((await stale.json()).error, "BALANCE_CHANGED");
+  assert.equal(f.audits.length, 1);
+  assert.equal(f.balances.get("7:4141"), 50);
 });
 test("manual grant adds to Spunkram balance and the real CEP status route immediately reads it", async () => {
   const f = fixture();

@@ -1,8 +1,9 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { getAccountingBridgeConfig } from "@/lib/paddle-accounting-config";
-import { actualAccounting, actualAdjustment, accountingSource, isActualSubscription } from "@/lib/paddle-actual";
-import { forwardActualAccountingPurchase, handlePaddleEvent, type PaddleWebhookEvent } from "@/lib/paddle-server";
+import { actualAccounting, accountingSource, isActualSubscription } from "@/lib/paddle-actual";
+import { applyPaddleRefund, forwardActualAccountingPurchase, handlePaddleEvent, type PaddleWebhookEvent } from "@/lib/paddle-server";
+import { SPUNKRAM_AUTHOR_ID } from "@/lib/spunkram-paddle-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,15 +35,20 @@ export async function POST(request: Request) {
     if (event.event_type === "transaction.completed") {
       const result = await actualAccounting.transaction(event.data, source);
       if (result.handled) await forwardActualAccountingPurchase(result);
-      // Credits retain their existing idempotent fulfillment handler.
-      if (result.handled && result.passthrough) await handlePaddleEvent(event, source);
-      return NextResponse.json(result);
+      if (result.handled && result.passthrough) {
+        const fulfillment = await handlePaddleEvent(event, source);
+        if (fulfillment.reason === "extra_generations_credit_failed") {
+          return NextResponse.json({ error: fulfillment.reason }, { status: 503 });
+        }
+      }
+      return NextResponse.json({ ...result, handled: result.handled || source.environment === "sandbox" });
     }
     if (event.event_type === "adjustment.created" || event.event_type === "adjustment.updated") {
-      return NextResponse.json(await actualAdjustment(event.data as Record<string, unknown>, source));
+      const result = await applyPaddleRefund(event.data as Record<string, unknown>, source);
+      return NextResponse.json({ ...result, handled: result.handled || source.environment === "sandbox" });
     }
     const subscriptionId = (event.data as { id?: string }).id;
-    if (subscriptionId && event.event_type.startsWith("subscription.") && await isActualSubscription(subscriptionId)) {
+    if (subscriptionId && event.event_type.startsWith("subscription.") && await isActualSubscription(subscriptionId, SPUNKRAM_AUTHOR_ID)) {
       const result = await handlePaddleEvent(event, source);
       return NextResponse.json({ ...result, handled: true });
     }

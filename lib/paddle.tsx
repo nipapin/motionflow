@@ -16,6 +16,8 @@ import {
   type Paddle,
   type PaddleEventData,
 } from "@paddle/paddle-js";
+import { toast } from "sonner";
+import { useAuth } from "@/components/auth-provider";
 
 type EventListener = (event: PaddleEventData) => void;
 
@@ -37,17 +39,28 @@ type PaddleProviderProps = {
   token?: string;
   /** A null environment disables checkout when its configuration is unavailable. */
   environment: Environments | null;
+  localSandboxPreview?: boolean;
+  sandboxBuyerIds?: number[];
 };
 
-export function PaddleProvider({ children, token: tokenProp, environment: environmentProp }: PaddleProviderProps) {
+export function PaddleProvider({ children, token: tokenProp, environment: environmentProp, localSandboxPreview = false, sandboxBuyerIds }: PaddleProviderProps) {
+  const { user } = useAuth();
   const [paddle, setPaddle] = useState<Paddle | null>(null);
   const initialized = useRef(false);
   const listeners = useRef<Set<EventListener>>(new Set());
+  const sandboxBuyer = useRef<number | null>(null);
+  useEffect(() => {
+    const id = Number(user?.id);
+    sandboxBuyer.current = sandboxBuyerIds?.includes(id) ? id : null;
+  }, [sandboxBuyerIds, user?.id]);
 
   useEffect(() => {
     if (initialized.current) return;
     if (!environmentProp) return;
     initialized.current = true;
+    const preview = localSandboxPreview && environmentProp === "sandbox";
+    let previewActive = false;
+    let previewCheckout: Paddle["Checkout"] | undefined;
 
     const token =
       tokenProp !== undefined
@@ -67,6 +80,12 @@ export function PaddleProvider({ children, token: tokenProp, environment: enviro
       environment: environmentProp,
       token,
       eventCallback: (event) => {
+        // Handle preview success without forwarding it to the account claim flow.
+        if (previewActive && event.name === "checkout.completed") {
+          toast.success("Test payment completed");
+          previewCheckout?.close();
+          return;
+        }
         listeners.current.forEach((cb) => {
           try {
             cb(event);
@@ -77,12 +96,30 @@ export function PaddleProvider({ children, token: tokenProp, environment: enviro
       },
     })
       .then((instance) => {
-        if (instance) setPaddle(instance);
+        if (!instance) return;
+        if (preview) {
+          const checkout = instance.Checkout;
+          previewCheckout = checkout;
+          const open = checkout.open.bind(checkout);
+          checkout.open = (options) => {
+            if (options.transactionId && sandboxBuyer.current !== null) return open(options);
+            if (!options.items?.length) throw new Error("Sandbox preview requires catalog items");
+            previewActive = sandboxBuyer.current === null || Number(options.customData?.buyer_id) !== sandboxBuyer.current;
+            if (!previewActive) return open(options);
+            return open({
+              items: options.items,
+              settings: { ...options.settings, allowLogout: false },
+              customer: { email: "spunkram-checkout-preview@example.com" },
+              customData: { kind: "spunkram_local_preview" },
+            });
+          };
+        }
+        setPaddle(instance);
       })
       .catch((err) => {
         console.error("[Paddle] Failed to initialize:", err);
       });
-  }, [tokenProp, environmentProp]);
+  }, [tokenProp, environmentProp, localSandboxPreview]);
 
   const subscribe = useCallback((listener: EventListener) => {
     listeners.current.add(listener);

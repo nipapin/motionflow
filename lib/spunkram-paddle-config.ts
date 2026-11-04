@@ -59,7 +59,7 @@ function envPri(value: string | undefined): string | undefined {
 const sandboxExtraPacks = [
   { count: 20, priceId: envPri(process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_20) },
   { count: 50, priceId: envPri(process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_50) },
-  { count: 200, priceId: envPri(process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_200) },
+  { count: 100, priceId: envPri(process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_100) },
 ];
 const productionExtraPacks = [
   { count: 20, priceId: envPri(process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_PRODUCTION_20) },
@@ -67,14 +67,42 @@ const productionExtraPacks = [
   { count: 100, priceId: envPri(process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_PRODUCTION_100) },
 ];
 
+export function spunkramPricesForEnvironment(environment: SpunkramPaddleEnvironment) {
+  if (environment === "production") return {
+    library: {
+      monthly: process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_PRODUCTION_MONTHLY ?? "",
+      yearly: process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_PRODUCTION_YEARLY ?? "",
+    },
+    ai_toolkit: {
+      monthly: process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_PRODUCTION_MONTHLY ?? "",
+      yearly: process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_PRODUCTION_YEARLY ?? "",
+    },
+  };
+  return {
+    library: {
+      monthly: process.env.SPUNKRAM_SANDBOX_PRICE_EDITOR_MONTHLY ?? process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_MONTHLY ?? "",
+      yearly: process.env.SPUNKRAM_SANDBOX_PRICE_EDITOR_YEARLY ?? process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_YEARLY ?? "",
+    },
+    ai_toolkit: {
+      monthly: process.env.SPUNKRAM_SANDBOX_PRICE_EDITOR_AI_MONTHLY ?? process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_MONTHLY ?? "",
+      yearly: process.env.SPUNKRAM_SANDBOX_PRICE_EDITOR_AI_YEARLY ?? process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EDITOR_AI_YEARLY ?? "",
+    },
+  };
+}
+
 export const SPUNKRAM_EXTRA_GEN_PACKS: readonly {
   count: number;
   priceId: string | undefined;
 }[] = isSpunkramPaddleProduction ? productionExtraPacks : sandboxExtraPacks;
 
 /** One-time Additional Credits prices on the Spunkram Paddle account. */
-export function getSpunkramExtraGenPacks() {
-  return SPUNKRAM_EXTRA_GEN_PACKS;
+export function getSpunkramExtraGenPacks(environment = spunkramPaddleEnvironment) {
+  if (environment === "production") return productionExtraPacks;
+  return [
+    { count: 20, priceId: envPri(process.env.SPUNKRAM_SANDBOX_PRICE_EXTRA_20) ?? sandboxExtraPacks[0].priceId },
+    { count: 50, priceId: envPri(process.env.SPUNKRAM_SANDBOX_PRICE_EXTRA_50) ?? sandboxExtraPacks[1].priceId },
+    { count: 100, priceId: envPri(process.env.SPUNKRAM_SANDBOX_PRICE_EXTRA_100) ?? sandboxExtraPacks[2].priceId },
+  ];
 }
 
 export function isSpunkramExtraGenerationsPriceId(
@@ -87,7 +115,8 @@ export function spunkramExtraPackCountForPriceId(
   priceId: string | null | undefined,
 ): number | null {
   if (!priceId?.startsWith("pri_")) return null;
-  return [...productionExtraPacks, ...sandboxExtraPacks]
+  return [...productionExtraPacks, ...getSpunkramExtraGenPacks("sandbox"),
+    { count: 200, priceId: envPri(process.env.NEXT_PUBLIC_SPUNKRAM_PADDLE_PRICE_EXTRA_200) }]
     .find((pack) => pack.priceId === priceId)?.count ?? null;
 }
 
@@ -103,29 +132,22 @@ export const SPUNKRAM_SUBSCRIPTION_PRICE_IDS: Record<
 export type SpunkramPaddleEnvironment = "sandbox" | "production";
 
 export function listSpunkramSubscriptionPriceIds(): string[] {
-  return [
-    SPUNKRAM_LIBRARY_SUBSCRIPTION_PRICE_IDS.monthly,
-    SPUNKRAM_LIBRARY_SUBSCRIPTION_PRICE_IDS.yearly,
-    SPUNKRAM_AI_TOOLKIT_SUBSCRIPTION_PRICE_IDS.monthly,
-    SPUNKRAM_AI_TOOLKIT_SUBSCRIPTION_PRICE_IDS.yearly,
-  ].filter((id) => id.startsWith("pri_"));
+  return ["sandbox", "production"].flatMap((environment) =>
+    Object.values(spunkramPricesForEnvironment(environment as SpunkramPaddleEnvironment)).flatMap(Object.values),
+  ).filter((id) => id.startsWith("pri_"));
 }
 
 export function isSpunkramAiToolkitPriceId(priceId: string | null | undefined): boolean {
   if (!priceId?.startsWith("pri_")) return false;
-  const ids = [
-    SPUNKRAM_AI_TOOLKIT_SUBSCRIPTION_PRICE_IDS.monthly,
-    SPUNKRAM_AI_TOOLKIT_SUBSCRIPTION_PRICE_IDS.yearly,
-  ].filter((id) => id.startsWith("pri_"));
+  const ids = [...Object.values(spunkramPricesForEnvironment("sandbox").ai_toolkit),
+    ...Object.values(spunkramPricesForEnvironment("production").ai_toolkit)];
   return ids.includes(priceId);
 }
 
 export function isSpunkramLibraryPriceId(priceId: string | null | undefined): boolean {
   if (!priceId?.startsWith("pri_")) return false;
-  const ids = [
-    SPUNKRAM_LIBRARY_SUBSCRIPTION_PRICE_IDS.monthly,
-    SPUNKRAM_LIBRARY_SUBSCRIPTION_PRICE_IDS.yearly,
-  ].filter((id) => id.startsWith("pri_"));
+  const ids = [...Object.values(spunkramPricesForEnvironment("sandbox").library),
+    ...Object.values(spunkramPricesForEnvironment("production").library)];
   return ids.includes(priceId);
 }
 

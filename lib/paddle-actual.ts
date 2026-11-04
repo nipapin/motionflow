@@ -25,6 +25,14 @@ export function actualAccountingCatalog() {
   return accountingCatalog();
 }
 
+export function isSpunkramSandboxBuyer(userId: number) {
+  return actualAccountingCatalog().sandboxBuyerIds.includes(userId);
+}
+
+export async function spunkramSourceForBuyer(userId: number): Promise<AccountingSource> {
+  return isSpunkramSandboxBuyer(userId) ? { account: "spunkram", environment: "sandbox" } : accountingSource("spunkram");
+}
+
 export const actualAccounting = createAccounting({
   getConnection: () => getPool().getConnection(), catalog: actualAccountingCatalog,
   marketTable: process.env.DB_MARKET_ITEMS_TABLE ?? "marketplace_items",
@@ -54,12 +62,18 @@ export async function actualAdjustment(data: Record<string, unknown>, source?: A
   return actualAccounting.adjustment(data, transaction, source);
 }
 
-export async function isActualSubscription(subscriptionId: string): Promise<boolean> {
+export async function isActualSubscription(subscriptionId: string, authorId?: number): Promise<boolean> {
   try {
     const [rows] = await getPool().execute<RowDataPacket[]>(
       "SELECT id FROM paddle_accounting_transactions WHERE subscription_id=? LIMIT 1", [subscriptionId],
     );
-    return rows.length > 0;
+    if (rows.length > 0) return true;
+    if (authorId == null) return false;
+    const [subscriptions] = await getPool().execute<RowDataPacket[]>(
+      "SELECT id FROM subscription_systems WHERE subscription_id=? AND author_id=? LIMIT 1",
+      [subscriptionId, authorId],
+    );
+    return subscriptions.length > 0;
   } catch (error) {
     if ((error as { code?: string }).code === "ER_NO_SUCH_TABLE") return false;
     throw error;
@@ -78,13 +92,13 @@ export async function getActualEarningsEntries(userId: number): Promise<ActualEa
       ORDER BY created_at DESC LIMIT 24`, [userId]);
     const [pending] = await pool.execute<RowDataPacket[]>(`SELECT CONCAT('pending-',t.id) AS id,t.transaction_id,'USD' AS currency_code,
       NULL AS minor_amount,'pending' AS status,DATE_FORMAT(t.created_at,'%Y-%m-%d %H:%i:%s') AS created_at,NULL AS adjustment_id
-      FROM paddle_accounting_transactions t WHERE t.status='pending' AND JSON_CONTAINS(t.participants,?)
+      FROM paddle_accounting_transactions t WHERE t.environment='production' AND t.status='pending' AND JSON_CONTAINS(t.participants,?)
       ORDER BY created_at DESC LIMIT 24`, [String(userId)]);
     const [adjustments] = await pool.execute<RowDataPacket[]>(`SELECT CONCAT('adjustment-',a.id) AS id,t.transaction_id,'USD' AS currency_code,
       NULL AS minor_amount,'pending' AS status,DATE_FORMAT(a.created_at,'%Y-%m-%d %H:%i:%s') AS created_at,a.adjustment_id
       FROM paddle_accounting_adjustments a JOIN paddle_accounting_transactions t
       ON t.transaction_id=a.transaction_id AND t.account=a.account AND t.environment=a.environment
-      WHERE a.status='pending' AND JSON_CONTAINS(t.participants,?)
+      WHERE t.environment='production' AND a.status='pending' AND JSON_CONTAINS(t.participants,?)
       ORDER BY created_at DESC LIMIT 24`, [String(userId)]);
     const rows = [...posted,...pending,...adjustments].sort((a,b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0,24);
     return rows.map(r => ({ id: String(r.id), transactionId: String(r.transaction_id), currency: String(r.currency_code),

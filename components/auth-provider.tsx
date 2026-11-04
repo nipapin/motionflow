@@ -100,7 +100,7 @@ export function AuthProvider({
       await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     } finally {
       setUser(null);
-      window.location.href = "/";
+      window.location.reload();
     }
   }, []);
 

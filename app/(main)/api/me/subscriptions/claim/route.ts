@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getTransaction, PaddleApiError, type PaddleApiAccount } from "@/lib/paddle-api";
 import { upsertFromTransaction } from "@/lib/paddle-server";
-import { accountingSource } from "@/lib/paddle-actual";
+import { accountingSource, spunkramSourceForBuyer } from "@/lib/paddle-actual";
 import { isSpunkramSubscriptionPriceId } from "@/lib/spunkram-paddle-config";
 
 export const runtime = "nodejs";
@@ -43,21 +43,27 @@ export async function POST(request: Request) {
     // Prefer Spunkram sandbox when the client tells us via price/kind hints on
     // a first probe; if Spunkram key is missing we fall back to default.
     let account: PaddleApiAccount = "spunkram";
+    let source = await spunkramSourceForBuyer(user.id);
     let txn;
     try {
-      txn = await getTransaction(transactionId, { account });
+      txn = await getTransaction(transactionId, source);
     } catch (err) {
       if (!(err instanceof PaddleApiError) || err.status !== 404) throw err;
       account = "default";
-      txn = await getTransaction(transactionId, { account });
+      source = await accountingSource(account);
+      txn = await getTransaction(transactionId, source);
     }
 
     const status = String(txn.status ?? "").toLowerCase();
-    if (status !== "completed" && status !== "paid" && status !== "billed") {
+    if (status !== "completed") {
       return NextResponse.json(
         { ok: false, reason: `transaction_not_completed:${status || "unknown"}` },
         { status: 409 },
       );
+    }
+    if (txn.items?.some((item) => item.price?.billing_cycle) &&
+      (!txn.subscription_id?.startsWith("sub_") || !txn.billing_period?.starts_at || !txn.billing_period.ends_at)) {
+      return NextResponse.json({ ok: false, reason: "subscription_period_pending" }, { status: 409 });
     }
 
     const customDataBuyerId = txn.custom_data?.buyer_id ?? txn.custom_data?.userId;
@@ -96,7 +102,7 @@ export async function POST(request: Request) {
 
     const result = await upsertFromTransaction(
       txn as unknown as Parameters<typeof upsertFromTransaction>[0],
-      await accountingSource(account),
+      source,
     );
 
     return NextResponse.json({

@@ -1,18 +1,16 @@
 "use client";
 
 import { useEffect } from "react";
+import { toast } from "sonner";
 import { BuyExtraGenerationsDialog } from "@/components/buy-extra-generations-dialog";
 import { useAuth } from "@/components/auth-provider";
 import { useExtraGenerationsPurchase } from "@/hooks/use-extra-generations-purchase";
-import {
-  SPUNKRAM_AUTHOR_ID,
-  SPUNKRAM_EXTRA_GEN_PACKS,
-} from "@/lib/spunkram-paddle-config";
+import { SPUNKRAM_AUTHOR_ID, type getSpunkramExtraGenPacks } from "@/lib/spunkram-paddle-config";
 
 const PRICES_URL = "/api/paddle/extra-generation-prices?account=spunkram";
 
-export function SpunkramBuyExtraCredits({ openOnLoad }: { openOnLoad: boolean }) {
-  const { user } = useAuth();
+export function SpunkramBuyExtraCredits({ buyerId, packs }: { buyerId: number; packs: ReturnType<typeof getSpunkramExtraGenPacks> }) {
+  const { user, openSignIn } = useAuth();
   const {
     buyOpen,
     setBuyOpen,
@@ -23,22 +21,20 @@ export function SpunkramBuyExtraCredits({ openOnLoad }: { openOnLoad: boolean })
     checkoutLoading,
     purchaseDisabled,
   } = useExtraGenerationsPurchase({
-    packs: SPUNKRAM_EXTRA_GEN_PACKS,
+    packs,
     authorId: SPUNKRAM_AUTHOR_ID,
   });
 
   useEffect(() => {
-    if (!openOnLoad) return;
-    if (new URLSearchParams(window.location.search).get("buy") !== "extra") return;
+    if (!new URLSearchParams(window.location.search).has("extraCheckout")) return;
     openBuyDialog();
-  }, [openOnLoad, openBuyDialog, user]);
+  }, [openBuyDialog, user]);
 
   function onOpenChange(open: boolean) {
     setBuyOpen(open);
     if (open || typeof window === "undefined") return;
     const url = new URL(window.location.href);
-    if (url.searchParams.get("buy") !== "extra") return;
-    url.searchParams.delete("buy");
+    url.searchParams.delete("extraCheckout");
     const next = `${url.pathname}${url.search}${url.hash}`;
     window.history.replaceState(null, "", next);
   }
@@ -49,10 +45,22 @@ export function SpunkramBuyExtraCredits({ openOnLoad }: { openOnLoad: boolean })
       onOpenChange={onOpenChange}
       selectedCount={selectedCount}
       onSelectCount={setSelectedCount}
-      onContinue={continuePurchase}
+      onContinue={(priceId) => {
+        if (!user) {
+          setBuyOpen(false);
+          openSignIn("signin");
+          return;
+        }
+        if (Number(user.id) !== buyerId) {
+          toast.error("Sign in with the same account as the Spunkram extension.");
+          return;
+        }
+        onOpenChange(false);
+        continuePurchase(priceId);
+      }}
       continueLoading={checkoutLoading}
       continueDisabled={purchaseDisabled}
-      packs={SPUNKRAM_EXTRA_GEN_PACKS}
+      packs={packs}
       pricesUrl={PRICES_URL}
     />
   );

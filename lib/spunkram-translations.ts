@@ -139,7 +139,7 @@ export const spunkramTurkish: Record<string, string> = {
   "Commercial license": "Ticari lisans",
   "Access to all existing packs": "Mevcut tüm paketlere erişim",
   "Every new pack included for free": "Her yeni paket ücretsiz dahil",
-  "5 generations per month": "Ayda 5 üretim",
+  "10 generations per month": "Ayda 10 üretim",
   "100 generations per month": "Ayda 100 üretim",
   "Updates included": "Güncellemeler dahil",
   "Cancel in 1 click": "Tek tıkla iptal",

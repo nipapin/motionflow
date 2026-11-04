@@ -239,7 +239,7 @@ const LIST_SUBSCRIPTION_SQL = `SELECT id, author_id, status, subscription_id, pl
             paddle_product_id, paddle_price_id, paddle_product_name,
             paddle_billing_period_ends_at
      FROM \`${TABLE}\`
-     WHERE buyer_id = ?
+     WHERE buyer_id = ? AND paddle_refunded_at IS NULL
      ORDER BY id DESC`;
 
 /** When set, access ends after this instant (Paddle / DB `ends_at`). */

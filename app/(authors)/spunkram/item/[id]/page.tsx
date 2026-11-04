@@ -287,7 +287,7 @@ export default async function SpunkramItemPage({
           {showSubscriptionPromo ? (
             <section className="card rounded-2xl border border-brand-500/30 bg-[linear-gradient(180deg,rgba(110,60,255,0.16),rgba(110,60,255,0.06))] px-4 py-4 shadow-[inset_0_1px_0_0_rgb(255_255_255/0.12)]">
               <h3 className="text-base font-semibold leading-snug text-white sm:text-lg">
-                Get all projects from $15.9/mo.
+                Get all projects with Editor from $14.90 per month.
               </h3>
               <p className="mt-2 text-sm leading-relaxed text-muted">
                 Get access to all items in one convenient subscription.

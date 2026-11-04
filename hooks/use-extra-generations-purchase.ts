@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { toast } from "sonner";
 import { useAuth } from "@/components/auth-provider";
 import { usePaddle } from "@/lib/paddle";
@@ -42,6 +43,7 @@ export function useExtraGenerationsPurchase(options?: {
       if (event.name === "checkout.completed") {
         awaitingExtraCheckout.current = false;
         setBuyOpen(false);
+        paddle?.Checkout.close();
         toast.success("Payment successful! Updating your balance…");
         const transactionId = event.data?.transaction_id ?? null;
         // Fire-and-forget: hit the server-side claim endpoint so the credit is
@@ -57,7 +59,7 @@ export function useExtraGenerationsPurchase(options?: {
                 credentials: "include",
                 cache: "no-store",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ transactionId }),
+                body: JSON.stringify({ transactionId, authorId }),
               });
             } catch (err) {
               console.warn(
@@ -72,11 +74,11 @@ export function useExtraGenerationsPurchase(options?: {
             // Caller's refresh failures are surfaced through their own UI.
           }
         })();
-      } else if (event.name === "checkout.error") {
+      } else if (event.name === "checkout.error" || event.name === "checkout.closed") {
         awaitingExtraCheckout.current = false;
       }
     });
-  }, [subscribe, onSuccess]);
+  }, [subscribe, paddle, onSuccess, authorId]);
 
   const continuePurchase = useCallback((priceIdOverride?: string) => {
     const pack = packs.find((p) => p.count === selectedCount);
@@ -91,6 +93,7 @@ export function useExtraGenerationsPurchase(options?: {
 
     if (priceId && paddle) {
       setCheckoutLoading(true);
+      flushSync(() => setBuyOpen(false));
       awaitingExtraCheckout.current = true;
       try {
         paddle.Checkout.open({

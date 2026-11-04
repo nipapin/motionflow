@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Info } from "lucide-react";
 import { usePaddle } from "@/lib/paddle";
 import { useAuth } from "@/components/auth-provider";
@@ -25,6 +26,7 @@ export function ItemCheckoutCard({
   withoutProjectFile?: boolean;
 }) {
   const { paddle, ready, subscribe } = usePaddle();
+  const router = useRouter();
   const { user, openSignIn } = useAuth();
   const [licenseType, setLicenseType] = useState<SpunkramLicenseType>("personal");
   const [isOpening, setIsOpening] = useState(false);
@@ -48,14 +50,16 @@ export function ItemCheckoutCard({
       if (event.name === "checkout.completed") {
         awaitingCheckout.current = false;
         setIsOpening(false);
+        paddle?.Checkout.close();
         setFeedback("Payment successful. Access is being activated.");
+        router.refresh();
       }
       if (event.name === "checkout.error" || event.name === "checkout.closed") {
         awaitingCheckout.current = false;
         setIsOpening(false);
       }
     });
-  }, [subscribe]);
+  }, [subscribe, paddle, router]);
 
   const openCheckout = () => {
     setFeedback(null);

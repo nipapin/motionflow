@@ -1,11 +1,12 @@
 import "server-only";
 import crypto from "node:crypto";
-import { actualAccounting, actualAdjustment, accountingSource, type AccountingSource } from "@/lib/paddle-actual";
+import { actualAccounting, actualAccountingCatalog, actualAdjustment, accountingSource, type AccountingSource } from "@/lib/paddle-actual";
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
 import {
   MOTIONFLOW_CREDITS_AUTHOR_ID,
   incrementPurchasedExtraBalance,
+  ensureUserGenerationCreditsSchema,
 } from "@/lib/user-generation-credits";
 import { getExtraGenPacks } from "@/lib/extra-generation-packs";
 import { normalizePaddleProductNameToken } from "@/lib/paddle-product-label";
@@ -236,6 +237,7 @@ interface PaddleTransaction {
   items?: PaddleItem[];
   details?: {
     totals?: PaddleTxnTotals | null;
+    adjusted_totals?: PaddleTxnTotals | null;
     line_items?: PaddleTxnLineItem[];
   } | null;
   payments?: PaddleTxnPayment[];
@@ -450,10 +452,12 @@ function transactionLooksRecurring(txn: PaddleTransaction): boolean {
  * `checkout.completed` (and the client claim that follows it) can fire before
  * Paddle has attached `subscription_id` / `billing_period` on the transaction.
  * Without those we would persist `subscription_id = txn_…` and `ends_at = NULL`.
- * Poll the API briefly, then fall back to the subscription entity for period dates.
+ * Poll the original charge for its paid period. The current subscription
+ * period can belong to a different renewal.
  */
 async function resolveTransactionForUpsert(
   txn: PaddleTransaction,
+  source?: AccountingSource,
 ): Promise<PaddleTransaction> {
   let current = txn;
   const account = paddleAccountForTransaction(current);
@@ -466,9 +470,9 @@ async function resolveTransactionForUpsert(
       }
       if (attempt > 0) await sleep(350 * attempt);
       try {
-        current = (await getTransaction(current.id, { account })) as unknown as PaddleTransaction;
+        current = (await getTransaction(current.id, source ?? { account })) as unknown as PaddleTransaction;
       } catch (err) {
-        if (err instanceof PaddleApiError && err.status === 404 && account === "spunkram") {
+        if (!source && err instanceof PaddleApiError && err.status === 404 && account === "spunkram") {
           try {
             current = (await getTransaction(current.id, {
               account: "default",
@@ -484,29 +488,6 @@ async function resolveTransactionForUpsert(
           break;
         }
       }
-    }
-  }
-
-  if (!current.billing_period?.ends_at && current.subscription_id?.startsWith("sub_")) {
-    try {
-      const sub = await getSubscription(current.subscription_id, {
-        account: paddleAccountForTransaction(current),
-      });
-      const period = sub.current_billing_period;
-      if (period?.ends_at) {
-        current = {
-          ...current,
-          billing_period: {
-            starts_at: period.starts_at ?? null,
-            ends_at: period.ends_at ?? null,
-          },
-        };
-      }
-    } catch (err) {
-      console.warn(
-        `[paddle] resolveTransactionForUpsert: getSubscription failed for ${current.subscription_id}:`,
-        err,
-      );
     }
   }
 
@@ -662,9 +643,9 @@ export async function applyExtraGenerationsCredit(
     await conn.beginTransaction();
     const [ins] = await conn.execute<ResultSetHeader>(
       `INSERT IGNORE INTO \`${EXTRA_GEN_CREDIT_EVENTS_TABLE}\`
-         (\`paddle_transaction_id\`, \`user_id\`, \`generations\`)
-       VALUES (?, ?, ?)`,
-      [paddleTransactionId, userId, generations],
+         (\`paddle_transaction_id\`, \`user_id\`, \`generations\`, author_id)
+       VALUES (?, ?, ?, ?)`,
+      [paddleTransactionId, userId, generations, authorId],
     );
     if (ins.affectedRows === 0) {
       await conn.commit();
@@ -700,7 +681,7 @@ export async function getLifetimeExtraGenerationsPurchased(
   const [rows] = await getPool().execute<SumRow[]>(
     `SELECT COALESCE(SUM(\`generations\`), 0) AS total
        FROM \`${EXTRA_GEN_CREDIT_EVENTS_TABLE}\`
-      WHERE \`user_id\` = ?`,
+      WHERE \`user_id\` = ? AND refunded_at IS NULL`,
     [userId],
   );
   return Number(rows[0]?.total ?? 0);
@@ -825,16 +806,36 @@ export async function upsertFromTransaction(txnInput: PaddleTransaction, source?
   reason?: string;
   buyerId?: number;
 }> {
-  const txn = await resolveTransactionForUpsert(txnInput);
+  const txn = await resolveTransactionForUpsert(txnInput, source);
 
   if (txn.origin !== PAYMENT_METHOD_CHANGE_ORIGIN) {
-    const actual = await actualAccounting.transaction(txn, source ?? await accountingSource(paddleAccountForTransaction(txn)));
+    if (transactionLooksRecurring(txn) && !SIDE_CHARGE_ORIGINS.has(txn.origin ?? "") &&
+      (!txn.subscription_id?.startsWith("sub_") || !txn.billing_period?.starts_at || !txn.billing_period.ends_at)) {
+      return { ok: false, reason: "subscription_period_pending" };
+    }
+    const scope = source ?? await accountingSource(paddleAccountForTransaction(txn));
+    const actual = await actualAccounting.transaction(txn, scope);
     if (actual.handled && !actual.passthrough) {
+      await forwardActualAccountingPurchase(actual);
+      return { ok: true, buyerId: actual.buyerId ?? undefined, reason: `actual_accounting_${actual.status}` };
+    }
+    const priceId = pickPaddleCatalogIds(txn.items).priceId;
+    const packCount = extraGenerationsPackCountForPriceId(priceId);
+    if (packCount != null) {
+      const buyerId = await resolveBuyerId(txn);
+      if (!buyerId) return { ok: false, reason: "missing_buyer_id" };
+      if (scope.environment === "sandbox" && !actualAccountingCatalog().sandboxBuyerIds.includes(buyerId)) {
+        return { ok: false, reason: "sandbox_buyer_not_allowed" };
+      }
+      return { ...await applyExtraGenerationsCredit(txn.id, buyerId, packCount, extraCreditAuthorId(txn)), buyerId };
+    }
+    if (actual.handled) {
       // Financial errors remain durably pending; the legacy formula must never
       // run for a transaction already owned by the new journal.
       await forwardActualAccountingPurchase(actual);
       return { ok: true, buyerId: actual.buyerId ?? undefined, reason: `actual_accounting_${actual.status}` };
     }
+    if (scope.environment === "sandbox") return { ok: false, reason: "sandbox_accounting_required" };
   }
 
   // Payment-method-only updates must be handled BEFORE the side-charge check
@@ -1069,7 +1070,7 @@ export async function upsertFromTransaction(txnInput: PaddleTransaction, source?
        ON DUPLICATE KEY UPDATE
          \`buyer_id\`       = VALUES(\`buyer_id\`),
          \`payment_id\`     = VALUES(\`payment_id\`),
-         \`status\`         = VALUES(\`status\`),
+         \`status\`         = IF(paddle_refunded_at IS NULL, VALUES(\`status\`), 0),
          \`amount\`         = VALUES(\`amount\`),
          \`amount_summary\` = VALUES(\`amount_summary\`),
          \`price\`          = VALUES(\`price\`),
@@ -1347,11 +1348,9 @@ export async function cancelOtherActiveSubscriptionsForBuyer(
  * change are filled in by `POST /api/subscription/schedule-downgrade` before
  * this webhook arrives; we use `COALESCE` here so we don't wipe them.
  */
-export async function refreshSubscription(sub: PaddleSubscription): Promise<{
-  ok: boolean;
-  reason?: string;
-}> {
+export async function refreshSubscription(sub: PaddleSubscription, occurredAt?: string): Promise<{ ok: boolean; reason?: string }> {
   if (!sub.id) return { ok: false, reason: "missing_subscription_id" };
+  const occurred = occurredAt ? paddleStateTimestamp(occurredAt) : null;
 
   const status = statusToInt(sub.status);
   const plan = pickSubscriptionPlan(sub);
@@ -1395,8 +1394,10 @@ export async function refreshSubscription(sub: PaddleSubscription): Promise<{
             \`scheduled_change_paddle_price_id\`     = CASE WHEN ? THEN NULL ELSE \`scheduled_change_paddle_price_id\` END,
             \`scheduled_change_paddle_product_name\` = CASE WHEN ? THEN NULL ELSE \`scheduled_change_paddle_product_name\` END,
             \`scheduled_change_plan\`                = CASE WHEN ? THEN NULL ELSE \`scheduled_change_plan\` END,
+            paddle_state_occurred_at = COALESCE(?, paddle_state_occurred_at),
             \`updated_at\`    = NOW()
-      WHERE \`subscription_id\` = ?`,
+      WHERE \`subscription_id\` = ? AND paddle_refunded_at IS NULL
+        AND (? IS NULL OR paddle_state_occurred_at IS NULL OR paddle_state_occurred_at < ?)`,
     [
       status,
       plan,
@@ -1413,12 +1414,12 @@ export async function refreshSubscription(sub: PaddleSubscription): Promise<{
       clear,                          // paddle_price_id:   CASE WHEN clear THEN NULL ELSE col
       clear,                          // paddle_product_name: CASE WHEN clear THEN NULL ELSE col
       clear,                          // plan:              CASE WHEN clear THEN NULL ELSE col
-      sub.id,
+      occurred, sub.id, occurred, occurred,
     ],
   );
 
   if (result.affectedRows === 0) {
-    return { ok: true, reason: "no_existing_row_yet" };
+    return { ok: true, reason: "stale_or_unknown_subscription" };
   }
   return { ok: true };
 }
@@ -1438,23 +1439,27 @@ export async function refreshSubscription(sub: PaddleSubscription): Promise<{
  */
 export async function markSubscriptionCanceled(
   sub: PaddleSubscription,
+  occurredAt?: string,
 ): Promise<{ ok: boolean; reason?: string }> {
   if (!sub.id) return { ok: false, reason: "missing_subscription_id" };
 
   const endsAt = pickEndsAt(sub);
+  const occurred = occurredAt ? paddleStateTimestamp(occurredAt) : null;
 
   const pool = getPool();
   const [result] = await pool.execute<ResultSetHeader>(
     `UPDATE \`${SUBSCRIPTIONS_TABLE}\`
         SET \`status\`     = -1,
             ${ENDS_AT_NEVER_SHORTEN_SQL},
+            paddle_state_occurred_at = COALESCE(?, paddle_state_occurred_at),
             \`updated_at\` = NOW()
-      WHERE \`subscription_id\` = ?`,
-    [...endsAtNeverShortenParams(endsAt), sub.id],
+      WHERE \`subscription_id\` = ? AND paddle_refunded_at IS NULL
+        AND (? IS NULL OR paddle_state_occurred_at IS NULL OR paddle_state_occurred_at < ?)`,
+    [...endsAtNeverShortenParams(endsAt), occurred, sub.id, occurred, occurred],
   );
 
   if (result.affectedRows === 0) {
-    return { ok: true, reason: "ignored_unknown_subscription" };
+    return { ok: true, reason: "stale_or_unknown_subscription" };
   }
   return { ok: true };
 }
@@ -1602,6 +1607,113 @@ const REFRESH_EVENTS = new Set([
   "subscription.resumed",
 ]);
 
+function paddleStateTimestamp(value: string) {
+  const iso = new Date(value).toISOString();
+  const fraction = value.match(/\.(\d+)Z$/)?.[1] ?? iso.slice(20, 23);
+  return `${iso.slice(0, 19).replace("T", " ")}.${fraction.padEnd(6, "0").slice(0, 6)}`;
+}
+
+type PaddleRefund = {
+  action?: string;
+  status?: string;
+  type?: string;
+  transaction_id?: string;
+  items?: Array<{ item_id?: string; type?: string }>;
+};
+
+async function revokeExtraPack(txn: PaddleTransaction, generations: number, source: AccountingSource) {
+  await ensureExtraGenerationsSchema();
+  await ensureUserGenerationCreditsSchema();
+  const buyerId = await resolveBuyerId(txn);
+  const authorId = extraCreditAuthorId(txn);
+  const conn = await getPool().getConnection();
+  try {
+    await conn.beginTransaction();
+    if (buyerId && (source.environment === "production" || actualAccountingCatalog().sandboxBuyerIds.includes(buyerId))) {
+      // A refund can arrive before the completed webhook. A refunded row prevents
+      // that late webhook or a browser claim from granting the pack.
+      await conn.execute(
+        `INSERT IGNORE INTO \`${EXTRA_GEN_CREDIT_EVENTS_TABLE}\`
+         (paddle_transaction_id, user_id, generations, author_id, refunded_at)
+         VALUES (?, ?, ?, ?, UTC_TIMESTAMP(6))`,
+        [txn.id, buyerId, generations, authorId],
+      );
+    }
+    const [events] = await conn.execute<RowDataPacket[]>(
+      `SELECT user_id, generations, author_id, refunded_at FROM \`${EXTRA_GEN_CREDIT_EVENTS_TABLE}\`
+        WHERE paddle_transaction_id = ? FOR UPDATE`, [txn.id],
+    );
+    const row = events[0];
+    if (row && !row.refunded_at) {
+      const scope = Number(row.author_id ?? authorId);
+      await conn.execute(
+        "UPDATE user_generation_credits SET extra_balance = GREATEST(0, extra_balance - ?) WHERE user_id = ? AND author_id = ?",
+        [row.generations, row.user_id, scope],
+      );
+      if (scope === MOTIONFLOW_CREDITS_AUTHOR_ID) {
+        await conn.execute("UPDATE users SET extra_generations_count = GREATEST(0, extra_generations_count - ?) WHERE id = ?",
+          [row.generations, row.user_id]);
+      }
+      await conn.execute(
+        `UPDATE \`${EXTRA_GEN_CREDIT_EVENTS_TABLE}\` SET refunded_at = UTC_TIMESTAMP(6), author_id = ? WHERE paddle_transaction_id = ?`,
+        [scope, txn.id],
+      );
+    }
+    await conn.commit();
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
+}
+
+async function revokeRefundedAccess(transactionId: string, data: PaddleRefund, source: AccountingSource, legacy: boolean) {
+  const txn = await getTransaction(transactionId, source) as PaddleTransaction;
+  const line = txn.details?.line_items?.[0];
+  const fullyRefunded = data.type === "full" ||
+    data.items?.some((item) => item.type === "full" && item.item_id === line?.id) ||
+    (txn.details?.adjusted_totals?.grand_total === "0" && Number(txn.details?.totals?.grand_total) > 0);
+  if (txn.items?.length !== 1 || !fullyRefunded) return;
+
+  const packCount = extraGenerationsPackCountForPriceId(pickPaddleCatalogIds(txn.items).priceId);
+  if (packCount != null) {
+    await revokeExtraPack(txn, packCount, source);
+    return;
+  }
+
+  const subscriptionId = txn.subscription_id;
+  if (!subscriptionId?.startsWith("sub_")) return;
+  if (legacy && source.environment === "production") {
+    const [[owned]] = await getPool().execute<RowDataPacket[]>(
+      "SELECT id FROM subscription_systems WHERE subscription_id=? AND payment_id=? AND author_id=? AND subscription_systems.system='paddle' LIMIT 1",
+      [subscriptionId, txn.id, SPUNKRAM_AUTHOR_ID],
+    );
+    if (owned) await reverseAuthorBalanceForRefundedSubscriptionPayment(txn.id);
+  }
+  const [result] = await getPool().execute<ResultSetHeader>(
+    `UPDATE \`${SUBSCRIPTIONS_TABLE}\` SET status = 0, paddle_refunded_at = COALESCE(paddle_refunded_at, UTC_TIMESTAMP(6)),
+      scheduled_change_action = NULL, scheduled_change_effective_at = NULL, updated_at = UTC_TIMESTAMP()
+     WHERE subscription_id = ? AND payment_id = ? AND author_id = ?
+       AND (COALESCE(\`system\`,'') = 'paddle_sandbox') = ?`,
+    [subscriptionId, txn.id, SPUNKRAM_AUTHOR_ID, source.environment === "sandbox" ? 1 : 0],
+  );
+  if (result.affectedRows === 0) return;
+
+  const subscription = await getSubscription(subscriptionId, source);
+  if (subscription.status !== "canceled") {
+    await cancelSubscriptionImmediately(subscriptionId, { ...source, idempotencyKey: `refund-cancel-${txn.id}` });
+  }
+}
+
+export async function applyPaddleRefund(data: Record<string, unknown>, source?: AccountingSource) {
+  const actual = await actualAdjustment(data, source);
+  if (typeof data.transaction_id === "string" && data.action === "refund" && data.status === "approved") {
+    await revokeRefundedAccess(data.transaction_id, data as PaddleRefund, source ?? await accountingSource("default"), !actual.handled);
+  }
+  return actual;
+}
+
 export async function handlePaddleEvent(
   event: PaddleWebhookEvent,
   source?: AccountingSource,
@@ -1644,7 +1756,7 @@ export async function handlePaddleEvent(
   if (REFRESH_EVENTS.has(event.event_type)) {
     const sub = asSubscription(event.data);
     if (!sub) return { handled: false, reason: "missing_subscription_id" };
-    const result = await refreshSubscription(sub);
+    const result = await refreshSubscription(sub, event.occurred_at);
     return { handled: result.ok, reason: result.reason };
   }
 
@@ -1661,6 +1773,9 @@ export async function handlePaddleEvent(
   ) {
     const sub = asSubscription(event.data);
     if (!sub) return { handled: false, reason: "missing_subscription_id" };
+    const result = await markSubscriptionCanceled(sub, event.occurred_at);
+    if (result.reason) return { handled: result.ok, reason: result.reason };
+    if (source?.environment === "sandbox") return { handled: result.ok };
 
     // Cancellation or a failed renewal changes access, not money already earned
     // from the preceding successful charge. Only approved refunds reverse it.
@@ -1682,7 +1797,6 @@ export async function handlePaddleEvent(
       }
     }
 
-    const result = await markSubscriptionCanceled(sub);
     // Fire-and-forget: if this cancellation was the tail end of a scheduled
     // downgrade, bill the customer for the chosen target plan via the
     // transactions API. Wrapped in catch so it never fails the webhook
@@ -1707,10 +1821,10 @@ export async function handlePaddleEvent(
   // `platform_earn = -system_tax`. Idempotent: rows already at status≠1 are
   // skipped.
   if (event.event_type === "adjustment.updated" || event.event_type === "adjustment.created") {
-    const actual = await actualAdjustment(event.data as Record<string, unknown>, source);
+    const actual = await applyPaddleRefund(event.data as Record<string, unknown>, source);
     if (actual.handled) return { handled: true, reason: `actual_adjustment_${actual.status}` };
+    if (source?.environment === "sandbox") return { handled: false, reason: "sandbox_adjustment_not_owned" };
     // Preserve the legacy subscription-site and historical-payment behavior.
-    if (event.event_type === "adjustment.created") return { handled: false, reason: "legacy_adjustment_created_ignored" };
     const data = (event.data ?? {}) as {
       action?: string;
       status?: string;
