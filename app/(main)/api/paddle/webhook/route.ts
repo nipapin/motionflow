@@ -14,6 +14,7 @@ export async function POST(request: Request) {
   const rawBody = await request.text();
   const signature = request.headers.get("paddle-signature");
   const defaultSecret = process.env.PADDLE_WEBHOOK_SECRET?.trim();
+  let event: PaddleWebhookEvent | undefined;
 
   try {
     let account: "default" | "spunkram" = "default";
@@ -29,7 +30,6 @@ export async function POST(request: Request) {
       account = "spunkram";
     }
 
-    let event: PaddleWebhookEvent;
     try {
       event = JSON.parse(rawBody) as PaddleWebhookEvent;
     } catch {
@@ -55,7 +55,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error(
-      `[paddle-webhook] Error handling ${event.event_type} (${event.event_id}):`,
+      event
+        ? `[paddle-webhook] Error handling ${event.event_type} (${event.event_id}):`
+        : "[paddle-webhook] Error preparing webhook request",
       err,
     );
     return NextResponse.json({ error: "Handler failed" }, { status: 500 });
