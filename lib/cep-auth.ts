@@ -777,8 +777,10 @@ export function bearerTokenFromHeader(
   header: string | null | undefined,
 ): string | null {
   if (typeof header !== "string") return null;
-  const m = header.match(/^Bearer\s+(.+)$/i);
-  const token = m?.[1]?.trim();
+  if (!/^Bearer\s/i.test(header)) return null;
+  const value = header.slice(6).trimStart();
+  if (/[\r\n\u2028\u2029]/.test(value)) return null;
+  const token = value.trimEnd();
   if (!token || !token.startsWith("mfcep_")) return null;
   return token;
 }

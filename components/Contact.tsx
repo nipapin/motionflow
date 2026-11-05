@@ -71,7 +71,7 @@ export function Contact() {
     email:
       !form.email.trim()
         ? "Please enter your email"
-        : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)
+        : !/^[^\s@]+@(?=[^\s@][^\s@]*\.[^\s@])[^\s@]+$/.test(form.email)
           ? "Please enter a valid email"
           : "",
     message:

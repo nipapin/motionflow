@@ -18,7 +18,7 @@ const CORS_HEADERS: Record<string, string> = {
 function isSelfDownloadGate(url: string): boolean {
   try {
     const u = new URL(url);
-    return u.pathname.replace(/\/+$/, "") === "/api/galtoolkit/demo/download";
+    return u.pathname.replace(/(?<!\/)\/+$/, "") === "/api/galtoolkit/demo/download";
   } catch {
     return /\/api\/galtoolkit\/demo\/download(?:\?|$)/i.test(url);
   }

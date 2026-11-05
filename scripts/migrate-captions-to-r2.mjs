@@ -127,7 +127,7 @@ function readEnvOptional(name) {
 
 function getEndpoint() {
   const direct = readEnvOptional("R2_ENDPOINT");
-  if (direct) return direct.replace(/\/+$/, "");
+  if (direct) return direct.replace(/(?<!\/)\/+$/, "");
   const accountId = readEnv("R2_ACCOUNT_ID");
   return `https://${accountId}.r2.cloudflarestorage.com`;
 }

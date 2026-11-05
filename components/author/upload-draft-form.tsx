@@ -43,7 +43,7 @@ function contributorPreviewSrc(itemId: number, filename: string | undefined): st
   if (!filename) return null;
   const base =
     typeof process !== "undefined"
-      ? (process.env.NEXT_PUBLIC_R2_PUBLIC_CDN ?? "").replace(/\/+$/, "")
+      ? (process.env.NEXT_PUBLIC_R2_PUBLIC_CDN ?? "").replace(/(?<!\/)\/+$/, "")
       : "";
   if (!base) return null;
   const enc = filename.split("/").map((seg) => encodeURIComponent(seg)).join("/");

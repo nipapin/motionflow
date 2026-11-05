@@ -2,7 +2,7 @@ export type HighlightRange = { segment: number; index: number; length: number };
 
 /** Read one complete JSON array; model explanations are not part of the data. */
 function parseHighlightJson(text: string): unknown {
-  const blocks = Array.from(text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi));
+  const blocks = Array.from(text.matchAll(/```(?:json)?([\s\S]*?)```/gi));
   if (blocks.length > 1) throw new Error("Ambiguous AI highlight response.");
   const raw = (blocks.length ? blocks[0][1] : text).trim();
   const start = raw.indexOf("[");

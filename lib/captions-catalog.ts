@@ -110,7 +110,7 @@ function slugify(name: string): string {
     .trim()
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, "-")
-    .replace(/^-+|-+$/g, "");
+    .replace(/^-+|(?<!-)-+$/g, "");
 }
 
 function extname(fileName: string): string {

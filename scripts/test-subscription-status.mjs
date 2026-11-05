@@ -1,9 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import vm from "node:vm";
+import { readTestFixture, runModuleFixture } from "./lib/test-fixture-runtime.mjs";
 import ts from "typescript";
 
 const require = createRequire(import.meta.url);
@@ -17,10 +16,10 @@ function loader(mocks) {
     if (!id.startsWith("@/")) return require(id);
     if (cache.has(id)) return cache.get(id).exports;
     const filename = path.join(root, `${id.slice(2)}.ts`);
-    const source = ts.transpileModule(readFileSync(filename, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
+    const source = ts.transpileModule(readTestFixture(filename), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
     const module = { exports: {} };
     cache.set(id, module);
-    vm.runInThisContext(`(function(require,module,exports){${source}\n})`, { filename })(load, module, module.exports);
+    runModuleFixture(source, { require: load, module, exports: module.exports }, filename);
     return module.exports;
   }
   return load;
@@ -117,7 +116,7 @@ test("UTC date serialization respects offsets and never substitutes now", () => 
   assert.equal(iso("2099-11-29 00:00:00"), "2099-11-29T00:00:00.000Z");
   assert.equal(iso("2099-11-29T03:00:00+03:00"), "2099-11-29T00:00:00.000Z");
   assert.equal(iso(new Date("2099-11-29T00:00:00Z")), "2099-11-29T00:00:00.000Z");
-  for (const raw of [null, undefined, "", "invalid", "0000-00-00 00:00:00", new Date(NaN)]) assert.equal(iso(raw), null);
+  for (const raw of [null, undefined, "", "invalid", "0000-00-00 00:00:00", new Date(Number.NaN)]) assert.equal(iso(raw), null);
 });
 
 test("the selected catalog row supplies the tier and date, excluding author subscriptions", async () => {

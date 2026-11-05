@@ -58,7 +58,7 @@ export default function Previews() {
       }
       setPreviews(fetchedPreviews);
     };
-    fetchPreviews();
+    fetchPreviews().catch(() => setPreviews({}));
   }, [previews, trigger]);
 
   useEffect(() => {

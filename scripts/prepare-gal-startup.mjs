@@ -40,7 +40,7 @@ for (const host of hostArg ? [hostArg] : ["PR", "AE"]) {
   const entries = Array.isArray(manifest) ? manifest : Object.entries(manifest.files || {}).map(([path, meta]) =>
     ({ path, hash: typeof meta === "string" ? meta : meta?.hash }));
   const paths = [...new Set(entries.filter(e => typeof e?.path === "string" && typeof e.hash === "string" && e.hash.trim())
-    .map(e => canonical(e.path)).filter(Boolean))].sort();
+    .map(e => canonical(e.path)).filter(Boolean))].sort((a, b) => (a < b ? -1 : Number(a > b)));
   if (!paths.length) { console.log(`${host}: no startup dependencies`); continue; }
   const etag = `"${createHash("sha256").update(raw).digest("hex").slice(0, 32)}"`;
   const fingerprint = createHash("sha256").update(JSON.stringify([etag, paths])).digest("hex");

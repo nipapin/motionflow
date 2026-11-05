@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import vm from "node:vm";
+import { readTestFixture, runIsolatedFixture } from "./lib/test-fixture-runtime.mjs";
 import ts from "typescript";
 
 function load(file, imports = {}) {
-  const source = readFileSync(new URL(file, import.meta.url), "utf8");
+  const source = readTestFixture(new URL(file, import.meta.url));
   const code = ts.transpileModule(source, {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
   }).outputText;
   const exports = {};
-  vm.runInNewContext(code, {
+  runIsolatedFixture(code, {
     exports, require: name => { if (name === "@/lib/ai-usage-shared") return load("../lib/ai-usage-shared.ts"); if (name === "@/lib/replicate-usage-fetch") return { trackedReplicateFetch: () => undefined }; if (name === "@/lib/replicate-auth") return load("../lib/replicate-auth.ts", { "server-only": {} });
       if (name === "@/lib/viral-titles") return load("../lib/viral-titles.ts", {
         "server-only": {},
@@ -31,7 +31,7 @@ test("audio is billed per started five minutes, including fractional seconds", (
   for (const [seconds, cost] of [[1, 1], [299.99, 1], [300, 1], [300.01, 2], [600, 2], [600.01, 3], [900, 3], [3600, 12]]) {
     assert.equal(metering.durationGenerationsCost(seconds), cost, `${seconds} seconds`);
   }
-  for (const seconds of [0, -1, NaN, Infinity]) assert.equal(metering.durationGenerationsCost(seconds), 1);
+  for (const seconds of [0, -1, Number.NaN, Infinity]) assert.equal(metering.durationGenerationsCost(seconds), 1);
 });
 
 function route(tool, { seconds = 301, modelSeconds = seconds, left = 10, highlights = false, receipt = false } = {}) {

@@ -1,9 +1,8 @@
 /** Integration checks use only disposable, randomly named fixture tables. */
 import assert from "node:assert/strict";
 import { randomUUID, randomBytes } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import vm from "node:vm";
+import { readTestFixture, runIsolatedFixture } from "./lib/test-fixture-runtime.mjs";
 import ts from "typescript";
 import mysql from "mysql2/promise";
 const require = createRequire(import.meta.url);
@@ -23,9 +22,9 @@ const scoped = { query: (sql, params) => pool.query(rewrite(sql), params), execu
       commit: () => conn.commit(), rollback: () => conn.rollback(), release: () => conn.release() };
   } };
 function load(file, imports = {}) {
-  const code = ts.transpileModule(readFileSync(new URL(file, import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const code = ts.transpileModule(readTestFixture(new URL(file, import.meta.url)), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const exports = {};
-  vm.runInNewContext(code, { exports, Buffer, URLSearchParams, Date, process: { env: {} }, console, require(name) {
+  runIsolatedFixture(code, { exports, Buffer, URLSearchParams, Date, process: { env: {} }, console, require(name) {
     if (name === "server-only") return {}; if (Object.hasOwn(imports, name)) return imports[name];
     if (!name.startsWith("@/")) return require(name); throw Error(`Unexpected import ${name}`);
   } }); return exports;

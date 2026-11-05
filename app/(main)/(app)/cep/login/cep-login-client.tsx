@@ -94,7 +94,7 @@ export function CepLoginClient({
       return;
     }
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const r = await fetch(
           `/api/cep/auth/confirm?code=${encodeURIComponent(code)}`,

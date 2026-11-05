@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readTestFixture, runModuleFixture } from "./lib/test-fixture-runtime.mjs";
 import { createRequire } from "node:module";
 import { Readable } from "node:stream";
 import ts from "typescript";
@@ -10,11 +10,11 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const require = createRequire(import.meta.url);
 function load(relative, mocks) {
-  const source = ts.transpileModule(readFileSync(new URL(`../${relative}`, import.meta.url), "utf8"), {
+  const source = ts.transpileModule(readTestFixture(new URL(`../${relative}`, import.meta.url)), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const module = { exports: {} };
-  new Function("require", "module", "exports", source)(name => name in mocks ? mocks[name] : require(name), module, module.exports);
+  runModuleFixture(source, { require: name => Object.hasOwn(mocks, name) ? mocks[name] : require(name), module, exports: module.exports });
   return module.exports;
 }
 const archive = Buffer.from("signed ZXP test fixture");

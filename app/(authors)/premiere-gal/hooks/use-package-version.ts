@@ -22,7 +22,7 @@ export function usePackageVersion(): string {
         setVersion("");
       }
     };
-    fetchVersion();
+    void fetchVersion();
   }, []);
   return version;
 }

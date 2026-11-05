@@ -26,6 +26,8 @@ function drain() {
     item.run().finally(() => {
       running--;
       drain();
+    }).catch((error) => {
+      console.warn("[waveform] Peak load failed", error);
     });
   }
 }
@@ -210,7 +212,7 @@ function formatTime(seconds: number, roundUp = false): string {
 
 function getForegroundRgb(el: HTMLElement): string {
   const raw = getComputedStyle(el).color;
-  const m = raw.match(/(\d+),\s*(\d+),\s*(\d+)/);
+  const m = raw.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
   return m ? `${m[1]}, ${m[2]}, ${m[3]}` : "255, 255, 255";
 }
 

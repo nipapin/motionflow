@@ -32,7 +32,7 @@ export async function campaignAudiencePreview(input: CampaignAudience, action: "
   const seen = new Set<string>();
   const users = rows.flatMap(row => {
     const email = String(row.email).trim().toLowerCase();
-    if (!/^[^\s@,;<>"\\]+@[^\s@,;<>"\\]+\.[^\s@,;<>"\\]+$/.test(email) || seen.has(email)) return [];
+    if (!/^[^\s@,;<>"\\]+@(?=[^\s@,;<>"\\][^\s@,;<>"\\]*\.[^\s@,;<>"\\])[^\s@,;<>"\\]+$/.test(email) || seen.has(email)) return [];
     seen.add(email);
     return [{ id: Number(row.id), name: String(row.name || ""), email, first_name: String(row.first_name || row.name || ""), last_name: String(row.last_name || "") }];
   });

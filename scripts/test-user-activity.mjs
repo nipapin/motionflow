@@ -1,14 +1,13 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import vm from "node:vm";
+import { readTestFixture, runIsolatedFixture } from "./lib/test-fixture-runtime.mjs";
 import ts from "typescript";
 
 function load(file, imports = {}) {
-  const source = readFileSync(new URL(file, import.meta.url), "utf8");
+  const source = readTestFixture(new URL(file, import.meta.url));
   const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
   const exports = {};
-  vm.runInNewContext(code, {
+  runIsolatedFixture(code, {
     exports, Buffer, Response, process: { env: {} }, console: { error() {}, warn() {} },
     require(name) {
       if (name === "server-only") return {};
@@ -66,7 +65,7 @@ test("analytics outages do not stop downloads and external identities cannot bec
   const response = await service.withDownloadActivity(input, async activity => { activity.issued("stream"); return new Response("file"); });
   assert.equal(await response.text(), "file");
   const valid = writer();
-  for (const userId of [0, -1, "odin:7", NaN]) assert.equal(await valid.recordUserActivity({ ...input, userId, category: "download", status: "requested" }), null);
+  for (const userId of [0, -1, "odin:7", Number.NaN]) assert.equal(await valid.recordUserActivity({ ...input, userId, category: "download", status: "requested" }), null);
   assert.equal(valid.calls.length, 0);
 });
 

@@ -87,7 +87,8 @@ export async function createGalAssetsArchive(opts: {
   // One current full-install bundle is published ahead of time. Only clients
   // supporting direct URLs receive them; older clients keep the temporary API.
   if (opts.direct && paths.length === allowed.size) {
-    const ordered = [...allowed].sort();
+    // Keep the published fingerprint stable across runtimes and locales.
+    const ordered = [...allowed].sort((a, b) => (a < b ? -1 : Number(a > b)));
     const fingerprint = createHash("sha256").update(JSON.stringify([manifest.data.etag, ordered])).digest("hex");
     const key = `${galEffectsPrefix(opts.host)}/Startup/latest.tar.gz`;
     try {

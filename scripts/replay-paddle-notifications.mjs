@@ -207,7 +207,11 @@ async function main() {
       else errCount += 1;
     } catch (err) {
       missingCount += 1;
-      console.error(`  ${ntfId} FAILED: ${err?.message ?? err}`);
+      console.error(JSON.stringify({
+        notification_id: ntfId,
+        status: "failed",
+        message: String(err?.message ?? err),
+      }));
     }
   }
 

@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     const packId = Number(
       body && typeof body === "object" && "pack_id" in body
         ? (body as { pack_id: unknown }).pack_id
-        : NaN,
+        : Number.NaN,
     );
     if (!Number.isFinite(packId) || packId <= 0) {
       return NextResponse.json(

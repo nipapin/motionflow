@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readFileSync } from "node:fs";
+import { readTestFixture, runModuleFixture } from "./lib/test-fixture-runtime.mjs";
 import { createRequire } from "node:module";
 import ts from "typescript";
 import { NextRequest } from "next/server.js";
 const require = createRequire(import.meta.url);
 function load(file, mocks) {
   const module = { exports:{} };
-  const code = ts.transpileModule(readFileSync(new URL("../" + file, import.meta.url),"utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
-  new Function("require","module","exports",code)(name => Object.hasOwn(mocks,name) ? mocks[name] : name === "server-only" ? {} : require(name),module,module.exports);
+  const code = ts.transpileModule(readTestFixture(new URL("../" + file, import.meta.url),"utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+  runModuleFixture(code, { require: name => Object.hasOwn(mocks, name) ? mocks[name] : name === "server-only" ? {} : require(name), module, exports: module.exports });
   return module.exports;
 }
 test("Adobe device client uses marketplace author and platform subscription", () => {

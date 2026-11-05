@@ -34,7 +34,7 @@ export function parseCsv(input) {
 }
 
 const normalizeEmail = value => value.trim().toLowerCase();
-const validEmail = value => value.length <= 255 && /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(value);
+const validEmail = value => value.length <= 255 && /^[^\s@,;<>]+@(?=[^\s@,;<>][^\s@,;<>]*\.[^\s@,;<>])[^\s@,;<>]+$/.test(value);
 
 export function readParticipants(csv) {
   const [headers, ...rows] = parseCsv(csv);
@@ -117,9 +117,10 @@ export function validateTemplate(template) {
     throw new Error('Template JSON must contain non-empty subject, text and html strings');
   }
   for (const key of ['subject', 'text', 'html']) {
-    for (const match of template[key].matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)) {
-      if (!VARIABLES.has(match[1])) throw new Error(`Unknown email variable: ${match[1]}`);
-      if (key === 'subject' && ['setup_password_url', 'access_url'].includes(match[1])) throw new Error('Password link cannot be used in subject');
+    for (const match of template[key].matchAll(/\{\{([^{}]+)\}\}/g)) {
+      const variable = match[1].trim();
+      if (!VARIABLES.has(variable)) throw new Error(`Unknown email variable: ${variable}`);
+      if (key === 'subject' && ['setup_password_url', 'access_url'].includes(variable)) throw new Error('Password link cannot be used in subject');
     }
   }
   return template;
@@ -127,8 +128,8 @@ export function validateTemplate(template) {
 
 export function renderEmail(template, values) {
   validateTemplate(template);
-  const replace = (source, html) => source.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_, key) => {
-    const value = values[key] ?? '';
+  const replace = (source, html) => source.replace(/\{\{([^{}]+)\}\}/g, (_, key) => {
+    const value = values[key.trim()] ?? '';
     return html ? htmlEscape(value) : String(value);
   });
   const result = { subject: replace(template.subject, false), text: replace(template.text, false), html: replace(template.html, true) };

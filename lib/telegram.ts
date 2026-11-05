@@ -207,7 +207,12 @@ export async function sendTelegramSupportReport(
         /can't parse entities|parse entities|unsupported start tag/i.test(result.error)
     ) {
         console.warn("[telegram] HTML parse failed — retrying as plain text");
-        const plain = text.replace(/<[^>]+>/g, "");
+        const chunks = text.split(">");
+        const tail = chunks.pop() ?? "";
+        const plain = chunks.map(chunk => {
+            const start = chunk.indexOf("<");
+            return start >= 0 && start < chunk.length - 1 ? chunk.slice(0, start) : chunk + ">";
+        }).join("") + tail;
         result = await sendTelegramMessage(chatId, plain, {
             disablePreview: true,
             messageThreadId: topicId,

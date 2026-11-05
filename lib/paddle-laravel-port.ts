@@ -122,20 +122,6 @@ export function calculateAuthorEarnForSubscription(netIncome: number, scale = 2)
   return round(afterTenPercent / 2, scale);
 }
 
-/**
- * Port of `SoldItems::addSoldItem` purchase code:
- *
- * ```php
- * $prepare['purchase_code'] = md5('order' . $prepare['item_id'] . $prepare['buyer_id'] . $prepare['payment_id']);
- * ```
- */
-function generatePurchaseCode(itemId: number, buyerId: number, paymentId: string): string {
-  return crypto
-    .createHash("md5")
-    .update(`order${itemId}${buyerId}${paymentId}`)
-    .digest("hex");
-}
-
 function round(value: number, scale = 2): number {
   const mult = 10 ** scale;
   return Math.round(value * mult) / mult;
@@ -342,7 +328,7 @@ interface AddSoldItemResult {
  *   4. Compute `platform_earn` / `author_earn` via `countingTaxes`.
  *   5. If team JSON present → `teamProjectRevenue` split.
  *   6. If `ref_author_id` present → `affiliateIncome`.
- *   7. `purchase_code = md5("order" + item_id + buyer_id + payment_id)`.
+ *   7. Generate an opaque purchase code in the existing 32-character hex format.
  *   8. INSERT INTO `sold_items` + increment `users.balance`.
  *
  * Idempotency: Laravel uses `where($prepare)->exists()` which checks every
@@ -481,7 +467,7 @@ export async function addSoldItemFromTransactionLine(params: {
       }
     }
 
-    const purchaseCode = generatePurchaseCode(params.itemId, params.buyerId, params.paymentId);
+    const purchaseCode = crypto.randomBytes(16).toString("hex");
 
     // 6. INSERT.
     if (ownConn) await conn.beginTransaction();

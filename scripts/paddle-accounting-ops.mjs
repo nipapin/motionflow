@@ -136,14 +136,14 @@ try {
     let access;
     try {run('mysql',['--user=root','--protocol=socket','--batch','--skip-column-names','-e','SELECT 1'],{stdio:['ignore','pipe','pipe']});access=['--user=root','--protocol=socket'];}
     catch {access=['-h',process.env.DB_HOST,'-P',process.env.DB_PORT??'3306','-u',process.env.DB_USERNAME];}
-    const sql=spawn('mysqldump',['--single-transaction','--quick','--no-tablespaces','--hex-blob','--routines','--triggers','--events',
+    const sql=spawn('/usr/bin/mysqldump',['--single-transaction','--quick','--no-tablespaces','--hex-blob','--routines','--triggers','--events',
       ...access,process.env.DB_DATABASE],
       {env:{...process.env,...(access[0]==='--user=root'?{MYSQL_PWD:''}:{MYSQL_PWD:process.env.DB_PASSWORD})},stdio:['ignore','pipe','pipe']});
     let errors=''; sql.stderr.on('data',chunk=>errors+=chunk);
-    const gzip=spawn('gzip',['-c'],{stdio:['pipe','pipe','inherit']});
+    const gzip=spawn('/usr/bin/gzip',['-c'],{stdio:['pipe','pipe','inherit']});
     const exit = child=>new Promise((resolve,reject)=>{child.once('error',reject);child.once('exit',code=>code===0?resolve():reject(new Error('Snapshot command failed; inspect private server log')));});
     await Promise.all([pipeline(sql.stdout,gzip.stdin),pipeline(gzip.stdout,createWriteStream(path.join(root,'database.sql.gz'),{mode:0o600})),exit(sql),exit(gzip)]).catch(async e=>{await fs.writeFile(path.join(root,'dump-errors.txt'),errors,{mode:0o600});throw e;});
-    run('gzip',['-t',path.join(root,'database.sql.gz')]);
+    run('/usr/bin/gzip',['-t',path.join(root,'database.sql.gz')]);
     for(const file of ['next.tgz','laravel.tgz']) run('tar',['-tzf',path.join(root,file)],{maxBuffer:40*1024*1024});
     const files={}; for(const file of ['next.env','laravel.env','pm2.json','next.tgz','laravel.tgz','database.sql.gz']) files[file]=await hashFile(path.join(root,file));
     const manifest={task:'paddle-actual-v2',createdAt:new Date().toISOString(),releases,files,historical:await invariants()};

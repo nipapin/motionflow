@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export function packagesAuthorSlug(label: string): string {
   return label.normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|(?<!-)-+$/g, "");
 }
 
 export const newPackagesAuthorSchema = z.object({

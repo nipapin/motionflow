@@ -1,16 +1,15 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import vm from "node:vm";
+import { readTestFixture, runIsolatedFixture } from "./lib/test-fixture-runtime.mjs";
 import ts from "typescript";
 
 function load(file, imports = {}, env = {}, globals = {}) {
-  const source = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+  const source = readTestFixture(new URL(`../${file}`, import.meta.url));
   const code = ts.transpileModule(source, {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
   }).outputText;
   const exports = {};
-  vm.runInNewContext(code, {
+  runIsolatedFixture(code, {
     exports, require: name => name === "server-only" ? {} : name === "@/lib/ai-usage-shared" ? load("lib/ai-usage-shared.ts") : name === "@/lib/replicate-usage-fetch" ? { trackedReplicateFetch: () => undefined } : imports[name] ?? {},
     process: { env }, Buffer, File, URL,
     console: { info() {}, error() {} }, ...globals,

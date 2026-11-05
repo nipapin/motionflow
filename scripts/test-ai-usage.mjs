@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { test } from "node:test";
-import vm from "node:vm";
+import { readTestFixture, runIsolatedFixture } from "./lib/test-fixture-runtime.mjs";
 import ts from "typescript";
 const require = createRequire(import.meta.url);
 
@@ -13,11 +12,11 @@ function loader(mocks = {}, env = {}, globals = {}) {
     if (name === "server-only") return {};
     if (!name.startsWith("@/")) return require(name);
     if (cache.has(name)) return cache.get(name);
-    const code = ts.transpileModule(readFileSync(new URL(`../${name.slice(2)}.ts`, import.meta.url), "utf8"), {
+    const code = ts.transpileModule(readTestFixture(new URL(`../${name.slice(2)}.ts`, import.meta.url)), {
       compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
     }).outputText;
     const exports = {}; cache.set(name, exports);
-    vm.runInNewContext(code, { exports, require: load, process: { env }, URL, URLSearchParams, Request, Response,
+    runIsolatedFixture(code, { exports, require: load, process: { env }, URL, URLSearchParams, Request, Response,
       AbortSignal, Buffer, console: { error() {} }, ...globals });
     return exports;
   }

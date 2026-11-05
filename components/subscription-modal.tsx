@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { X, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogDescription, DialogPanel, DialogTitle } from "@/components/ui/dialog";
 
 interface SubscriptionModalProps {
   open: boolean;
@@ -13,13 +14,10 @@ export function SubscriptionModal({ open, onOpenChange }: SubscriptionModalProps
   if (!open) return null;
 
   return (
-    <div 
-      className="fixed inset-0 z-110 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={() => onOpenChange(false)}
-    >
-      <div 
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogPanel
+        overlayClassName="z-110 flex items-center justify-center bg-black/60 backdrop-blur-sm"
         className="relative w-full max-w-md mx-4 bg-card/95 backdrop-blur-xl rounded-2xl border border-blue-500/20 p-8 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
       >
         {/* Background glow */}
         <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
@@ -29,6 +27,8 @@ export function SubscriptionModal({ open, onOpenChange }: SubscriptionModalProps
 
         {/* Close button */}
         <button
+          type="button"
+          aria-label="Close dialog"
           onClick={() => onOpenChange(false)}
           className="absolute top-4 right-4 p-2 text-muted-foreground hover:text-foreground smooth rounded-lg hover:bg-foreground/5"
         >
@@ -42,14 +42,14 @@ export function SubscriptionModal({ open, onOpenChange }: SubscriptionModalProps
           </div>
 
           {/* Title */}
-          <h2 className="text-2xl font-semibold text-foreground mb-3 tracking-tight">
+          <DialogTitle className="text-2xl font-semibold text-foreground mb-3 tracking-tight">
             Subscription Required
-          </h2>
+          </DialogTitle>
 
           {/* Description */}
-          <p className="text-muted-foreground mb-8 leading-relaxed">
+          <DialogDescription className="text-base text-muted-foreground mb-8 leading-relaxed">
             You don&apos;t have an active subscription. Upgrade to download unlimited templates, music, and sound effects.
-          </p>
+          </DialogDescription>
 
           {/* CTA Button */}
           <Button 
@@ -69,7 +69,7 @@ export function SubscriptionModal({ open, onOpenChange }: SubscriptionModalProps
             Maybe later
           </button>
         </div>
-      </div>
-    </div>
+      </DialogPanel>
+    </Dialog>
   );
 }

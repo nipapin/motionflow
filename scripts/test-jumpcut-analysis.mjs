@@ -1,13 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readFileSync } from "node:fs";
-import ts from "typescript";
-import vm from "node:vm";
+import { register } from "node:module";
 
-const source = readFileSync(new URL("../lib/jumpcut-analysis.ts", import.meta.url), "utf8");
-const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS } }).outputText;
-const exports = {};
-vm.runInNewContext(code, { exports });
+register("./lib/server-typescript-loader.mjs", import.meta.url);
+const exports = await import("../lib/jumpcut-analysis.ts");
 const words = [{ type: "word", text: "Important", start: 2, end: 3 }, { type: "spacing", text: " ", start: 3, end: 3 },
   { type: "word", text: "takeaway", start: 3, end: 4 }, { type: "word", text: "here.", start: 4, end: 5 }];
 

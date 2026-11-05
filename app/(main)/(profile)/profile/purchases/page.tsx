@@ -25,8 +25,8 @@ function mergeProfilePurchases(
     ...extras.map((row) => ({ kind: "extra" as const, row })),
   ];
   out.sort((a, b) => {
-    const ta = new Date(a.kind === "market" ? (a.row.createdAt ?? 0) : (a.row.createdAt ?? 0)).getTime();
-    const tb = new Date(b.kind === "market" ? (b.row.createdAt ?? 0) : (b.row.createdAt ?? 0)).getTime();
+    const ta = new Date(a.row.createdAt ?? 0).getTime();
+    const tb = new Date(b.row.createdAt ?? 0).getTime();
     return tb - ta;
   });
   return out;

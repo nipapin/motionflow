@@ -67,7 +67,7 @@ function readEnvOptional(name) {
 
 function getEndpoint() {
   const direct = readEnvOptional("R2_ENDPOINT");
-  if (direct) return direct.replace(/\/+$/, "");
+  if (direct) return direct.replace(/(?<!\/)\/+$/, "");
   return `https://${readEnv("R2_ACCOUNT_ID")}.r2.cloudflarestorage.com`;
 }
 
@@ -85,7 +85,7 @@ function createClient() {
 
 function publicUrl(key) {
   const base = (readEnvOptional("R2_PUBLIC_CDN") || "https://cdn.motionflow.pro").replace(
-    /\/+$/,
+    /(?<!\/)\/+$/,
     "",
   );
   return `${base}/${key.split("/").map(encodeURIComponent).join("/")}`;
@@ -224,13 +224,10 @@ async function notifyCepPanels(manifest) {
       }),
     });
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      console.warn(
-        `[upload-zxp] WSS notify skipped: HTTP ${res.status}${text ? ` ${text.slice(0, 200)}` : ""}`,
-      );
+      console.warn(`[upload-zxp] WSS notify skipped: HTTP ${res.status}`);
       return;
     }
-    console.log(`  ✓ WSS notify ${url}`);
+    console.log("  ✓ WSS notified");
   } catch (err) {
     console.warn(
       "[upload-zxp] WSS notify skipped:",

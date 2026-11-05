@@ -248,7 +248,7 @@ export interface ParsedProof {
     email: string;
 }
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_RE = /^[^\s@]+@(?=[^\s@][^\s@]*\.[^\s@])[^\s@]+$/;
 
 /**
  * Port of `verifySubscriptionProof` — verifies the HMAC and decodes
