@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { isAffiliateAdmin } from "@/lib/affiliate/admin";
-import { parseAiUsageFilters, readAiUsage } from "@/lib/ai-usage-store";
+import { aiUsageTableFacet, parseAiUsageFilters, readAiUsage } from "@/lib/ai-usage-store";
 import { AiUsageSyncError, syncAiUsage } from "@/lib/ai-usage-sync";
 
 export const runtime = "nodejs";
@@ -24,7 +24,10 @@ export async function GET(req: NextRequest) {
   if (!isAffiliateAdmin(await getSessionUser())) return reply({ error: "Forbidden" }, 403);
   const filters = parseAiUsageFilters(req.nextUrl.searchParams);
   if (!filters) return reply({ error: "Choose a valid date/time range of up to 366 days and valid filters." }, 400);
-  try { return reply(await readAiUsage(filters)); }
+  try {
+    const facet = req.nextUrl.searchParams.get("tableFacet");
+    return reply(facet ? await aiUsageTableFacet(filters, facet, req.nextUrl.searchParams.get("tableSearch") ?? "") : await readAiUsage(filters));
+  }
   catch { return reply({ error: "Could not load AI usage. Please try again." }, 500); }
 }
 

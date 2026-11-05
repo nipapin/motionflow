@@ -411,7 +411,7 @@ export const AdminUserEntitlements = forwardRef<
         )}
       </section>
 
-      <Table>
+      <Table filterable>
         <TableHeader>
           <TableRow>
             <TableHead>Subscription</TableHead>
@@ -566,7 +566,7 @@ export const AdminUserEntitlements = forwardRef<
         ) : null}
       </section>
 
-      <Table>
+      <Table filterable>
         <TableHeader>
           <TableRow>
             <TableHead>Item</TableHead>

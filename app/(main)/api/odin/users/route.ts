@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { isPackagesAdmin } from "@/lib/packages-admin";
 import { odinManagementRequest } from "@/lib/odin-management";
+import { readOdinUsersTable } from "@/lib/odin-users-table";
+import { isTableQueryError } from "@/lib/table-query";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,6 +54,10 @@ async function handle(req: NextRequest) {
         subscription_id: body.subscription_id, plan_name: body.plan_name, request_id: body.request_id,
       }));
     }
+    if (!req.nextUrl.searchParams.has("user_id")) {
+      const table = await readOdinUsersTable(req.nextUrl.searchParams);
+      if (table) return json(table);
+    }
     const query = new URLSearchParams();
     for (const key of ["q", "page", "user_id"]) {
       const value = req.nextUrl.searchParams.get(key);
@@ -59,6 +65,7 @@ async function handle(req: NextRequest) {
     }
     return json(await odinManagementRequest(query));
   } catch (error) {
+    if (isTableQueryError(error)) return json({ error: "INVALID_INPUT" }, 400);
     const code = error instanceof Error ? error.message : "";
     const safe = ["ODIN_NOT_CONFIGURED", "ODIN_UNAUTHORIZED", "ODIN_MANAGEMENT_DISABLED", "NOT_FOUND", "INVALID_INPUT", "MANUAL_SUBSCRIPTION_REQUIRED", "SUBSCRIPTION_BUSY", "PAYPRO_NOT_CONFIGURED", "PAYPRO_CANNOT_RENEW", "PAYPRO_UNAVAILABLE"].includes(code) ? code : "ODIN_UNAVAILABLE";
     return json({ error: safe }, safe === "NOT_FOUND" ? 404 : ["INVALID_INPUT", "MANUAL_SUBSCRIPTION_REQUIRED"].includes(safe) ? 400 : safe === "SUBSCRIPTION_BUSY" ? 409 : 503);

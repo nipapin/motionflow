@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Check,
@@ -10,6 +10,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  RotateCcw,
   Save,
   Search,
   Trash2,
@@ -29,6 +30,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { TableColumnMenu } from "@/components/ui/table-column-menu";
+import { useTableView, type TableColumn } from "@/hooks/use-table-view";
 import {
   Table,
   TableBody,
@@ -67,6 +70,23 @@ function formatUpdated(iso: string): string {
     return iso;
   }
 }
+
+function updatedDateValue(iso: string): string {
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+const PROJECT_COLUMNS: TableColumn<Project>[] = [
+  { id: "name", label: "Package", getValue: (p) => p.name },
+  { id: "host", label: "Host", getValue: (p) => p.host, formatValue: (value) => value === "PR" ? "Premiere" : "After Effects", getSortValue: (p) => p.host === "PR" ? "Premiere" : "After Effects" },
+  { id: "version", label: "Version", getValue: (p) => p.version, formatValue: (value) => `v${value}` },
+  { id: "download", label: "Download", getValue: (p) => p.downloadKey ? "Linked" : "" },
+  { id: "free", label: "Free pack", kind: "boolean", getValue: (p) => (Number(p.price) || 0) <= 0, formatValue: (value) => value === "true" ? "On" : "Off" },
+  { id: "visible", label: "In CEP", kind: "boolean", getValue: (p) => p.visible, formatValue: (value) => value === "true" ? "On" : "Off" },
+  { id: "admin_only", label: "Admin only", kind: "boolean", getValue: (p) => Boolean(p.admin_only), formatValue: (value) => value === "true" ? "On" : "Off" },
+  { id: "updated", label: "Updated", kind: "date", getValue: (p) => updatedDateValue(p.updated_at), getSortValue: (p) => new Date(p.updated_at).getTime(), formatValue: (value) => formatUpdated(`${value}T00:00:00`) },
+];
 
 function ProjectThumb({
   previewUrl,
@@ -213,12 +233,19 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
     }
   };
 
-  const q = query.trim().toLowerCase();
-  const filtered = q
-    ? projects.filter((p) =>
-        `${p.name} ${p.version ?? ""} ${p.id} ${p.host}`.toLowerCase().includes(q),
-      )
-    : projects;
+  const searchResults = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q
+      ? projects.filter((p) => `${p.name} ${p.version ?? ""} ${p.id} ${p.host} ${p.host === "PR" ? "Premiere" : "After Effects"}`.toLowerCase().includes(q))
+      : projects;
+  }, [projects, query]);
+  const table = useTableView(searchResults, PROJECT_COLUMNS);
+  const filtered = table.rows;
+  const hasViewChanges = table.hasFilters || table.sort !== null || query !== "";
+  const resetView = () => {
+    setQuery("");
+    table.reset();
+  };
 
   const createProject = async () => {
     setCreating(true);
@@ -473,11 +500,17 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
           Refresh
         </Button>
         {!loading && projects.length > 0 ? (
-          <span className="text-[13px] text-muted-foreground">
+          <span className="text-[13px] tabular-nums text-muted-foreground" role="status" aria-live="polite">
             {filtered.length === projects.length
               ? `${projects.length} package${projects.length === 1 ? "" : "s"}`
               : `${filtered.length} of ${projects.length}`}
           </span>
+        ) : null}
+        {hasViewChanges ? (
+          <Button type="button" variant="ghost" size="sm" className="h-9 gap-1.5 text-muted-foreground" onClick={resetView}>
+            <RotateCcw className="size-3.5" aria-hidden />
+            Reset view
+          </Button>
         ) : null}
         <Button
           type="button"
@@ -532,7 +565,7 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
               Try again
             </Button>
           </div>
-        ) : filtered.length === 0 ? (
+        ) : projects.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
               <Package className="h-5 w-5 text-muted-foreground" />
@@ -566,36 +599,39 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
           <Table>
             <TableHeader>
               <TableRow className="border-border/50 hover:bg-transparent">
-                <TableHead className="h-10 pl-4 text-[12px] font-medium text-muted-foreground">
-                  Package
-                </TableHead>
-                <TableHead className="h-10 text-[12px] font-medium text-muted-foreground">
-                  Host
-                </TableHead>
-                <TableHead className="h-10 text-[12px] font-medium text-muted-foreground">
-                  Version
-                </TableHead>
-                <TableHead className="h-10 text-[12px] font-medium text-muted-foreground">
-                  Download
-                </TableHead>
-                <TableHead className="h-10 text-[12px] font-medium text-muted-foreground">
-                  Free pack
-                </TableHead>
-                <TableHead className="h-10 text-[12px] font-medium text-muted-foreground">
-                  In CEP
-                </TableHead>
-                <TableHead className="h-10 text-[12px] font-medium text-muted-foreground">
-                  Admin only
-                </TableHead>
-                <TableHead className="h-10 text-[12px] font-medium text-muted-foreground">
-                  Updated
-                </TableHead>
+                {PROJECT_COLUMNS.map((column, index) => (
+                  <TableHead
+                    key={column.id}
+                    scope="col"
+                    aria-sort={table.sort?.columnId === column.id ? table.sort.direction === "asc" ? "ascending" : "descending" : undefined}
+                    className={cn("h-10 text-[12px] font-medium text-muted-foreground", index === 0 && "pl-4")}
+                  >
+                    <TableColumnMenu
+                      label={column.label}
+                      kind={column.kind}
+                      options={table.options[column.id]}
+                      filter={table.filters[column.id]}
+                      direction={table.sort?.columnId === column.id ? table.sort.direction : undefined}
+                      onSort={(direction) => table.setSort(direction ? { columnId: column.id, direction } : null)}
+                      onFilter={(filter) => table.setColumnFilter(column.id, filter)}
+                    />
+                  </TableHead>
+                ))}
                 <TableHead className="h-10 pr-4 text-right text-[12px] font-medium text-muted-foreground">
                   <span className="sr-only">Actions</span>
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
+              {filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={9} className="h-40 whitespace-normal text-center">
+                    <p className="text-sm font-medium">No matching packages</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Change a column filter or clear the current search.</p>
+                    <Button type="button" variant="outline" size="sm" className="mt-3" onClick={resetView}>Reset view</Button>
+                  </TableCell>
+                </TableRow>
+              ) : null}
               {filtered.map((p) => (
                 <TableRow
                   key={p.id}

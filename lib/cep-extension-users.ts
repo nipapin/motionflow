@@ -32,6 +32,9 @@ import {
 
 import { activeAuthorSubscriptionSql, buildExtensionUsersQuery } from "@/lib/extension-users-query";
 import type { ExtensionUserFilters } from "@/lib/user-list-filters";
+import type { TableViewState } from "@/lib/table-query";
+import { readTableFacet } from "@/lib/table-query-sql";
+import { ensureSchema as ensureErrorsSchema } from "@/lib/cep-error-reports";
 
 const DEVICES_TABLE = "cep_devices";
 const SUB_TABLE = "subscription_systems";
@@ -216,8 +219,10 @@ export async function listExtensionUsersForAuthor(opts: {
   q?: string;
   page?: number;
   filters?: Partial<ExtensionUserFilters>;
+  tableView?: TableViewState;
 }): Promise<ListExtensionUsersResult> {
   await ensurePackagesProjectsTable();
+  if (opts.tableView?.filters.errors || opts.tableView?.sort?.columnId === "errors") await ensureErrorsSchema();
 
   const cfg = getCepClientByAuthorId(opts.authorId);
   const client = cfg?.client ?? null;
@@ -373,8 +378,10 @@ export async function listExtensionUsersForAuthor(opts: {
 /** Export the entire filtered audience without loading per-device histories. */
 export async function exportExtensionUsersForAuthor(opts: {
   authorId: number; q?: string; filters?: Partial<ExtensionUserFilters>;
+  tableView?: TableViewState;
 }) {
   await ensurePackagesProjectsTable();
+  if (opts.tableView?.filters.errors || opts.tableView?.sort?.columnId === "errors") await ensureErrorsSchema();
   const client = getCepClientByAuthorId(opts.authorId)?.client ?? null;
   const query = buildExtensionUsersQuery({ ...opts, client });
   type ExportRow = RowDataPacket & {
@@ -395,6 +402,14 @@ export async function exportExtensionUsersForAuthor(opts: {
     mailing_opt_in: row.mailing != null && Number(row.mailing) === 0,
     email_verified: row.email_verified_at != null,
   }));
+}
+
+export async function extensionUsersTableFacet(opts: { authorId: number; q?: string; filters?: Partial<ExtensionUserFilters>; tableView: TableViewState }, columnId: string, search: string) {
+  await ensurePackagesProjectsTable();
+  if (columnId === "errors" || opts.tableView.filters.errors) await ensureErrorsSchema();
+  const client = getCepClientByAuthorId(opts.authorId)?.client ?? null;
+  const query = buildExtensionUsersQuery({ ...opts, client, tableFacet: columnId });
+  return readTableFacet(query.fromSql, query.params, query.columns, columnId, search);
 }
 
 async function loadSubscriptionBadges(

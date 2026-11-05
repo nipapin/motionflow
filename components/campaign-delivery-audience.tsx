@@ -1,5 +1,7 @@
 "use client";
 
+import { FilterableTable } from "@/components/ui/filterable-table";
+
 import { useEffect, useRef, useState } from "react";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -112,7 +114,7 @@ export function CampaignDeliveryAudience({ draft, productName, disabled, testDis
         <p className="text-xs text-muted-foreground">Changing filters clears the previous recipient snapshot. Preview and load the new audience before saving. Up to 5,000 recipients per campaign.</p>
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
         {draft.delivery?.mailing_list ? <p className="break-all text-sm text-blue-400">Mailgun list: {draft.delivery.mailing_list}</p> : null}
-        {preview ? <div className="space-y-3 rounded-lg border border-border/50 p-4"><p role="status" className="text-sm"><strong>{preview.total.toLocaleString()}</strong> matching users{preview.recipients != null ? ` · ${preview.recipients} recipients loaded` : " · showing up to 50"}</p><div className="max-h-48 overflow-auto"><table className="w-full text-left text-xs"><thead className="text-muted-foreground"><tr><th className="py-2">User</th><th>Email</th></tr></thead><tbody>{preview.users.map(user => <tr key={user.id} className="border-t border-border/40"><td className="py-2">{user.name || `#${user.id}`}</td><td>{user.email}</td></tr>)}</tbody></table></div></div> : null}
+        {preview ? <div className="space-y-3 rounded-lg border border-border/50 p-4"><p role="status" className="text-sm"><strong>{preview.total.toLocaleString()}</strong> matching users{preview.recipients != null ? ` · ${preview.recipients} recipients loaded` : " · showing up to 50"}</p><div className="max-h-48 overflow-auto"><FilterableTable className="w-full text-left text-xs"><thead className="text-muted-foreground"><tr><th className="py-2">User</th><th>Email</th></tr></thead><tbody>{preview.users.map(user => <tr key={user.id} className="border-t border-border/40"><td className="py-2">{user.name || `#${user.id}`}</td><td>{user.email}</td></tr>)}</tbody></FilterableTable></div></div> : null}
       </> : <p className="text-sm text-muted-foreground">Enter recipients or upload a CSV below, or enable the database audience builder.</p>}
     </section>
   </>;

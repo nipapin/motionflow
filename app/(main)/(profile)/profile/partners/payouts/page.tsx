@@ -113,8 +113,8 @@ export default async function PartnerPayoutsPage({ searchParams }: PageProps) {
                 </p>
               </div>
             ) : (
-              <Table>
-                <TableHeader>
+              <Table filterable>
+                <TableHeader data-table-section="head">
                   <TableRow>
                     <TableHead>Partner</TableHead>
                     <TableHead>Period</TableHead>
@@ -122,7 +122,7 @@ export default async function PartnerPayoutsPage({ searchParams }: PageProps) {
                     <TableHead>Paid at (UTC)</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
+                <TableBody data-table-section="body">
                   {history.map((payout) => (
                     <TableRow key={payout.id}>
                       <TableCell>

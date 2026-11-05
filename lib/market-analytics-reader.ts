@@ -3,7 +3,10 @@ import type { RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
 import { ensureMarketAnalyticsSchema } from "@/lib/market-analytics-schema";
 import type { HeatPage, HeatReport, MarketFilters, MarketOverview, MarketAction } from "@/lib/market-analytics-shared";
-import { MARKET_ACTIONS } from "@/lib/market-analytics-shared";
+import { MARKET_ACTIONS, MARKET_ACTION_LABELS } from "@/lib/market-analytics-shared";
+import { activityActionLabels, activityStatusLabels, activityToolLabels } from "@/lib/user-activity-shared";
+import { parseTableView } from "@/lib/table-query";
+import { readTableFacet, tableOrderSql, tableWhereSql, type SqlTableColumns } from "@/lib/table-query-sql";
 
 const sqlText = (expression: string) => `CAST(${expression} AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci`;
 const dateText = (expression: string) => `DATE_FORMAT(${expression},'%Y-%m-%d %H:%i:%s')`;
@@ -23,8 +26,10 @@ export function parseMarketFilters(params: URLSearchParams): MarketFilters | nul
     !Number.isInteger(page) || page < 1 || page > 10000 || (search && search.length > 100) ||
     !["downloads", "purchases", "views", "selections", "favorites", "generations", "extensions", "users", "lastAt"].includes(sort) ||
     (scope && !["market", "extensions", "ai"].includes(scope))) return null;
-  return { from, to, action: action as MarketAction || undefined, source: source as MarketFilters["source"] || undefined,
-    resourceType: type || undefined, resourceId: id || undefined, page, search, sort, scope: scope as MarketFilters["scope"] || undefined };
+  try { return { from, to, action: action as MarketAction || undefined, source: source as MarketFilters["source"] || undefined,
+    resourceType: type || undefined, resourceId: id || undefined, page, search, sort, scope: scope as MarketFilters["scope"] || undefined,
+    tableView: parseTableView(params.get("tableView")), tableTarget: params.get("tableTarget") === "events" ? "events" : "resources" }; }
+  catch { return null; }
 }
 
 /** Every source is date-bounded before the union; paid purchases come from the payment ledger, never browser events. */
@@ -71,28 +76,62 @@ async function eventQuery(filters: MarketFilters) {
 }
 const count = (action: string) => `SUM(CASE WHEN e.action='${action}' AND e.status NOT IN ('failed','requested') THEN 1 ELSE 0 END)`;
 
-export async function readMarketOverview(filters: MarketFilters): Promise<MarketOverview> {
-  const { sql, params, name, unavailableSources } = await eventQuery(filters);
-  const pool = getPool(), actions = MARKET_ACTIONS.map(action => `${count(action)} AS \`${action}\``).join(",");
-  const resources = `SELECT e.resource_type AS type,e.resource_id AS id,MAX(${name}) AS name,
+const literal = (value: string) => `'${value.replace(/'/g, "''")}'`;
+const labelCase = (field: string, labels: Record<string, string>, fallback: string) => `CASE ${field} ${Object.entries(labels).map(([key, value]) => `WHEN ${literal(key)} THEN ${literal(value)}`).join(" ")} ELSE ${fallback} END`;
+const displayName = (name: string) => `CASE WHEN e.resource_type='tool' THEN ${labelCase("e.resource_id", activityToolLabels, name)} ELSE ${name} END`;
+const RESOURCE_COLUMNS: SqlTableColumns = Object.fromEntries([
+  ["0", { sql: `CASE WHEN r.type='tool' THEN ${labelCase("r.id", activityToolLabels, "r.name")} ELSE r.name END` }],
+  ...["views", "selections", "favorites", "downloads", "purchases", "generations + r.extensions", "users"].map((name, index) => [String(index + 1), { sql: `r.${name}`, kind: "number" }]),
+]);
+function eventColumns(name: string): SqlTableColumns {
+  return {
+    "0": { sql: "e.at", kind: "date" },
+    "1": { sql: labelCase("e.detail", activityActionLabels, labelCase("e.action", MARKET_ACTION_LABELS, "e.action")) },
+    "2": { sql: displayName(name) },
+    "3": { sql: "CASE WHEN e.user_id IS NULL THEN 'Anonymous visitor' ELSE CONCAT_WS(' ', COALESCE(NULLIF(u.name,''), CONCAT('Account #',e.user_id)), u.email) END" },
+    "4": { sql: `CONCAT(CASE e.source WHEN 'web' THEN 'Website' WHEN 'extension' THEN 'Extension' ELSE 'Source not recorded' END, ' ', CASE WHEN e.status='observed' AND e.action IN ('view','select','favorite') THEN 'Recorded' ELSE ${labelCase("e.status", activityStatusLabels, "e.status")} END)` },
+  };
+}
+function resourceQuery(sql: string, name: string) {
+  return `SELECT e.resource_type AS type,e.resource_id AS id,MAX(${name}) AS name,
     ${count("view")} AS views,${count("select")} AS selections,${count("favorite")} AS favorites,
     ${count("download")} AS downloads,${count("purchase")} AS purchases,${count("generation")} AS generations,
     ${count("extension")} AS extensions,COUNT(DISTINCT e.user_id) AS users,${dateText("MAX(e.at)")} AS lastAt
     ${sql} AND e.resource_type<>'effect_file' GROUP BY e.resource_type,e.resource_id`;
+}
+
+export async function marketTableFacet(filters: MarketFilters, columnId: string, search: string) {
+  const { sql, params, name } = await eventQuery(filters);
+  const columns = filters.tableTarget === "events" ? eventColumns(name) : RESOURCE_COLUMNS;
+  const where = tableWhereSql(filters.tableView, columns, columnId);
+  const from = filters.tableTarget === "events" ? sql : `FROM (${resourceQuery(sql, name)}) r WHERE 1=1`;
+  return readTableFacet(`${from}${where.sql ? ` AND ${where.sql}` : ""}`, [...params, ...where.params], columns, columnId, search);
+}
+
+export async function readMarketOverview(filters: MarketFilters): Promise<MarketOverview> {
+  const { sql, params, name, unavailableSources } = await eventQuery(filters);
+  const pool = getPool(), actions = MARKET_ACTIONS.map(action => `${count(action)} AS \`${action}\``).join(",");
+  const resources = resourceQuery(sql, name);
+  const resourceState = filters.tableTarget !== "events" ? filters.tableView : undefined;
+  const eventState = filters.tableTarget === "events" ? filters.tableView : undefined;
+  const resourceWhere = tableWhereSql(resourceState, RESOURCE_COLUMNS);
+  const eventsColumns = eventColumns(name), eventWhere = tableWhereSql(eventState, eventsColumns);
+  const resourceFrom = `FROM (${resources}) r WHERE ${resourceWhere.sql || "1=1"}`;
+  const eventFrom = `${sql}${eventWhere.sql ? ` AND ${eventWhere.sql}` : ""}`;
   const queries = [
     `SELECT ${actions},COUNT(DISTINCT e.user_id) AS users,SUM(e.status='failed') AS failures ${sql}`,
     `SELECT DATE_FORMAT(e.at,'%Y-%m-%d') AS day,${actions} ${sql} GROUP BY DATE(e.at) ORDER BY DATE(e.at)`,
-    `SELECT * FROM (${resources}) r ORDER BY \`${filters.sort || "downloads"}\` DESC,type,id LIMIT 50 OFFSET ${(filters.page - 1) * 50}`,
-    `SELECT COUNT(*) AS total FROM (${resources}) r`,
+    `SELECT * ${resourceFrom} ${tableOrderSql(resourceState, RESOURCE_COLUMNS, `ORDER BY \`${filters.sort || "downloads"}\` DESC`)},type,id LIMIT 50 OFFSET ${(filters.page - 1) * 50}`,
+    `SELECT COUNT(*) AS total ${resourceFrom}`,
     `SELECT e.id,e.action,e.detail,e.status,e.resource_type AS resourceType,e.resource_id AS resourceId,${name} AS resourceName,
       e.user_id AS userId,u.name AS userName,u.email AS userEmail,e.source,${dateText("e.at")} AS at
-      ${sql} ORDER BY e.at DESC,e.id DESC LIMIT 50 OFFSET ${(filters.page - 1) * 50}`,
-    `SELECT COUNT(*) AS total ${sql}`,
+      ${eventFrom} ${tableOrderSql(eventState, eventsColumns, "ORDER BY e.at DESC")},e.id DESC LIMIT 50 OFFSET ${(filters.page - 1) * 50}`,
+    `SELECT COUNT(*) AS total ${eventFrom}`,
     `SELECT e.user_id AS id,MAX(COALESCE(u.name,IF(e.user_id IS NULL,'Anonymous visitors','Deleted account'))) AS name,
       MAX(u.email) AS email,COUNT(*) AS actions,${count("download")} AS downloads,${count("purchase")} AS purchases,
       ${dateText("MAX(e.at)")} AS lastAt ${sql} GROUP BY e.user_id ORDER BY actions DESC LIMIT 50`,
   ];
-  const results = await Promise.all(queries.map(query => pool.execute<RowDataPacket[]>(query, params).then(([rows]) => rows)));
+  const results = await Promise.all(queries.map((query, index) => pool.execute<RowDataPacket[]>(query, index === 2 || index === 3 ? [...params, ...resourceWhere.params] : index === 4 || index === 5 ? [...params, ...eventWhere.params] : params).then(([rows]) => rows)));
   const totals = Object.fromEntries([...MARKET_ACTIONS, "users", "failures"].map(key => [key, Number(results[0][0]?.[key] || 0)])) as MarketOverview["totals"];
   const numbers = (rows: RowDataPacket[], fields: string[]) => rows.map(row => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, fields.includes(key) ? Number(value || 0) : value])));
   const byDay = new Map(results[1].map(row => [row.day, row]));

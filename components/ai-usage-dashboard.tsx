@@ -1,5 +1,8 @@
 "use client";
 
+import { FilterableTable } from "@/components/ui/filterable-table";
+import { useServerTable } from "@/hooks/use-server-table";
+
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ChevronLeft, ChevronRight, ExternalLink, RefreshCw } from "lucide-react";
 import { AI_ACCOUNTS, AI_STATUSES, type AiUsageOverview, type AiUsageRow } from "@/lib/ai-usage-shared";
@@ -45,7 +48,8 @@ export function AiUsageDashboard() {
   const [data, setData] = useState<AiUsageOverview | null>(null), [busy, setBusy] = useState(true), [syncing, setSyncing] = useState(false);
   const [error, setError] = useState(""), [syncError, setSyncError] = useState(""), [progress, setProgress] = useState("");
   const syncController = useRef<AbortController | null>(null);
-  const requestQuery = query(filters, page);
+  const table = useServerTable(`/api/admin/ai-usage?${query(filters, page)}`, () => setPage(1));
+  const requestQuery = `${query(filters, page)}&tableView=${encodeURIComponent(table.query)}`;
   useEffect(() => {
     const ac = new AbortController(); setBusy(true); setError("");
     void fetch(`/api/admin/ai-usage?${requestQuery}`, { signal: ac.signal, cache: "no-store" })
@@ -176,17 +180,17 @@ export function AiUsageDashboard() {
       {error ? <div role="alert" className="flex flex-wrap items-center gap-3 rounded-md border border-border p-4 text-sm"><p>{error}</p><Button size="sm" variant="outline" onClick={() => setRevision(value => value + 1)}>Retry</Button></div> : null}
       {busy && !data ? <p role="status" className="py-8 text-sm text-muted-foreground">Loading generation history…</p> : null}
       {data && !data.rows.length ? <div className="rounded-md border border-border p-6 text-sm text-muted-foreground">No predictions match this period and these filters.{!data.sync.complete ? " Sync Replicate to import available history." : ""}</div> : null}
-      {data?.rows.length ? <>
-        <div className="hidden overflow-x-auto md:block"><table className="w-full text-sm"><thead className="sticky top-0 bg-background text-xs text-muted-foreground"><tr>
-          {[["Model / prediction", false], ["Author / user", false], ["Status", false], ["Created", true], ["Compute", true], ["Tokens in / out", true]].map(([text, right]) => <th scope="col" key={String(text)} className={`whitespace-nowrap py-3 pr-4 font-normal last:pr-0 ${right ? "text-right" : "text-left"}`}>{text}</th>)}
-        </tr></thead><tbody className="divide-y divide-border/40">{data.rows.map(row => <tr key={row.id} className="align-top">
+      {data ? <>
+        <div className="overflow-x-auto"><FilterableTable server={table} className="w-full text-sm"><thead className="sticky top-0 bg-background text-xs text-muted-foreground"><tr>
+          {[["Model / prediction", false], ["Author / user", false], ["Status", false], ["Created", true], ["Compute", true], ["Tokens in / out", true]].map(([text, right]) => <th scope="col" key={String(text)} data-kind={text === "Compute" ? "number" : text === "Created" ? "date" : "text"} className={`whitespace-nowrap py-3 pr-4 font-normal last:pr-0 ${right ? "text-right" : "text-left"}`}>{text}</th>)}
+        </tr></thead><tbody className="hidden divide-y divide-border/40 md:table-row-group">{data.rows.map(row => <tr key={row.id} className="align-top">
           <td className="max-w-72 py-3 pr-4"><p className="truncate" title={row.model}>{row.model}</p><div className="mt-1"><ProviderLink row={row} /></div></td>
           <td className="max-w-72 py-3 pr-4"><p>{label(row.account)}</p><p className="mt-1 break-words text-xs" title={row.userEmail || undefined}>{row.userEmail || "Email unavailable"}</p><p className="mt-1 text-xs text-muted-foreground">{row.userRef || "No linked user"}</p></td>
           <td className="py-3 pr-4"><Status value={row.status} /></td>
           <td className="whitespace-nowrap py-3 pr-4 text-right text-xs tabular-nums">{stamp(row.createdAt)}<p className="mt-1 text-muted-foreground">{row.completedAt ? `Done ${new Date(row.completedAt).toLocaleTimeString()}` : "—"}</p></td>
           <td className="whitespace-nowrap py-3 pr-4 text-right font-mono text-xs tabular-nums">{seconds(row.predictSeconds)}<p className="mt-1 text-muted-foreground">{seconds(row.totalSeconds)} total</p></td>
           <td className="whitespace-nowrap py-3 text-right font-mono text-xs tabular-nums">{num(row.inputTokens)} / {num(row.outputTokens)}</td>
-        </tr>)}</tbody></table></div>
+        </tr>)}</tbody></FilterableTable></div>
         <ul className="divide-y divide-border/50 md:hidden">{data.rows.map(row => <li key={row.id} className="space-y-2 py-4">
           <div className="flex items-start justify-between gap-3"><p className="min-w-0 break-words text-sm">{row.model}</p><Status value={row.status} /></div>
           <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground"><span>{label(row.account)} · {row.userRef || "No linked user"}</span><span className="tabular-nums">{seconds(row.predictSeconds)}</span></div>

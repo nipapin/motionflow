@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { isAffiliateAdmin } from "@/lib/affiliate/admin";
-import { exportAdminUsers, searchAdminUsers } from "@/lib/admin-users";
+import { adminUsersTableFacet, exportAdminUsers, searchAdminUsers } from "@/lib/admin-users";
+import { isTableQueryError, parseTableView } from "@/lib/table-query";
 import { parseMailingFilter, validateUserDateRanges } from "@/lib/user-list-filters";
 import { makeCsv, makeMailgunCsv, userCsvResponse } from "@/lib/user-csv";
 import {
@@ -56,7 +57,10 @@ export async function GET(req: NextRequest) {
       sort,
       dir,
       mailing,
+      tableView: parseTableView(url.searchParams.get("tableView")),
     };
+    const facet = url.searchParams.get("tableFacet");
+    if (facet) return NextResponse.json(await adminUsersTableFacet(options, facet, url.searchParams.get("tableSearch") ?? ""));
     const format = url.searchParams.get("export");
     if (format === "csv" || format === "mailgun") {
       const users = await exportAdminUsers(options);
@@ -69,6 +73,7 @@ export async function GET(req: NextRequest) {
     const result = await searchAdminUsers(options);
     return NextResponse.json(result);
   } catch (err) {
+    if (isTableQueryError(err)) return NextResponse.json({ error: "Invalid column filters or sorting." }, { status: 400 });
     console.error("[admin/users GET]", err);
     return NextResponse.json({ error: "SERVER_ERROR" }, { status: 500 });
   }

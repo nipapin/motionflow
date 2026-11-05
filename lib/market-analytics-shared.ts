@@ -1,10 +1,12 @@
+import type { TableViewState } from "@/lib/table-query";
+
 export const MARKET_ACTIONS = ["view", "select", "favorite", "download", "purchase", "generation", "extension"] as const;
 export type MarketAction = typeof MARKET_ACTIONS[number];
 export const MARKET_ACTION_LABELS: Record<MarketAction, string> = {
   view: "Views", select: "Selections", favorite: "Saved", download: "Downloads",
   purchase: "Purchases", generation: "AI tools", extension: "Extension activity",
 };
-export type MarketFilters = { from: string; to: string; action?: MarketAction; source?: "web" | "extension" | "unknown"; scope?: "market" | "extensions" | "ai"; resourceType?: string; resourceId?: string; search?: string; page: number; sort?: string };
+export type MarketFilters = { from: string; to: string; action?: MarketAction; source?: "web" | "extension" | "unknown"; scope?: "market" | "extensions" | "ai"; resourceType?: string; resourceId?: string; search?: string; page: number; sort?: string; tableView?: TableViewState; tableTarget?: "resources" | "events" };
 export type MarketResource = { type: string; id: string; name: string; views: number; selections: number; favorites: number; downloads: number; purchases: number; generations: number; extensions: number; users: number; lastAt: string };
 export type MarketEvent = { id: string; action: MarketAction; detail: string; status: string; resourceType: string; resourceId: string | null; resourceName: string; userId: number | null; userName: string | null; userEmail: string | null; source: string; at: string };
 export type MarketOverview = {

@@ -3,18 +3,27 @@
 import * as React from 'react'
 
 import { cn } from '@/lib/utils'
+import { FilterableTable } from '@/components/ui/filterable-table'
+import type { ServerTableController } from '@/hooks/use-server-table'
 
-function Table({ className, ...props }: React.ComponentProps<'table'>) {
+function Table({ className, filterable, server, ...props }: React.ComponentProps<'table'> & { filterable?: boolean; server?: ServerTableController }) {
   return (
     <div
       data-slot="table-container"
       className="relative w-full overflow-x-auto"
     >
-      <table
+      {filterable || server ? <FilterableTable
+        data-slot="table"
+        headerType={TableHeader}
+        bodyType={TableBody}
+        server={server}
+        className={cn('w-full caption-bottom text-sm', className)}
+        {...props}
+      /> : <table
         data-slot="table"
         className={cn('w-full caption-bottom text-sm', className)}
         {...props}
-      />
+      />}
     </div>
   )
 }

@@ -1,5 +1,8 @@
 "use client";
 
+import { FilterableTable } from "@/components/ui/filterable-table";
+import { useServerTable } from "@/hooks/use-server-table";
+
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +53,7 @@ export function OdinUsersAdmin() {
   const [q, setQ] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const table = useServerTable(`/api/odin/users?q=${encodeURIComponent(search)}`, () => setPage(1));
   const [refresh, setRefresh] = useState(0);
   const [list, setList] = useState<{ users: User[]; total: number } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -74,11 +78,11 @@ export function OdinUsersAdmin() {
   useEffect(() => {
     const controller = new AbortController();
     setList(null); setListError("");
-    request(`/api/odin/users?${new URLSearchParams({ q: search, page: String(page) })}`, { signal: controller.signal })
+    request(`/api/odin/users?${new URLSearchParams({ q: search, page: String(page), tableView: table.query })}`, { signal: controller.signal })
       .then(data => { if (!controller.signal.aborted) setList(data); })
       .catch(e => { if (!controller.signal.aborted) setListError(e.message); });
     return () => controller.abort();
-  }, [search, page, refresh]);
+  }, [search, page, refresh, table.query]);
 
   useEffect(() => {
     setDetail(null); setPending(null); setReason(""); setExpires(""); setError("");
@@ -123,8 +127,8 @@ export function OdinUsersAdmin() {
     {listError && <div className="flex items-center gap-3"><p role="alert" className="text-sm text-destructive">{listError}</p><Button variant="outline" disabled={busy} onClick={() => setRefresh(n => n + 1)}>Retry</Button></div>}
     {!list && !listError && <p role="status">Loading Odin users…</p>}
     {list && <>
-      <div className="overflow-auto rounded-lg border"><table className="w-full text-left text-sm"><thead><tr className="border-b"><th className="p-3">Email</th><th className="p-3">Name</th><th className="p-3">Account</th></tr></thead>
-        <tbody>{list.users.map(user => <tr key={user.id} className="border-b"><td className="p-3">{user.email}</td><td className="p-3">{user.name} {user.lastname}</td><td className="p-3"><Button variant="outline" disabled={busy} onClick={() => { setError(""); setSelected(user.id); }}>Manage</Button></td></tr>)}</tbody></table></div>
+      <div className="overflow-auto rounded-lg border"><FilterableTable server={table} className="w-full text-left text-sm"><thead><tr className="border-b"><th className="p-3" data-column="email">Email</th><th className="p-3" data-column="name">Name</th><th className="p-3" data-filterable={false}>Account</th></tr></thead>
+        <tbody>{list.users.map(user => <tr key={user.id} className="border-b"><td className="p-3">{user.email}</td><td className="p-3">{user.name} {user.lastname}</td><td className="p-3"><Button variant="outline" disabled={busy} onClick={() => { setError(""); setSelected(user.id); }}>Manage</Button></td></tr>)}</tbody></FilterableTable></div>
       {list.users.length === 0 && <p>No users found.</p>}
       <div className="flex items-center gap-3"><Button variant="outline" disabled={page === 1} onClick={() => setPage(n => n - 1)}>Previous</Button><span>{list.total} users · Page {page}</span><Button variant="outline" disabled={page * 25 >= list.total} onClick={() => setPage(n => n + 1)}>Next</Button></div>
     </>}

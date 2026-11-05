@@ -35,7 +35,7 @@ export type CepErrorReportSummary = {
   occurred_at: string;
 };
 
-async function ensureSchema(): Promise<void> {
+export async function ensureSchema(): Promise<void> {
   if (schemaEnsured) return;
   const pool = getPool();
   await pool.query(

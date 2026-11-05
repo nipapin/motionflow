@@ -25,6 +25,8 @@ import {
 } from "@/lib/admin-users-shared";
 import type { AdminUserPatchInput } from "@/lib/validations/admin-users";
 import { mailingFilterSql, type MailingFilter } from "@/lib/user-list-filters";
+import type { TableViewState } from "@/lib/table-query";
+import { readTableFacet, tableOrderSql, tableWhereSql, type SqlTableColumns } from "@/lib/table-query-sql";
 
 const USERS_TABLE = "users";
 const SOLD_TABLE = "sold_items";
@@ -149,6 +151,19 @@ const SORT_SQL: Record<AdminUserSortField, string> = {
   createdAt: "u.created_at",
 };
 
+const USER_TABLE_COLUMNS: SqlTableColumns = {
+  id: { sql: "u.id", kind: "number" }, name: { sql: "u.name" }, email: { sql: "u.email" },
+  access: { sql: "CASE WHEN u.access = 100 THEN 'Admin' WHEN u.access >= 2 THEN 'Author' WHEN u.access >= 1 THEN 'Partner' ELSE 'Buyer' END" },
+  soldItems: { sql: SORT_SQL.soldItems, kind: "number" },
+  subscription: { sql: `(SELECT GROUP_CONCAT(DISTINCT CASE
+    WHEN ss.author_id = ${SPUNKRAM_AUTHOR_ID} THEN COALESCE(NULLIF(TRIM(ss.paddle_product_name), ''), 'Spunkram')
+    WHEN ss.author_id = ${PREMIERE_GAL_AUTHOR_ID} THEN COALESCE(NULLIF(TRIM(ss.paddle_product_name), ''), 'Premiere Gal')
+    WHEN NULLIF(TRIM(ss.paddle_product_name), '') IS NOT NULL THEN IF(TRIM(ss.paddle_product_name) LIKE 'Motionflow%', TRIM(ss.paddle_product_name), CONCAT('Motionflow ', TRIM(ss.paddle_product_name)))
+    WHEN NULLIF(ss.plan, '') IS NOT NULL THEN CONCAT('Motionflow (', ss.plan, ')') ELSE 'Motionflow' END ORDER BY ss.id DESC SEPARATOR ', ')
+    FROM \`${SUB_TABLE}\` ss WHERE ss.buyer_id = u.id AND ${activeSubscriptionPredicate("ss")}${extraPackExcludeSql()})` },
+  createdAt: { sql: "u.created_at", kind: "date" },
+};
+
 export type AdminUserSearchOptions = {
   q?: string;
   page?: number;
@@ -162,6 +177,8 @@ export type AdminUserSearchOptions = {
   sort?: AdminUserSortField;
   dir?: AdminUserSortDir;
   mailing?: MailingFilter;
+  tableView?: TableViewState;
+  tableFacet?: string;
 };
 
 function buildAdminUsersQuery(opts: AdminUserSearchOptions) {
@@ -258,7 +275,9 @@ function buildAdminUsersQuery(opts: AdminUserSearchOptions) {
     clauses.push(`(${searchParts.join(" OR ")})`);
   }
 
-  const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+  const table = tableWhereSql(opts.tableView, USER_TABLE_COLUMNS, opts.tableFacet);
+  if (table.sql) { clauses.push(table.sql); whereParams.push(...table.params); }
+  const whereSql = `WHERE ${clauses.length > 0 ? clauses.join(" AND ") : "1=1"}`;
   const dirSql = dir === "asc" ? "ASC" : "DESC";
   const useSearchRelevance = hasQuery && sort === "id" && dir === "desc";
   const orderSql = useSearchRelevance
@@ -275,7 +294,12 @@ function buildAdminUsersQuery(opts: AdminUserSearchOptions) {
     ? [isNumericId ? asId : -1, q, q]
     : [];
 
-  return { whereSql, whereParams, orderSql, orderParams };
+  return { whereSql, whereParams, orderSql: tableOrderSql(opts.tableView, USER_TABLE_COLUMNS, orderSql), orderParams: opts.tableView?.sort ? [] : orderParams };
+}
+
+export async function adminUsersTableFacet(opts: AdminUserSearchOptions, columnId: string, search: string) {
+  const query = buildAdminUsersQuery({ ...opts, tableFacet: columnId });
+  return readTableFacet(`FROM \`${USERS_TABLE}\` u ${query.whereSql}`, query.whereParams, USER_TABLE_COLUMNS, columnId, search);
 }
 
 export async function exportAdminUsers(opts: AdminUserSearchOptions) {

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getPackagesAuthorById, isPackagesAdmin } from "@/lib/packages-admin";
-import { exportExtensionUsersForAuthor, listExtensionUsersForAuthor } from "@/lib/cep-extension-users";
+import { exportExtensionUsersForAuthor, extensionUsersTableFacet, listExtensionUsersForAuthor } from "@/lib/cep-extension-users";
+import { isTableQueryError, parseTableView } from "@/lib/table-query";
 import { parseExtensionUserFilters, validateUserDateRanges } from "@/lib/user-list-filters";
 import { makeCsv, makeMailgunCsv, userCsvResponse } from "@/lib/user-csv";
 
@@ -38,18 +39,22 @@ export async function GET(
   if (dateError) return NextResponse.json({ error: dateError }, { status: 400 });
 
   try {
+    const tableView = parseTableView(req.nextUrl.searchParams.get("tableView"));
+    const facet = req.nextUrl.searchParams.get("tableFacet");
+    if (facet) return NextResponse.json(await extensionUsersTableFacet({ authorId, q, filters, tableView }, facet, req.nextUrl.searchParams.get("tableSearch") ?? ""));
     const format = req.nextUrl.searchParams.get("export");
     if (format === "csv" || format === "mailgun") {
-      const users = await exportExtensionUsersForAuthor({ authorId, q, filters });
+      const users = await exportExtensionUsersForAuthor({ authorId, q, filters, tableView });
       const csv = format === "mailgun" ? makeMailgunCsv(users) : makeCsv(
         ["user_id", "email", "name", "registered_at", "last_seen_at", "device_count", "subscription_source", "mailing_opt_in", "email_verified"],
         users.map(u => [u.user_id, u.email, u.name, u.registered_at, u.last_seen_at, u.device_count, u.subscription_source, u.mailing_opt_in, u.email_verified]),
       );
       return userCsvResponse(csv, `author-${authorId}-users-${format}-${new Date().toISOString().slice(0, 10)}.csv`);
     }
-    const result = await listExtensionUsersForAuthor({ authorId, q, page, filters });
+    const result = await listExtensionUsersForAuthor({ authorId, q, page, filters, tableView });
     return NextResponse.json(result);
   } catch (err) {
+    if (isTableQueryError(err)) return NextResponse.json({ error: "Invalid column filters or sorting." }, { status: 400 });
     console.error("[extensions/users GET]", err);
     return NextResponse.json({ error: "SERVER_ERROR" }, { status: 500 });
   }

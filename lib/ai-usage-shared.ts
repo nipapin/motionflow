@@ -1,3 +1,5 @@
+import type { TableViewState } from "@/lib/table-query";
+
 export const AI_ACCOUNTS = [
   { id: "default", label: "Motion Flow", env: "REPLICATE_API_TOKEN" },
   { id: "spunkram", label: "Spunkram Library", env: "REPLICATE_SPUNKRAM_API_TOKEN" },
@@ -13,7 +15,7 @@ export function aiAccountForUser(user: AiUsageIdentity): AiAccount {
   return "default";
 }
 export const AI_STATUSES = ["starting", "processing", "succeeded", "failed", "canceled", "aborted"] as const;
-export type AiUsageFilters = { from: string; to: string; account: string; model: string; status: string; page: number };
+export type AiUsageFilters = { from: string; to: string; account: string; model: string; status: string; page: number; tableView?: TableViewState };
 export type AiUsageTotals = {
   total: number; succeeded: number; failed: number; active: number; canceled: number;
   predictSeconds: number; measured: number; inputTokens: number; outputTokens: number;

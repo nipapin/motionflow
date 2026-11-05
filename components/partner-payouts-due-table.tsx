@@ -66,14 +66,14 @@ export function PartnerPayoutsDueTable({ rows }: { rows: DuePayoutItem[] }) {
   };
 
   return (
-    <Table>
+    <Table filterable>
       <TableHeader>
         <TableRow>
           <TableHead>Partner</TableHead>
           <TableHead>Payoneer</TableHead>
           <TableHead>Period</TableHead>
           <TableHead className="text-right">Amount</TableHead>
-          <TableHead className="text-right">Action</TableHead>
+          <TableHead className="text-right" data-filterable={false}>Action</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>

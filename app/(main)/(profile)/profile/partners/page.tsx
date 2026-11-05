@@ -123,8 +123,8 @@ export default async function PartnersPage({ searchParams }: PageProps) {
               </Button>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
+            <Table filterable>
+              <TableHeader data-table-section="head">
                 <TableRow>
                   <TableHead>Partner</TableHead>
                   <TableHead>Referral link</TableHead>
@@ -135,7 +135,7 @@ export default async function PartnersPage({ searchParams }: PageProps) {
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody data-table-section="body">
                 {partners.map((partner) => (
                   <TableRow key={partner.id}>
                     <TableCell>
@@ -147,7 +147,7 @@ export default async function PartnersPage({ searchParams }: PageProps) {
                       </Link>
                       <p className="text-xs text-muted-foreground">{partner.email}</p>
                     </TableCell>
-                    <TableCell>
+                    <TableCell data-value={affiliateRefLink(partner.slug)}>
                       <AffiliateCopyLink link={affiliateRefLink(partner.slug)} compact />
                     </TableCell>
                     <TableCell className="text-right tabular-nums">

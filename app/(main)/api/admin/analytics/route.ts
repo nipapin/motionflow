@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { isAffiliateAdmin } from "@/lib/affiliate/admin";
-import { parseMarketFilters, readMarketOverview, readMarketHeatmap } from "@/lib/market-analytics-reader";
+import { marketTableFacet, parseMarketFilters, readMarketOverview, readMarketHeatmap } from "@/lib/market-analytics-reader";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export async function GET(req: NextRequest) {
@@ -9,6 +9,8 @@ export async function GET(req: NextRequest) {
   const filters = parseMarketFilters(req.nextUrl.searchParams);
   if (!filters) return NextResponse.json({ error: "INVALID_FILTERS" }, { status: 400 });
   try {
+    const facet = req.nextUrl.searchParams.get("tableFacet");
+    if (facet) return NextResponse.json(await marketTableFacet(filters, facet, req.nextUrl.searchParams.get("tableSearch") ?? ""));
     const data = req.nextUrl.searchParams.get("view") === "heatmap"
       ? await readMarketHeatmap(filters.from, filters.to, req.nextUrl.searchParams.get("path") || undefined,
         Number(req.nextUrl.searchParams.get("width")) || undefined, req.nextUrl.searchParams.get("layout") || undefined)

@@ -1,4 +1,6 @@
 import "server-only";
+import { parseTableView } from "@/lib/table-query";
+import { readTableFacet, tableOrderSql, tableWhereSql, type SqlTableColumns } from "@/lib/table-query-sql";
 import { saveAiBillingMetrics } from "@/lib/ai-usage-billing";
 import type { RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
@@ -91,7 +93,8 @@ export function parseAiUsageFilters(params: URLSearchParams): AiUsageFilters | n
       (account && account !== "unknown" && !AI_ACCOUNTS.some(item => item.id === account)) ||
       (status && !AI_STATUSES.includes(status as typeof AI_STATUSES[number])) ||
       model.length > 255 || !Number.isSafeInteger(page) || page < 1 || page > 100000) return null;
-  return { from: new Date(start).toISOString(), to: new Date(end).toISOString(), account, model, status, page };
+  try { return { from: new Date(start).toISOString(), to: new Date(end).toISOString(), account, model, status, page, tableView: parseTableView(params.get("tableView")) }; }
+  catch { return null; }
 }
 
 const aggregates = `COUNT(*) AS total, COALESCE(SUM(status = 'succeeded'),0) AS succeeded,
@@ -104,15 +107,37 @@ function totals(row: Record<string, unknown> = {}): AiUsageTotals {
   return Object.fromEntries(["total", "succeeded", "failed", "active", "canceled", "predictSeconds", "measured", "inputTokens", "outputTokens", "inputMeasured", "outputMeasured"]
     .map(key => [key, Number(row[key] || 0)])) as AiUsageTotals;
 }
-export async function readAiUsage(filters: AiUsageFilters): Promise<AiUsageOverview> {
-  await ensureAiUsageSchema();
+const AI_TABLE_COLUMNS: SqlTableColumns = {
+  "0": { sql: "CONCAT_WS(' ', model, prediction_id)" },
+  "1": { sql: `CONCAT_WS(' ', CASE account_key ${AI_ACCOUNTS.map((account) => `WHEN '${account.id}' THEN '${account.label}'`).join(" ")} ELSE 'Unknown' END,
+    COALESCE(user_email, (SELECT u.email FROM users u WHERE u.id=CAST(SUBSTRING(ai_usage_predictions.user_ref,4) AS UNSIGNED) AND ai_usage_predictions.user_ref=CONCAT('mf:',u.id) LIMIT 1)), user_ref)` },
+  "2": { sql: "status" }, "3": { sql: "created_at", kind: "date" },
+  "4": { sql: "predict_seconds", kind: "number" },
+  "5": { sql: "CONCAT(COALESCE(input_tokens,0), ' / ', COALESCE(output_tokens,0))" },
+};
+
+function aiUsageQuery(filters: AiUsageFilters, omitColumn?: string) {
   const clauses = ["created_at >= ?", "created_at < ?"], values: (string | number)[] = [sqlDate(filters.from), sqlDate(filters.to)];
   // Model choices cover the whole time window, so changing author never hides the current choice.
   const modelValues = [...values];
   for (const [column, value] of [["account_key", filters.account], ["model", filters.model], ["status", filters.status]]) {
     if (value) { clauses.push(`${column} = ?`); values.push(value); }
   }
-  const where = clauses.join(" AND ");
+  const table = tableWhereSql(filters.tableView, AI_TABLE_COLUMNS, omitColumn);
+  if (table.sql) { clauses.push(table.sql); values.push(...table.params); }
+  return { where: clauses.join(" AND "), values, modelValues };
+}
+
+export async function aiUsageTableFacet(filters: AiUsageFilters, columnId: string, search: string) {
+  await ensureAiUsageSchema();
+  const query = aiUsageQuery(filters, columnId);
+  return readTableFacet(`FROM ai_usage_predictions WHERE ${query.where}`, query.values, AI_TABLE_COLUMNS, columnId, search);
+}
+
+export async function readAiUsage(filters: AiUsageFilters): Promise<AiUsageOverview> {
+  await ensureAiUsageSchema();
+  const { where, values, modelValues } = aiUsageQuery(filters);
+  const order = tableOrderSql(filters.tableView, AI_TABLE_COLUMNS, "ORDER BY created_at DESC, prediction_id DESC");
   const pool = getPool();
   const [summary, groups, records, models, sync] = await Promise.all([
     pool.execute<RowDataPacket[]>(`SELECT ${aggregates} FROM ai_usage_predictions WHERE ${where}`, values),
@@ -125,7 +150,7 @@ export async function readAiUsage(filters: AiUsageFilters): Promise<AiUsageOverv
       COALESCE(user_email, (SELECT u.email FROM users u
         WHERE u.id = CAST(SUBSTRING(user_ref, 4) AS UNSIGNED)
           AND user_ref = CONCAT('mf:', u.id) LIMIT 1)) AS userEmail, client
-      FROM ai_usage_predictions WHERE ${where} ORDER BY created_at DESC, prediction_id DESC LIMIT 50 OFFSET ${(filters.page - 1) * 50}`, values),
+      FROM ai_usage_predictions WHERE ${where} ${order}, prediction_id DESC LIMIT 50 OFFSET ${(filters.page - 1) * 50}`, values),
     pool.execute<RowDataPacket[]>("SELECT DISTINCT model FROM ai_usage_predictions WHERE created_at >= ? AND created_at < ? ORDER BY model", modelValues),
     pool.execute<RowDataPacket[]>(`SELECT complete, DATE_FORMAT(updated_at,'%Y-%m-%dT%H:%i:%s.%fZ') AS updatedAt,
       lease_until > UTC_TIMESTAMP(3) AS running FROM ai_usage_sync_ranges WHERE range_key = ?`, [rangeKey(filters.from, filters.to)]),

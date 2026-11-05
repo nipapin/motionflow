@@ -117,7 +117,7 @@ export function PackagesAuthorWorkspace({ authorId }: { authorId: number }) {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="packages" className="outline-none">
-          <PackagesProjectList authorId={authorId} />
+          <PackagesProjectList key={authorId} authorId={authorId} />
         </TabsContent>
         <TabsContent value="users" className="outline-none">
           {authorId === ODIN_PACKAGES_AUTHOR_ID ? <OdinUsersAdmin /> : <ExtensionsUsersList authorId={authorId} />}

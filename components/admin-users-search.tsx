@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, Search } from "lucide-react";
+import { Loader2, Search } from "lucide-react";
 import {
   accessRoleLabel,
   formatAdminDate,
@@ -16,11 +16,10 @@ import {
   type AdminUserListRow,
   type AdminUserRoleFilter,
   type AdminUserSoldFilter,
-  type AdminUserSortDir,
-  type AdminUserSortField,
   type AdminUserSubFilter,
   type AdminUserVerifiedFilter,
 } from "@/lib/admin-users-shared";
+import { useServerTable } from "@/hooks/use-server-table";
 import { AdminUserDrawer } from "@/components/admin-user-drawer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,7 +35,6 @@ import {
 } from "@/components/ui/table";
 import { FilterSelect, DateFilter, UserCsvExport } from "@/components/user-list-controls";
 import { MAILING_FILTERS, validateUserDateRanges, type MailingFilter } from "@/lib/user-list-filters";
-import { cn } from "@/lib/utils";
 
 type SearchResponse = {
   users: AdminUserListRow[];
@@ -45,53 +43,6 @@ type SearchResponse = {
   pageSize: number;
   error?: string;
 };
-
-function SortableHead({
-  field,
-  label,
-  sort,
-  dir,
-  onSort,
-  className,
-  numeric,
-}: {
-  field: AdminUserSortField;
-  label: string;
-  sort: AdminUserSortField;
-  dir: AdminUserSortDir;
-  onSort: (field: AdminUserSortField) => void;
-  className?: string;
-  numeric?: boolean;
-}) {
-  const active = sort === field;
-  return (
-    <TableHead
-      className={className}
-      aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"}
-    >
-      <button
-        type="button"
-        className={cn(
-          "-ml-1 inline-flex items-center gap-1 rounded-md px-1 py-0.5 font-medium hover:text-foreground",
-          numeric && "w-full justify-end",
-          active ? "text-foreground" : "text-muted-foreground",
-        )}
-        onClick={() => onSort(field)}
-      >
-        {label}
-        {active ? (
-          dir === "asc" ? (
-            <ArrowUp className="h-3.5 w-3.5" />
-          ) : (
-            <ArrowDown className="h-3.5 w-3.5" />
-          )
-        ) : (
-          <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
-        )}
-      </button>
-    </TableHead>
-  );
-}
 
 export function AdminUsersSearch({ initial }: { initial: SearchResponse }) {
   const [draft, setDraft] = useState("");
@@ -104,8 +55,7 @@ export function AdminUsersSearch({ initial }: { initial: SearchResponse }) {
   const [mailing, setMailing] = useState<MailingFilter>("all");
   const [registeredFrom, setRegisteredFrom] = useState("");
   const [registeredTo, setRegisteredTo] = useState("");
-  const [sort, setSort] = useState<AdminUserSortField>("id");
-  const [dir, setDir] = useState<AdminUserSortDir>("desc");
+  const sort = "id", dir = "desc";
   const [page, setPage] = useState(1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -137,8 +87,12 @@ export function AdminUsersSearch({ initial }: { initial: SearchResponse }) {
     if (mailing !== "all") params.set("mailing", mailing);
     if (registeredFrom) params.set("registeredFrom", registeredFrom);
     if (registeredTo) params.set("registeredTo", registeredTo);
+    params.set("tableView", table.query);
     return params;
   }
+
+  const facetParams = new URLSearchParams({ q, role, google, verified, sold, sub: subscription, mailing, registeredFrom, registeredTo });
+  const table = useServerTable(`/api/admin/users?${facetParams}`, () => setPage(1));
 
   useEffect(() => {
     if (
@@ -154,7 +108,8 @@ export function AdminUsersSearch({ initial }: { initial: SearchResponse }) {
       registeredFrom === "" &&
       registeredTo === "" &&
       sort === "id" &&
-      dir === "desc"
+      dir === "desc" &&
+      Object.keys(table.state.filters).length === 0 && table.state.sort === null
     ) {
       skipInitialFetch.current = false;
       return;
@@ -201,6 +156,7 @@ export function AdminUsersSearch({ initial }: { initial: SearchResponse }) {
     sort,
     dir,
     refresh,
+    table.query,
   ]);
 
   const totalPages = useMemo(
@@ -236,23 +192,11 @@ export function AdminUsersSearch({ initial }: { initial: SearchResponse }) {
     setRegisteredTo(next);
     setPage(1);
   };
-  const applySort = (field: AdminUserSortField) => {
-    if (sort === field) {
-      setDir((current) => (current === "asc" ? "desc" : "asc"));
-    } else {
-      setSort(field);
-      setDir(
-        field === "name" || field === "email" || field === "access" ? "asc" : "desc",
-      );
-    }
-    setPage(1);
-  };
-
   const resetFilters = () => {
     setDraft(""); setQ(""); qRef.current = ""; setPage(1);
     setRole("all"); setGoogle("all"); setVerified("all"); setSold("all");
     setSubscription("all"); setMailing("all"); setRegisteredFrom(""); setRegisteredTo("");
-    setSort("id"); setDir("desc");
+    table.reset();
   };
 
   const openRow = (id: number) => setSelectedId(id);
@@ -384,7 +328,7 @@ export function AdminUsersSearch({ initial }: { initial: SearchResponse }) {
           ) : null}
         </CardHeader>
         <CardContent>
-          {result.users.length === 0 ? (
+          {result.users.length === 0 && Object.keys(table.state.filters).length === 0 ? (
             <div className="rounded-xl border border-dashed border-border/60 px-6 py-12 text-center">
               <p className="font-medium text-foreground">No users found</p>
               <p className="text-sm text-muted-foreground">
@@ -392,61 +336,16 @@ export function AdminUsersSearch({ initial }: { initial: SearchResponse }) {
               </p>
             </div>
           ) : (
-            <Table>
+            <Table server={table}>
               <TableHeader>
                 <TableRow>
-                  <SortableHead
-                    field="id"
-                    label="Id"
-                    sort={sort}
-                    dir={dir}
-                    onSort={applySort}
-                    className="w-24"
-                  />
-                  <SortableHead
-                    field="name"
-                    label="Name"
-                    sort={sort}
-                    dir={dir}
-                    onSort={applySort}
-                  />
-                  <SortableHead
-                    field="email"
-                    label="Email"
-                    sort={sort}
-                    dir={dir}
-                    onSort={applySort}
-                  />
-                  <SortableHead
-                    field="access"
-                    label="Role"
-                    sort={sort}
-                    dir={dir}
-                    onSort={applySort}
-                  />
-                  <SortableHead
-                    field="soldItems"
-                    label="Sold items"
-                    sort={sort}
-                    dir={dir}
-                    onSort={applySort}
-                    numeric
-                    className="text-right"
-                  />
-                  <SortableHead
-                    field="subscription"
-                    label="Active subscription"
-                    sort={sort}
-                    dir={dir}
-                    onSort={applySort}
-                  />
-                  <SortableHead
-                    field="createdAt"
-                    label="Registered"
-                    sort={sort}
-                    dir={dir}
-                    onSort={applySort}
-                  />
+                  <TableHead data-column="id" data-kind="number">Id</TableHead>
+                  <TableHead data-column="name" data-kind="text">Name</TableHead>
+                  <TableHead data-column="email" data-kind="text">Email</TableHead>
+                  <TableHead data-column="access" data-kind="text">Role</TableHead>
+                  <TableHead data-column="soldItems" data-kind="number">Sold items</TableHead>
+                  <TableHead data-column="subscription" data-kind="text">Active subscription</TableHead>
+                  <TableHead data-column="createdAt" data-kind="date">Registered</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

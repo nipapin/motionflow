@@ -1,5 +1,7 @@
 "use client";
 
+import { FilterableTable } from "@/components/ui/filterable-table";
+
 import { useEffect, useMemo, useState } from "react";
 import {
   ChevronRight,
@@ -428,18 +430,18 @@ export function PackagesR2Browser({
 
       {view === "list" ? (
         <div className="overflow-auto max-h-96 rounded-lg border border-border/40">
-          <table className="w-full text-xs">
+          <FilterableTable key={currentPath} className="w-full text-xs">
             <thead className="sticky top-0 bg-card/95 backdrop-blur-sm">
               <tr className="text-left text-muted-foreground border-b border-border/50">
                 <th className="py-2 px-3 font-medium">Name</th>
                 <th className="py-2 pr-3 font-medium">Size</th>
                 <th className="py-2 pr-3 font-medium">Modified</th>
-                <th className="py-2 pr-3 font-medium">Link</th>
+                <th className="py-2 pr-3 font-medium" data-filterable={false}>Link</th>
               </tr>
             </thead>
             <tbody>
               {!atRoot ? (
-                <tr className="border-b border-border/30 hover:bg-foreground/3">
+                <tr data-table-pinned className="border-b border-border/30 hover:bg-foreground/3">
                   <td className="py-1.5 px-3" colSpan={4}>
                     <button
                       type="button"
@@ -474,10 +476,10 @@ export function PackagesR2Browser({
                       </span>
                     )}
                   </td>
-                  <td className="py-1.5 pr-3 whitespace-nowrap text-muted-foreground">
+                  <td data-value={entry.kind === "file" ? entry.size : ""} className="py-1.5 pr-3 whitespace-nowrap text-muted-foreground">
                     {entry.kind === "file" ? formatBytes(entry.size) : "—"}
                   </td>
-                  <td className="py-1.5 pr-3 whitespace-nowrap text-muted-foreground">
+                  <td data-value={entry.lastModified ?? ""} className="py-1.5 pr-3 whitespace-nowrap text-muted-foreground">
                     {entry.lastModified
                       ? new Date(entry.lastModified).toLocaleString()
                       : "—"}
@@ -503,7 +505,7 @@ export function PackagesR2Browser({
                 </tr>
               ) : null}
             </tbody>
-          </table>
+          </FilterableTable>
         </div>
       ) : null}
 

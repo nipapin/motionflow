@@ -146,8 +146,8 @@ export default async function PartnerDetailPage({ params, searchParams }: PagePr
               </p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
+            <Table filterable>
+              <TableHeader data-table-section="head">
                 <TableRow>
                   <TableHead>Buyer</TableHead>
                   <TableHead>Plan</TableHead>
@@ -159,7 +159,7 @@ export default async function PartnerDetailPage({ params, searchParams }: PagePr
                   <TableHead>Date (UTC)</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody data-table-section="body">
                 {rows.map((row) => (
                   <TableRow key={row.id}>
                     <TableCell>
@@ -179,13 +179,13 @@ export default async function PartnerDetailPage({ params, searchParams }: PagePr
                         {affiliateSourceLabel(row.campaign, row.status)}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell data-value={row.grossAmount} className="text-right tabular-nums">
                       {affiliateMoney(row.grossAmount, row.currency)}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums text-destructive">
+                    <TableCell data-value={-Math.abs(row.paddleFee)} className="text-right tabular-nums text-destructive">
                       −{affiliateMoney(Math.abs(row.paddleFee), row.currency)}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell data-value={row.netAmount} className="text-right tabular-nums">
                       {affiliateMoney(row.netAmount, row.currency)}
                     </TableCell>
                     <TableCell

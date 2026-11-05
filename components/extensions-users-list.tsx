@@ -1,5 +1,7 @@
 "use client";
 
+import { useServerTable } from "@/hooks/use-server-table";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
@@ -374,8 +376,11 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
     }
     return params;
   }, [filters]);
+  const table = useServerTable(`/api/extensions/${authorId}/users?${filterParams}&q=${encodeURIComponent(q)}`, () => setPage(1));
+  const tableQuery = table.query;
   const dateError = validateUserDateRanges(filterParams);
   const exportParams = new URLSearchParams(filterParams);
+  exportParams.set("tableView", tableQuery);
   if (qDraft.trim()) exportParams.set("q", qDraft.trim());
   function applyFilter<K extends keyof ExtensionUserFilters>(key: K, value: ExtensionUserFilters[K]) {
     setFilters(previous => ({ ...previous, [key]: value }));
@@ -398,6 +403,7 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
       const params = new URLSearchParams(filterParams);
       if (q) params.set("q", q);
       params.set("page", String(page));
+      params.set("tableView", tableQuery);
       const res = await fetch(
         `/api/extensions/${authorId}/users?${params.toString()}`,
         { signal: controller.signal },
@@ -418,7 +424,7 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
-  }, [authorId, page, q, filterParams, dateError]);
+  }, [authorId, page, q, filterParams, dateError, tableQuery]);
 
   useEffect(() => {
     void load();
@@ -597,7 +603,7 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
         <DateFilter id={`author-${authorId}-registered-to`} label="Registered to" value={filters.registeredTo} min={filters.registeredFrom || undefined} onChange={value => applyFilter("registeredTo", value)} />
         <DateFilter id={`author-${authorId}-seen-from`} label="Last seen from" value={filters.seenFrom} onChange={value => applyFilter("seenFrom", value)} />
         <DateFilter id={`author-${authorId}-seen-to`} label="Last seen to" value={filters.seenTo} min={filters.seenFrom || undefined} onChange={value => applyFilter("seenTo", value)} />
-        <Button type="button" size="sm" variant="ghost" onClick={() => { setFilters(DEFAULT_EXTENSION_USER_FILTERS); setQDraft(""); setQ(""); setPage(1); }}>Reset filters</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => { setFilters(DEFAULT_EXTENSION_USER_FILTERS); setQDraft(""); setQ(""); setPage(1); table.reset(); }}>Reset filters</Button>
       </div>
 
       {error || dateError ? (
@@ -615,7 +621,7 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
             <Skeleton key={i} className="h-12 w-full" />
           ))}
         </div>
-      ) : groups.length === 0 ? (
+      ) : groups.length === 0 && Object.keys(table.state.filters).length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/70 px-6 py-16 text-center">
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
             <Puzzle className="h-5 w-5 text-muted-foreground" />
@@ -639,15 +645,15 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border/50">
-          <Table>
+          <Table server={table}>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-55">User</TableHead>
-                <TableHead className="w-32">Subscription</TableHead>
-                <TableHead className="w-28">Devices</TableHead>
-                <TableHead className="w-28">Packs</TableHead>
-                <TableHead className="w-28">Errors</TableHead>
-                <TableHead className="w-40">Last seen</TableHead>
+                <TableHead className="w-55" data-column="user">User</TableHead>
+                <TableHead className="w-32" data-column="subscription">Subscription</TableHead>
+                <TableHead className="w-28" data-column="devices">Devices</TableHead>
+                <TableHead className="w-28" data-column="packs">Packs</TableHead>
+                <TableHead className="w-28" data-column="errors">Errors</TableHead>
+                <TableHead className="w-40" data-column="last_seen">Last seen</TableHead>
                 <TableHead className="w-28">
                   <span className="sr-only">Actions</span>
                 </TableHead>
