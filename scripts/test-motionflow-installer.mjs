@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readTestFixture, runModuleFixture } from "./lib/test-fixture-runtime.mjs";
+import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
 import { createRequire } from "node:module";
 import ts from "typescript";
 import { NextRequest } from "next/server.js";
 const require = createRequire(import.meta.url);
 function load(file, mocks) {
   const module = { exports: {} };
-  const source = ts.transpileModule(readTestFixture(new URL('../' + file, import.meta.url)), {
+  const compiledFixture = compileTestFixture(new URL('../' + file, import.meta.url), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  }).outputText;
-  runModuleFixture(source, {
+  });
+  compiledFixture.runModule({
     require: name => Object.hasOwn(mocks, name) ? mocks[name] : name === 'server-only' ? {} : require(name),
     module,
     exports: module.exports,

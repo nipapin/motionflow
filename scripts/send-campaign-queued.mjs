@@ -181,7 +181,7 @@ for (let i = 0; i < work.length; i += BATCH_SIZE) {
     id: sent.id,
   });
   saveState(state);
-  console.log(JSON.stringify({ scheduled, nextAt: when.toISOString(), id: sent.id }));
+  console.log(JSON.stringify({ scheduled, nextAt: when.toISOString() }));
 }
 
 state.queuedEmails = [...alreadyQueued];

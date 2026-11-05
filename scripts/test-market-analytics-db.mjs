@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { randomUUID, randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
-import { readTestFixture, runIsolatedFixture } from "./lib/test-fixture-runtime.mjs";
+import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
 import ts from "typescript";
 import mysql from "mysql2/promise";
 const require = createRequire(import.meta.url);
@@ -22,9 +22,9 @@ const scoped = { query: (sql, params) => pool.query(rewrite(sql), params), execu
       commit: () => conn.commit(), rollback: () => conn.rollback(), release: () => conn.release() };
   } };
 function load(file, imports = {}) {
-  const code = ts.transpileModule(readTestFixture(new URL(file, import.meta.url)), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const compiledFixture = compileTestFixture(new URL(file, import.meta.url), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } });
   const exports = {};
-  runIsolatedFixture(code, { exports, Buffer, URLSearchParams, Date, process: { env: {} }, console, require(name) {
+  compiledFixture.runIsolated({ exports, Buffer, URLSearchParams, Date, process: { env: {} }, console, require(name) {
     if (name === "server-only") return {}; if (Object.hasOwn(imports, name)) return imports[name];
     if (!name.startsWith("@/")) return require(name); throw Error(`Unexpected import ${name}`);
   } }); return exports;

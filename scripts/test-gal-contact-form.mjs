@@ -1,23 +1,22 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
-import { readTestFixture, runIsolatedFixture } from "./lib/test-fixture-runtime.mjs";
+import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
 import ts from 'typescript';
 
 const require = createRequire(import.meta.url);
 
 // Execute the production TypeScript with only the email boundary replaced.
 function loadTs(path, replacements = {}) {
-  const source = readTestFixture(new URL(`../${path}`, import.meta.url));
-  const { outputText } = ts.transpileModule(source, {
+  const compiledFixture = compileTestFixture(new URL(`../${path}`, import.meta.url), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   });
   const exports = {};
-  runIsolatedFixture(outputText, {
+  compiledFixture.runIsolated({
     exports,
     require: (name) => Object.hasOwn(replacements, name) ? replacements[name] : require(name),
     File, Buffer, process, console,
-  }, { filename: path });
+  });
   return exports;
 }
 

@@ -61,7 +61,7 @@ function laravelDecrypt(payload: string, key: Buffer): string {
 function laravelEncrypt(plaintext: string, key: Buffer): string {
   const iv = crypto.randomBytes(IV_LENGTH);
   // Laravel's cookie format authenticates the IV and CBC ciphertext with HMAC-SHA256.
-  const cipher = crypto.createCipheriv(CIPHER, key, iv);
+  const cipher = crypto.createCipheriv(CIPHER, key, iv); // NOSONAR: S5542. Laravel CBC cookies authenticate the IV and ciphertext below.
   const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
 
   const ivB64 = iv.toString("base64");

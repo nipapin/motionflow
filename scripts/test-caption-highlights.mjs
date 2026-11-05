@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import ts from "typescript";
-import { readTestFixture, runIsolatedFixture } from "./lib/test-fixture-runtime.mjs";
+import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
 
 function load(file, imports = {}) {
-  const source = readTestFixture(new URL(file, import.meta.url));
-  const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS } }).outputText;
+  const compiledFixture = compileTestFixture(new URL(file, import.meta.url), { compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS } });
   const exports = {};
-  runIsolatedFixture(code, { exports, require: name => { if (name === "@/lib/ai-usage-shared") return load("../lib/ai-usage-shared.ts"); if (name === "@/lib/replicate-usage-fetch") return { trackedReplicateFetch: () => undefined }; if (name === "@/lib/replicate-auth") return load("../lib/replicate-auth.ts", { "server-only": {} }); if (!(name in imports)) throw Error(name); return imports[name]; },
+  compiledFixture.runIsolated({ exports, require: name => { if (name === "@/lib/ai-usage-shared") return load("../lib/ai-usage-shared.ts"); if (name === "@/lib/replicate-usage-fetch") return { trackedReplicateFetch: () => undefined }; if (name === "@/lib/replicate-auth") return load("../lib/replicate-auth.ts", { "server-only": {} }); if (!(name in imports)) throw Error(name); return imports[name]; },
     File, Buffer, console: { info() {}, error() {} },
     process: { env: { REPLICATE_API_TOKEN: "test-only" } } });
   return exports;

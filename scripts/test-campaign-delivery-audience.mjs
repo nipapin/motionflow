@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { readTestFixture, runModuleFixture } from "./lib/test-fixture-runtime.mjs";
+import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
 import ts from "typescript";
 import { sendRecipient } from "../lib/campaigns/engine.mjs";
 
@@ -20,9 +20,9 @@ function loader(mocks = {}) {
     const filename = [base, `${base}.ts`, `${base}.mjs`].find(file => existsSync(file));
     if (!filename) throw new Error(`Missing module ${base}`);
     if (cache.has(filename)) return cache.get(filename).exports;
-    const source = ts.transpileModule(readTestFixture(filename), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true, allowJs: true } }).outputText;
+    const compiledFixture = compileTestFixture(filename, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true, allowJs: true } });
     const module = { exports: {} }; cache.set(filename, module);
-    runModuleFixture(source, { require: name => load(name, path.dirname(filename)), module, exports: module.exports }, filename);
+    compiledFixture.runModule({ require: name => load(name, path.dirname(filename)), module, exports: module.exports });
     return module.exports;
   }
   return load;
