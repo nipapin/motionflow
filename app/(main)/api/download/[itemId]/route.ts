@@ -20,6 +20,7 @@ import { productKind } from "@/lib/product-ui";
 import { hasActiveMotionflowSubscription } from "@/lib/subscriptions";
 import { getActiveAuthorSubscription } from "@/lib/cep-entitlements";
 import { withDownloadActivity } from "@/lib/user-activity";
+import { getProductExtension, productExtensionInstallerUrl } from "@/lib/product-extensions";
 
 const DL_TABLE = "subscription_downloads";
 
@@ -69,7 +70,8 @@ export async function GET(
     return NextResponse.json({ error: "item not found" }, { status: 404 });
   }
 
-  if (product.files.no_file) {
+  const extension = apiClient ? null : getProductExtension(product.extension_slug);
+  if (product.files.no_file && !extension) {
     return NextResponse.json({ error: "NO_PROJECT_FILE", message: "This product does not include a project file for download from this site." }, { status: 404 });
   }
 
@@ -103,6 +105,18 @@ export async function GET(
         );
       }
       return redirectRelative("/pricing");
+    }
+
+    if (extension) {
+      const installerUrl = productExtensionInstallerUrl(
+        extension,
+        req.headers.get("user-agent") ?? "",
+        req.headers.get("sec-ch-ua-platform"),
+      );
+      activity.issued("redirect");
+      const response = NextResponse.redirect(installerUrl, 303);
+      response.headers.set("Cache-Control", "private, no-store");
+      return response;
     }
 
     const rate = await checkMarketplaceDownloadRateLimit(user.id);

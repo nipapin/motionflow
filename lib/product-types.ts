@@ -20,6 +20,8 @@ export interface Product {
   name: string;
   /** Pack version for Packages / CEP (nullable until set). */
   version: string | null;
+  /** Extension used to access this package, or null for ordinary file delivery. */
+  extension_slug?: string | null;
   description: string;
   description_html: string | null;
   description_json: Record<string, string>;

@@ -8,6 +8,7 @@ import type { Product } from "@/lib/product-types";
 import { soldLicenseTitle } from "@/lib/purchase-display";
 import { productThumbnailUrl } from "@/lib/product-ui";
 import { startMarketplaceDownload } from "@/lib/open-marketplace-download";
+import { getProductExtension } from "@/lib/product-extensions";
 
 export interface PurchaseItemCardProps {
   product: Product | null;
@@ -43,6 +44,7 @@ export function PurchaseItemCard({
   const versionBadge = formatVersionBadge(product?.attributes?.ae_version);
   const licenseTitle = soldLicenseTitle(product, license);
   const licenseLine = `${licenseTitle} x 1 Qty`;
+  const extension = getProductExtension(product?.extension_slug);
 
   const [notify, setNotify] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -166,7 +168,18 @@ export function PurchaseItemCard({
         </div>
 
         <div className="flex shrink-0 flex-row items-center justify-end border-t border-blue-500/10 pt-4 lg:flex-col lg:items-end lg:border-t-0 lg:pt-0">
-        {product?.files.no_file ? (
+        {extension ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            onClick={() => startMarketplaceDownload(itemId)}
+            className="h-auto min-h-11 max-w-full whitespace-normal rounded-xl border-2 border-foreground/80 bg-background px-6 py-3 font-medium text-foreground shadow-none smooth hover:bg-muted"
+          >
+            <Download className="size-5" />
+            Available in {extension.name}
+          </Button>
+        ) : product?.files.no_file ? (
           <div className="text-sm text-muted-foreground text-right">
             <p>No project file download</p>
             <a href={itemPageUrl} className="mt-1 inline-block text-primary underline">View product</a>
