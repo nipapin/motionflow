@@ -90,7 +90,7 @@ async function fixture() {
   // Every name the engine can mutate is shadowed by a session-local TEMPORARY
   // table, including the existing application tables. No persistent DDL/data.
   const ddl = await fs.readFile(new URL('../db/migrations/2026_10_21_paddle_actual_accounting.sql', import.meta.url), 'utf8');
-  for (const sql of ddl.split(';').map(s => s.replace(/^\s*--.*$/gm, '').trim()).filter(Boolean)) await conn.query(sql.replace('CREATE TABLE IF NOT EXISTS', 'CREATE TEMPORARY TABLE'));
+  for (const sql of ddl.split(';').map(s => s.replace(/^[^\S\r\n\u2028\u2029]*--.*$/gm, '').trim()).filter(Boolean)) await conn.query(sql.replace('CREATE TABLE IF NOT EXISTS', 'CREATE TEMPORARY TABLE'));
   const tables = {
     users: 'id INT PRIMARY KEY,balance DECIMAL(20,2) NOT NULL DEFAULT 0,extra_tax DECIMAL(5,2) NULL',
     marketplace_items: 'id INT PRIMARY KEY,author_id INT,team JSON',
@@ -330,7 +330,7 @@ test('MySQL: both cabinets read stored movements, pending states and current use
     }});
     const entries=await exported.getActualEarningsEntries(11);
     assert.equal(entries.length,3);assert.equal(entries.find(e=>e.status==='pending').amount,null);
-    assert.deepEqual(Array.from(entries.filter(e=>e.status==='posted'),e=>e.amount).sort(),['-15.75','31.50']);
+    assert.deepEqual(Array.from(entries.filter(e=>e.status==='posted'),e=>e.amount).sort((a,b)=>Number(a)-Number(b)),['-15.75','31.50']);
     assert.equal((await exported.getActualEarningsEntries(13)).length,0);
     const php=await fs.readFile(laravelFile('app/Services/PaddleActualAccounting.php'),'utf8');
     const queries=[...php.matchAll(/= DB::select\("([\s\S]+?)", \[(.*?)\]\);/g)];

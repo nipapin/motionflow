@@ -117,8 +117,9 @@ function parseFilenameFromContentDisposition(
   value: string | null,
 ): string | null {
   if (!value) return null;
-  const mStar = /filename\*\s*=\s*[^']*''([^;]+)/i.exec(value);
-  if (mStar) {
+  for (const parameter of value.split(";")) {
+    const mStar = /^filename\*\s*=[^']*''(.+)$/i.exec(parameter.trimStart());
+    if (!mStar) continue;
     try {
       return decodeURIComponent(mStar[1].trim().replace(/["']/g, ""));
     } catch {

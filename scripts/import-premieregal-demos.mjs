@@ -22,9 +22,9 @@ function loadDotEnv() {
   const envPath = join(root, ".env");
   if (!existsSync(envPath)) return;
   for (const line of readFileSync(envPath, "utf8").split("\n")) {
-    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+    const m = line.trimEnd().match(/^\s*([A-Z0-9_]+)\s*=(.*)$/);
     if (!m) continue;
-    let val = m[2];
+    let val = m[2].trimStart();
     if (
       (val.startsWith('"') && val.endsWith('"')) ||
       (val.startsWith("'") && val.endsWith("'"))
@@ -59,11 +59,11 @@ loadDotEnv();
 const useMax = process.argv.includes("--max");
 const sourceBucket = process.env.R2_PREMIEREGAL_BUCKET?.trim() || "premieregal";
 const destBucket = requireEnv("R2_PUBLIC_BUCKET");
-const cdn = requireEnv("R2_PUBLIC_CDN").replace(/\/+$/, "");
+const cdn = requireEnv("R2_PUBLIC_CDN").replace(/(?<!\/)\/+$/, "");
 const client = new S3Client({
   region: process.env.R2_REGION || "auto",
   endpoint:
-    process.env.R2_ENDPOINT?.replace(/\/+$/, "") ||
+    process.env.R2_ENDPOINT?.replace(/(?<!\/)\/+$/, "") ||
     `https://${requireEnv("R2_ACCOUNT_ID")}.r2.cloudflarestorage.com`,
   credentials: {
     accessKeyId: requireEnv("R2_ACCESS_KEY_ID"),

@@ -325,10 +325,14 @@ export function SpeechToText() {
     }
   };
 
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(transcribedText);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(transcribedText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setErrorMessage("Could not copy the transcript.");
+    }
   };
 
   const removeFromHistory = useCallback(

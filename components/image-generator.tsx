@@ -270,7 +270,7 @@ export function ImageGenerator() {
         if (data.generations) {
           setGenerationsStatus(data.generations);
         } else {
-          refreshGenerations();
+          void refreshGenerations();
         }
         throw new Error(data.error || `Request failed (${res.status})`);
       }
@@ -283,7 +283,7 @@ export function ImageGenerator() {
       if (data.generations) {
         setGenerationsStatus(data.generations);
       } else {
-        refreshGenerations();
+        void refreshGenerations();
       }
       setGeneratedImages(images);
       void refreshRecent();

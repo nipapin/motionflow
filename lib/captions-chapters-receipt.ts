@@ -22,11 +22,7 @@ function receiptSecret(): string | null {
 
 function b64url(buf: Buffer | string): string {
   const b = typeof buf === "string" ? Buffer.from(buf, "utf8") : buf;
-  return b
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
+  return b.toString("base64url");
 }
 
 function fromB64url(s: string): Buffer {

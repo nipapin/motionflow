@@ -359,7 +359,7 @@ export function ImageEditor() {
       if (genStatus) {
         setGenerationsStatus(genStatus);
       } else {
-        refreshGenerations();
+        void refreshGenerations();
       }
     },
     [setGenerationsStatus, refreshGenerations],

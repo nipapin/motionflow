@@ -303,7 +303,7 @@ export function SvgGenerator() {
         if (data.generations) {
           setGenerationsStatus(data.generations);
         } else {
-          refreshGenerations();
+          void refreshGenerations();
         }
         throw new Error(data.error || `Request failed (${res.status})`);
       }
@@ -316,7 +316,7 @@ export function SvgGenerator() {
       if (data.generations) {
         setGenerationsStatus(data.generations);
       } else {
-        refreshGenerations();
+        void refreshGenerations();
       }
       setGeneratedSvgs(images);
       void refreshRecent();

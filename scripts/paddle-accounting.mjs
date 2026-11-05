@@ -40,7 +40,7 @@ try {
   if (command === 'schema') {
     const sql = await fs.readFile(new URL('../db/migrations/2026_10_21_paddle_actual_accounting.sql', import.meta.url), 'utf8');
     // No multi-statements connection permission, no historical backfill.
-    for (const statement of sql.split(';').map(s => s.replace(/^\s*--.*$/gm, '').trim()).filter(Boolean)) await pool.query(statement);
+    for (const statement of sql.split(';').map(s => s.replace(/^[^\S\r\n\u2028\u2029]*--.*$/gm, '').trim()).filter(Boolean)) await pool.query(statement);
     console.log('Additive journal schema ready. Accounting is not activated.');
   } else if (command === 'configure') {
     const sql = await fs.readFile(new URL('../db/migrations/2026_11_04_paddle_accounting_config.sql', import.meta.url), 'utf8');

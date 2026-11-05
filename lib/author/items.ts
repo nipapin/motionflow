@@ -91,8 +91,8 @@ export function contributorPreviewUrl(item: ContributorItemRow): string | null {
   const image = parseFilesImage(item.files);
   if (!image) return null;
   const base =
-    process.env.R2_PUBLIC_CDN?.replace(/\/+$/, "") ??
-    process.env.NEXT_PUBLIC_R2_PUBLIC_CDN?.replace(/\/+$/, "");
+    process.env.R2_PUBLIC_CDN?.replace(/(?<!\/)\/+$/, "") ??
+    process.env.NEXT_PUBLIC_R2_PUBLIC_CDN?.replace(/(?<!\/)\/+$/, "");
   if (!base) return null;
   return `${base}/preview/${item.id}/${image}`;
 }

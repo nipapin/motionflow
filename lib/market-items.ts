@@ -402,7 +402,7 @@ export async function getSubCategorySlugs(indexCategorySlug: string): Promise<st
         if (slug) set.add(slug);
       }
     }
-    return Array.from(set).sort();
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
   } catch (err) {
     console.error("[getSubCategorySlugs] MySQL query failed:", err);
     return [];

@@ -21,10 +21,10 @@ function loadDotEnv() {
   if (!existsSync(envPath)) return;
   const text = readFileSync(envPath, "utf8");
   for (const line of text.split("\n")) {
-    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+    const m = line.trimEnd().match(/^\s*([A-Z0-9_]+)\s*=(.*)$/);
     if (!m) continue;
     const key = m[1];
-    let val = m[2];
+    let val = m[2].trimStart();
     if (
       (val.startsWith('"') && val.endsWith('"')) ||
       (val.startsWith("'") && val.endsWith("'"))
@@ -70,9 +70,9 @@ if (!existsSync(filePath)) {
 const accessKeyId = requireEnv("R2_ACCESS_KEY_ID");
 const secretAccessKey = requireEnv("R2_SECRET_ACCESS_KEY");
 const bucket = requireEnv("R2_PUBLIC_BUCKET");
-const cdn = requireEnv("R2_PUBLIC_CDN").replace(/\/+$/, "");
+const cdn = requireEnv("R2_PUBLIC_CDN").replace(/(?<!\/)\/+$/, "");
 const endpoint =
-  process.env.R2_ENDPOINT?.replace(/\/+$/, "") ||
+  process.env.R2_ENDPOINT?.replace(/(?<!\/)\/+$/, "") ||
   `https://${requireEnv("R2_ACCOUNT_ID")}.r2.cloudflarestorage.com`;
 
 const zipKey = `public/downloads/galtoolkit/demo/${host}/${version}/pack.zip`;

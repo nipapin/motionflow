@@ -80,8 +80,9 @@ export function diffPackManifests(
     if (!remote.has(path)) toDelete.push(path);
   }
 
-  toDownload.sort();
-  toDelete.sort();
+  const comparePaths = (a: string, b: string) => (a < b ? -1 : Number(a > b));
+  toDownload.sort(comparePaths);
+  toDelete.sort(comparePaths);
   return { toDownload, toDelete };
 }
 

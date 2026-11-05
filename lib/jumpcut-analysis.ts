@@ -10,7 +10,7 @@ export function zoomWords(words: ZoomWord[]): Required<Pick<ZoomWord, "text" | "
 
 /** AI chooses word IDs; timestamps and phrase text always come from ASR. */
 export function parseZoomPhrases(output: string, words: ReturnType<typeof zoomWords>): ZoomPhrase[] {
-  const raw = output.replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+  const raw = output.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   const parsed: unknown = JSON.parse(raw);
   if (!Array.isArray(parsed) || parsed.length > 100) throw new Error("Invalid JumpCut AI response");
   const result: ZoomPhrase[] = [];

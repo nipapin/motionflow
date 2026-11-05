@@ -28,7 +28,7 @@ export function parseMarketplaceItemIdInput(
     /* fall through */
   }
 
-  const m = s.match(/(\d+)\s*$/);
+  const m = s.match(/(?<!\d)(\d+)$/);
   if (m?.[1]) {
     const n = Number(m[1]);
     return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;

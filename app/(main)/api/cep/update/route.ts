@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
       process.env.R2_PUBLIC_CDN ||
       process.env.NEXT_PUBLIC_R2_PUBLIC_CDN ||
       "https://cdn.motionflow.pro"
-    ).replace(/\/+$/, "");
+    ).replace(/(?<!\/)\/+$/, "");
     ffmpeg = {
       win: `${base}/public/downloads/ffmpeg/win/ffmpeg.exe`,
       mac: `${base}/public/downloads/ffmpeg/mac/ffmpeg-mac.zip`,
