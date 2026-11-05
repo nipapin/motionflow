@@ -138,7 +138,7 @@ try {
     utimesSync(file, new Date(1000 * i), new Date(1000 * i));
   }
   writeFileSync(join(history, "broken-1.json"), "not a run file");
-  assert.deepEqual(recentRunSummaries(history, "6-1"), ["Summary 5", "Summary 4", "Summary 3", "Summary 2"]);
+  assert.deepEqual(recentRunSummaries(history, "6-1"), ["Summary 5", "Summary 4", "Summary 3", "Summary 2", "Summary 1"]);
   const context = recentRunSummaries(history, "6-1");
   await translateCommit(commitMessage, { apiKey: "fixture-key", recentSummaries: context, run: async (_command, _args, _settings, input) => {
     const data = JSON.parse(input);
@@ -155,7 +155,7 @@ try {
   } }, { apiKey: "fixture-key", cwd: root, commitMessage, recentSummaries: context });
   let receivedHistory;
   await updateRunNotification({ ...options, stateDirectory: history, payload: { ...payload, url: payload.url.replace("runs/123", "runs/7"), commitMessage }, translate: async (_message, settings) => { receivedHistory = settings.recentSummaries; return comic; } }, api);
-  assert.deepEqual(receivedHistory, ["Summary 6", "Summary 5", "Summary 4", "Summary 3"]);
+  assert.deepEqual(receivedHistory, ["Summary 6", "Summary 5", "Summary 4", "Summary 3", "Summary 2", "Summary 1"]);
   console.log("Telegram checks passed: one message per chat/run/attempt, persistent edits, progress, cancellation, retries, duplicate completion and deleted-message recovery.");
   console.log("Cursor translation checks passed: single cached rewrite, escaped output, original-text fallback, bounded worker and tools disabled.");
 } finally {
