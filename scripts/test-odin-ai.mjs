@@ -127,7 +127,7 @@ test("100 monthly generations are shared across tools/devices and reset only in 
 
 test("invalid costs and database failures cannot grant or consume credits", async () => {
   const f = ledger();
-  for (const amount of [-1, NaN, Infinity, 0.5]) await assert.rejects(f.api.consumeOdinAi(user, amount), /Invalid/);
+  for (const amount of [-1, Number.NaN, Infinity, 0.5]) await assert.rejects(f.api.consumeOdinAi(user, amount), /Invalid/);
   assert.equal(f.calls, 0);
   f.failUpdate(true);
   await assert.rejects(f.api.consumeOdinAi(user, 1), /DB failure/);

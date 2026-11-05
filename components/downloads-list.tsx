@@ -67,7 +67,7 @@ export function DownloadsList({ items }: DownloadsListProps) {
         if (!name.includes(q)) return false;
       }
       if (cut !== null) {
-        const t = row.createdAt ? new Date(row.createdAt).getTime() : NaN;
+        const t = row.createdAt ? new Date(row.createdAt).getTime() : Number.NaN;
         if (Number.isNaN(t) || t < cut) return false;
       }
       return true;

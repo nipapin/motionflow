@@ -116,7 +116,7 @@ test("UTC date serialization respects offsets and never substitutes now", () => 
   assert.equal(iso("2099-11-29 00:00:00"), "2099-11-29T00:00:00.000Z");
   assert.equal(iso("2099-11-29T03:00:00+03:00"), "2099-11-29T00:00:00.000Z");
   assert.equal(iso(new Date("2099-11-29T00:00:00Z")), "2099-11-29T00:00:00.000Z");
-  for (const raw of [null, undefined, "", "invalid", "0000-00-00 00:00:00", new Date(NaN)]) assert.equal(iso(raw), null);
+  for (const raw of [null, undefined, "", "invalid", "0000-00-00 00:00:00", new Date(Number.NaN)]) assert.equal(iso(raw), null);
 });
 
 test("the selected catalog row supplies the tier and date, excluding author subscriptions", async () => {

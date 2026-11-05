@@ -143,7 +143,8 @@ test("DELETE endpoint enforces admin access, confirmation, valid IDs and self pr
   });
   const route = load("@/app/(main)/api/admin/users/[id]/route");
   const { NextRequest } = require("next/server");
-  const request = (body = { confirm: true }, id = "42") => route.DELETE(
+  const confirmed = { confirm: true };
+  const request = (body = confirmed, id = "42") => route.DELETE(
     new NextRequest(`https://motionflow.test/api/admin/users/${id}`, {
       method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
     }),

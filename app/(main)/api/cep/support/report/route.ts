@@ -66,9 +66,10 @@ function clientIp(req: NextRequest): string {
 function simpleHash(input: string): string {
   let h = 0;
   for (let i = 0; i < input.length; i++) {
-    h = (h * 31 + input.charCodeAt(i)) | 0;
+    h = Math.imul(h, 31) + input.charCodeAt(i);
   }
-  return String(h);
+  // Retain the original signed 32-bit hash used by the rate limiter.
+  return String(Math.imul(h, 1));
 }
 
 function isRateLimited(key: string): boolean {

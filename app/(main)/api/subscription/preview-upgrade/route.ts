@@ -146,8 +146,8 @@ export async function POST(request: Request) {
     sub.currency_code ??
     "USD";
 
-  const oldUnitMinor = oldUnitMinorRaw ? Number(oldUnitMinorRaw) : NaN;
-  const newUnitMinor = newUnitMinorRaw ? Number(newUnitMinorRaw) : NaN;
+  const oldUnitMinor = oldUnitMinorRaw ? Number(oldUnitMinorRaw) : Number.NaN;
+  const newUnitMinor = newUnitMinorRaw ? Number(newUnitMinorRaw) : Number.NaN;
   if (!Number.isFinite(oldUnitMinor) || !Number.isFinite(newUnitMinor)) {
     console.error("[paddle] preview-upgrade missing unit prices", {
       oldUnitMinorRaw,

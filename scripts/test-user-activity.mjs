@@ -65,7 +65,7 @@ test("analytics outages do not stop downloads and external identities cannot bec
   const response = await service.withDownloadActivity(input, async activity => { activity.issued("stream"); return new Response("file"); });
   assert.equal(await response.text(), "file");
   const valid = writer();
-  for (const userId of [0, -1, "odin:7", NaN]) assert.equal(await valid.recordUserActivity({ ...input, userId, category: "download", status: "requested" }), null);
+  for (const userId of [0, -1, "odin:7", Number.NaN]) assert.equal(await valid.recordUserActivity({ ...input, userId, category: "download", status: "requested" }), null);
   assert.equal(valid.calls.length, 0);
 });
 

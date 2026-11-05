@@ -31,7 +31,7 @@ test("audio is billed per started five minutes, including fractional seconds", (
   for (const [seconds, cost] of [[1, 1], [299.99, 1], [300, 1], [300.01, 2], [600, 2], [600.01, 3], [900, 3], [3600, 12]]) {
     assert.equal(metering.durationGenerationsCost(seconds), cost, `${seconds} seconds`);
   }
-  for (const seconds of [0, -1, NaN, Infinity]) assert.equal(metering.durationGenerationsCost(seconds), 1);
+  for (const seconds of [0, -1, Number.NaN, Infinity]) assert.equal(metering.durationGenerationsCost(seconds), 1);
 });
 
 function route(tool, { seconds = 301, modelSeconds = seconds, left = 10, highlights = false, receipt = false } = {}) {
