@@ -153,9 +153,11 @@ export function ItemCheckoutCard({
       >
         {isOpening ? "Opening secure checkout..." : "Buy now"}
       </button>
-      <p className="mt-2 text-center text-[11px] text-muted">
-        {withoutProjectFile ? "One-time purchase. No project file is provided for download from this site." : "One-time purchase. Start using this pack in minutes."}
-      </p>
+      {!withoutProjectFile ? (
+        <p className="mt-2 text-center text-[11px] text-muted">
+          One-time purchase. Start using this pack in minutes.
+        </p>
+      ) : null}
 
       {feedback ? <p className="mt-3 text-xs text-muted">{feedback}</p> : null}
     </div>
