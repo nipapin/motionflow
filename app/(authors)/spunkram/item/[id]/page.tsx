@@ -244,11 +244,8 @@ export default async function SpunkramItemPage({
           <aside className="card rounded-2xl px-5 py-3 sm:px-6 sm:py-3">
             <ItemCheckoutCard
               itemId={item.id}
-              itemName={item.name}
               basePrice={item.price}
-              jsonArgs={item.json_args}
               withoutProjectFile={item.files.no_file === true}
-              // jsonArgs={`{"paddle_price_ids": ["pri_01kqyy24624agjp3hwq4n4xh0w", "pri_01kqyy3arwj0w5dk3rwk8zx305"]}`}
             />
 
             <dl className="mt-3 space-y-1.5 text-sm">

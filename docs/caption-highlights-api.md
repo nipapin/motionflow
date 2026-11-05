@@ -47,5 +47,3 @@ Limits: 1–10000 timed words, 1000 characters per word, 40000 transcript charac
 Cost is one generation, consumed atomically only after the complete response has been validated. Failed input or model analysis is not charged. Concurrent credit exhaustion returns 402 without the result. Request cancellation is forwarded to Replicate and checked before consuming quota.
 
 The release workflow runs `scripts/test-caption-highlights.mjs` and the required build and release checks before production deployment. Existing model fixtures use the annotated-text contract, including complete-transcript matching, repeated words, malformed markup, translation and generation accounting. These fixtures mock the provider and do not run paid model generations.
-
-The current TXT-contract edits are local: no tests, live generations, builds or deployment were run for this change.

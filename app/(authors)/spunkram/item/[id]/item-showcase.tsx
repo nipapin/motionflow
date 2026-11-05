@@ -103,7 +103,7 @@ function VideoPreview({ item }: { item: SpunkramShowcaseNode }) {
   }, [ref, visible, source]);
 
   return (
-    <>
+    <div className={cn("relative", !ready && "min-h-24")}>
       <video
         ref={ref}
         src={source}
@@ -111,7 +111,7 @@ function VideoPreview({ item }: { item: SpunkramShowcaseNode }) {
         onLoadedData={() => setReady(true)}
         onError={() => setReady(true)}
         className={cn(
-          "absolute inset-0 h-full w-full object-cover transition-opacity duration-300",
+          "block h-auto w-full object-contain transition-opacity duration-300",
           ready ? "opacity-100" : "opacity-0",
         )}
         muted
@@ -121,7 +121,7 @@ function VideoPreview({ item }: { item: SpunkramShowcaseNode }) {
         disablePictureInPicture
       />
       {ready ? null : <TileSkeleton />}
-    </>
+    </div>
   );
 }
 
@@ -129,7 +129,7 @@ function ImagePreview({ item }: { item: SpunkramShowcaseNode }) {
   const [ready, setReady] = useState(false);
 
   return (
-    <>
+    <div className={cn("relative", !ready && "min-h-24")}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={item.media}
@@ -139,18 +139,18 @@ function ImagePreview({ item }: { item: SpunkramShowcaseNode }) {
         onLoad={() => setReady(true)}
         onError={() => setReady(true)}
         className={cn(
-          "absolute inset-0 h-full w-full object-cover transition-opacity duration-300",
+          "block h-auto w-full object-contain transition-opacity duration-300",
           ready ? "opacity-100" : "opacity-0",
         )}
       />
       {ready ? null : <TileSkeleton />}
-    </>
+    </div>
   );
 }
 
 function AudioPreview({ item }: { item: SpunkramShowcaseNode }) {
   return (
-    <div className="absolute inset-0 flex items-center justify-center px-3">
+    <div className="flex min-h-24 items-center justify-center px-3 py-6">
       <audio src={item.media} controls preload="none" className="w-full" />
     </div>
   );
@@ -159,7 +159,7 @@ function AudioPreview({ item }: { item: SpunkramShowcaseNode }) {
 function PreviewCard({ item }: { item: SpunkramShowcaseNode }) {
   return (
     <figure>
-      <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black/40">
+      <div className="w-full overflow-hidden rounded-xl bg-black/40">
         {item.type === "video" ? (
           <VideoPreview item={item} />
         ) : item.type === "audio" ? (
@@ -184,7 +184,7 @@ function PreviewSkeleton() {
       {Array.from({ length: 8 }).map((_, i) => (
         <div
           key={i}
-          className="aspect-video w-full animate-pulse rounded-xl bg-white/5"
+          className="h-32 w-full animate-pulse rounded-xl bg-white/5"
         />
       ))}
     </div>
@@ -339,7 +339,7 @@ export function ItemShowcase({
                       {section.breadcrumb.join(" / ")}
                     </h3>
                   ) : null}
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                  <div className="grid grid-cols-2 items-start gap-3 sm:grid-cols-3 xl:grid-cols-4">
                     {section.files.map((file) => (
                       <PreviewCard key={file.href} item={file} />
                     ))}
