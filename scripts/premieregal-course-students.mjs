@@ -1,5 +1,5 @@
 /** Preparation only until an explicit init/apply/send command is chosen. */
-import { readFileSync, writeFileSync, mkdirSync, existsSync, realpathSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, realpathSync, readdirSync } from 'node:fs';
 import { extname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -330,19 +330,31 @@ export async function main(args = process.argv.slice(2)) {
 
 function readCourseInput(value, option, extension, directories) {
   const projectRoot = realpathSync(root);
-  const allowedRoots = directories.map(directory => resolve(projectRoot, directory));
-  const isAllowed = filename => extname(filename).toLowerCase() === extension &&
-    allowedRoots.some(directory => {
-      const local = relative(directory, filename);
-      return local && !isAbsolute(local) && local !== '..' && !local.startsWith(`..${sep}`);
-    });
-
-  const filename = resolve(required(value, option));
+  const requested = resolve(required(value, option));
   const invalidPath = `${option} must point to a ${extension} file under ${directories.join(' or ')}`;
-  if (!isAllowed(filename)) throw new Error(invalidPath);
+  const isDescendant = local => local && !isAbsolute(local) && local !== '..' && !local.startsWith(`..${sep}`);
+  const allowedRoot = directories.map(directory => resolve(projectRoot, directory))
+    .find(directory => isDescendant(relative(directory, requested)));
+  if (!allowedRoot || extname(requested).toLowerCase() !== extension ||
+      relative(allowedRoot, realpathSync(allowedRoot)) !== '') {
+    throw new Error(invalidPath);
+  }
 
-  const canonical = realpathSync(filename);
-  if (!isAllowed(canonical) || !statSync(canonical).isFile()) throw new Error(invalidPath);
+  // Resolve each component using an actual entry from the approved directory.
+  // Symbolic links are neither directories nor regular files for this lookup.
+  const parts = relative(allowedRoot, requested).split(sep);
+  let selected = allowedRoot;
+  for (const [index, part] of parts.entries()) {
+    const entry = readdirSync(selected, { withFileTypes: true }).find(candidate =>
+      candidate.name === part ||
+      (process.platform === 'win32' && candidate.name.toLowerCase() === part.toLowerCase()));
+    const isFile = index === parts.length - 1;
+    if (!entry || !(isFile ? entry.isFile() : entry.isDirectory())) throw new Error(invalidPath);
+    selected = resolve(selected, entry.name);
+  }
+
+  const canonical = realpathSync(selected);
+  if (!isDescendant(relative(allowedRoot, canonical))) throw new Error(invalidPath);
   return readFileSync(canonical, 'utf8');
 }
 
