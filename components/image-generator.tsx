@@ -7,7 +7,6 @@ import {
   Download,
   RefreshCw,
   ImageIcon,
-  X,
   Trash2,
   RotateCcw,
 } from "lucide-react";
@@ -39,6 +38,7 @@ import {
 } from "@/lib/ai-generation-gate";
 import { downloadUrlAsFile } from "@/lib/download-url-as-file";
 import { replicateFileUrlToDisplaySrc } from "@/lib/replicate-file-display-url";
+import { MediaLightbox } from "@/components/generations/lightbox";
 
 const stylePresets = [
   { id: "realistic", label: "Realistic" },
@@ -580,48 +580,38 @@ export function ImageGenerator() {
       />
 
       {lightboxImage && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
-          onClick={() => setLightboxImage(null)}
+        <MediaLightbox
+          title="Image preview"
+          onClose={() => setLightboxImage(null)}
+          className="max-w-4xl max-h-[85vh]"
         >
-          <button
-            onClick={() => setLightboxImage(null)}
-            className="absolute top-6 right-6 p-2 text-white/70 hover:text-white smooth"
-          >
-            <X className="w-8 h-8" />
-          </button>
-          <div
-            className="relative max-w-4xl max-h-[85vh] mx-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <img
-              src={replicateFileUrlToDisplaySrc(lightboxImage)}
-              alt="Generated image"
-              className="max-w-full max-h-[85vh] object-contain rounded-2xl border border-blue-500/30"
-            />
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
-              <Button
-                type="button"
-                disabled={lightboxDownloadLoading}
-                className="bg-white text-black hover:bg-white/90 rounded-xl shadow-lg disabled:opacity-60"
-                onClick={() =>
-                  void downloadUrlAsFile(
-                    replicateFileUrlToDisplaySrc(lightboxImage),
-                    "motionflow-image",
-                    { onLoadingChange: setLightboxDownloadLoading },
-                  )
-                }
-              >
-                {lightboxDownloadLoading ? (
-                  <CircularLoader className="w-4 h-4 mr-2 text-black" />
-                ) : (
-                  <Download className="w-4 h-4 mr-2" />
-                )}
-                Download
-              </Button>
-            </div>
+          <img
+            src={replicateFileUrlToDisplaySrc(lightboxImage)}
+            alt="Generated image"
+            className="max-w-full max-h-[85vh] object-contain rounded-2xl border border-blue-500/30"
+          />
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
+            <Button
+              type="button"
+              disabled={lightboxDownloadLoading}
+              className="bg-white text-black hover:bg-white/90 rounded-xl shadow-lg disabled:opacity-60"
+              onClick={() =>
+                void downloadUrlAsFile(
+                  replicateFileUrlToDisplaySrc(lightboxImage),
+                  "motionflow-image",
+                  { onLoadingChange: setLightboxDownloadLoading },
+                )
+              }
+            >
+              {lightboxDownloadLoading ? (
+                <CircularLoader className="w-4 h-4 mr-2 text-black" />
+              ) : (
+                <Download className="w-4 h-4 mr-2" />
+              )}
+              Download
+            </Button>
           </div>
-        </div>
+        </MediaLightbox>
       )}
     </div>
   );

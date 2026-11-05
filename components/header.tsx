@@ -6,6 +6,7 @@ import { MainHeaderAuthorsPopover } from "@/components/main-header-authors-popov
 import { SignInModal } from "@/components/sign-in-modal";
 import { useAffiliateNavFlags } from "@/hooks/use-affiliate-nav-flags";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogPanel, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -131,11 +132,15 @@ export function Header({
   }, [showSearch, mobileSearchOpen]);
 
   useEffect(() => {
-    if (!mobileSearchOpen) {
-      setMobileSearchFocused(false);
-    } else {
-      setMobileSearchFocused(true);
-    }
+    setMobileSearchFocused(mobileSearchOpen);
+    if (!mobileSearchOpen) return;
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    const closeOnDesktop = () => {
+      if (desktop.matches) setMobileSearchOpen(false);
+    };
+    closeOnDesktop();
+    desktop.addEventListener("change", closeOnDesktop);
+    return () => desktop.removeEventListener("change", closeOnDesktop);
   }, [mobileSearchOpen]);
 
   return (
@@ -210,10 +215,8 @@ export function Header({
             variant="ghost"
             size="icon"
             className="shrink-0 lg:hidden text-muted-foreground hover:text-foreground hover:bg-foreground/5 rounded-full"
-            onClick={() => {
-              setMobileSearchOpen(true);
-              setTimeout(() => searchInputRef.current?.focus(), 100);
-            }}
+            aria-label="Open search"
+            onClick={() => setMobileSearchOpen(true)}
           >
             <Search className="w-5 h-5" />
           </Button>
@@ -388,10 +391,19 @@ export function Header({
       />
 
       {/* Mobile Search Overlay */}
-      {showSearch && mobileSearchOpen && (
-        <div className="fixed inset-0 z-70 bg-background/95 backdrop-blur-xl lg:hidden" onClick={() => setMobileSearchOpen(false)}>
-          <div className="flex h-16 items-center gap-2 border-b border-border/50 px-4 sm:px-5" onClick={(e) => e.stopPropagation()}>
-            <Button variant="ghost" size="icon" className="size-10 shrink-0" onClick={() => setMobileSearchOpen(false)}>
+      <Dialog open={showSearch && mobileSearchOpen} onOpenChange={setMobileSearchOpen}>
+        <DialogPanel
+          aria-describedby={undefined}
+          overlayClassName="z-70 bg-background/95 backdrop-blur-xl lg:hidden"
+          className="flex h-16 items-center gap-2 border-b border-border/50 px-4 sm:px-5"
+          onOpenAutoFocus={(event) => {
+            if (!searchInputRef.current) return;
+            event.preventDefault();
+            searchInputRef.current.focus();
+          }}
+        >
+            <DialogTitle className="sr-only">Search</DialogTitle>
+            <Button variant="ghost" size="icon" className="size-10 shrink-0" aria-label="Close search" onClick={() => setMobileSearchOpen(false)}>
               <X className="h-5 w-5" />
             </Button>
             <div
@@ -428,6 +440,7 @@ export function Header({
               <Input
                 ref={searchInputRef}
                 type="search"
+                aria-label="Search"
                 placeholder={mobileSearchFocused ? `Try "hip hop", "meditation", "tutorial"...` : "Search"}
                 value={searchQuery}
                 onChange={(e) => handleSearchInputChange(e.target.value)}
@@ -441,9 +454,8 @@ export function Header({
             >
               Cancel
             </button>
-          </div>
-        </div>
-      )}
+        </DialogPanel>
+      </Dialog>
     </header>
   );
 }

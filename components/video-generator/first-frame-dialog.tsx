@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { RefreshCw, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -79,6 +79,7 @@ export function FirstFrameDialog({
   onError,
   generationsLoading,
 }: FirstFrameDialogProps) {
+  const selectId = useId();
   const [ffUploading, setFfUploading] = useState(false);
   const [ffGenLoading, setFfGenLoading] = useState(false);
   const [libraryItems, setLibraryItems] = useState<{ id: string; url: string }[]>([]);
@@ -276,11 +277,11 @@ export function FirstFrameDialog({
             />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                <label htmlFor={`${selectId}-style`} className="text-xs font-medium text-muted-foreground mb-2 block">
                   Style
                 </label>
                 <Select value={ffStyle} onValueChange={setFfStyle}>
-                  <SelectTrigger className={triggerClasses}>
+                  <SelectTrigger id={`${selectId}-style`} className={triggerClasses}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -293,11 +294,11 @@ export function FirstFrameDialog({
                 </Select>
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                <label htmlFor={`${selectId}-aspect`} className="text-xs font-medium text-muted-foreground mb-2 block">
                   Aspect
                 </label>
                 <Select value={ffRatio} onValueChange={setFfRatio}>
-                  <SelectTrigger className={triggerClasses}>
+                  <SelectTrigger id={`${selectId}-aspect`} className={triggerClasses}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

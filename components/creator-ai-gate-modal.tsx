@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { X, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogDescription, DialogPanel, DialogTitle } from "@/components/ui/dialog";
 
 export type CreatorAiGateVariant = "subscribe" | "upgrade";
 
@@ -30,13 +31,10 @@ export function CreatorAiGateModal({
       : "You're already on board. When you're ready, add Creator + AI to unlock AI image, video, and related features—your creativity, amplified.";
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={() => onOpenChange(false)}
-    >
-      <div
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogPanel
+        overlayClassName="z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
         className="relative w-full max-w-md mx-4 bg-card/95 backdrop-blur-xl rounded-2xl border border-blue-500/20 p-8 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
           <div className="absolute -top-20 -right-20 w-40 h-40 bg-blue-500/20 rounded-full blur-3xl" />
@@ -45,6 +43,7 @@ export function CreatorAiGateModal({
 
         <button
           type="button"
+          aria-label="Close dialog"
           onClick={() => onOpenChange(false)}
           className="absolute top-4 right-4 p-2 text-muted-foreground hover:text-foreground smooth rounded-lg hover:bg-foreground/5"
         >
@@ -56,10 +55,10 @@ export function CreatorAiGateModal({
             <Sparkles className="w-8 h-8 text-white" />
           </div>
 
-          <h2 className="text-2xl font-semibold text-foreground mb-3 tracking-tight">
+          <DialogTitle className="text-2xl font-semibold text-foreground mb-3 tracking-tight">
             {title}
-          </h2>
-          <p className="text-muted-foreground mb-8 leading-relaxed">{description}</p>
+          </DialogTitle>
+          <DialogDescription className="text-base text-muted-foreground mb-8 leading-relaxed">{description}</DialogDescription>
 
           <Button
             asChild
@@ -78,7 +77,7 @@ export function CreatorAiGateModal({
             Maybe later
           </button>
         </div>
-      </div>
-    </div>
+      </DialogPanel>
+    </Dialog>
   );
 }

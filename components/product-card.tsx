@@ -139,8 +139,18 @@ export function ProductCard({ product, onDownload, onClick }: ProductCardProps) 
       className="group relative rounded-2xl overflow-hidden cursor-pointer bg-card border border-blue-500/30 hover:border-2 hover:border-blue-500 smooth hover-lift glow visibility-auto"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      onClick={() => { trackMarketItem("select", product.id); onClick?.(); }}
     >
+      {onClick && (
+        <button
+          type="button"
+          aria-label={`View ${product.name}`}
+          className="absolute inset-0 z-10 size-full focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-500"
+          onClick={() => {
+            trackMarketItem("select", product.id);
+            onClick();
+          }}
+        />
+      )}
       <div className="relative aspect-video bg-muted overflow-hidden">
         {thumbnail ? (
           <Image
@@ -177,27 +187,24 @@ export function ProductCard({ product, onDownload, onClick }: ProductCardProps) 
           </div>
         ) : null}
 
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-500" />
 
-        <div className="absolute top-0 left-0 right-0 flex items-start justify-between p-4 opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-2 group-hover:translate-y-0">
+        <div className="pointer-events-none absolute top-0 left-0 right-0 z-20 flex items-start justify-between p-4 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all duration-500 translate-y-2 group-hover:translate-y-0 group-focus-within:translate-y-0">
           <span className="text-[11px] px-3 py-1.5 rounded-full font-medium backdrop-blur-md bg-blue-500/90 text-white">
             {softwareLabel}
           </span>
 
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleGlobalMute();
-            }}
-            className="w-9 h-9 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 smooth border border-white/10"
+            onClick={toggleGlobalMute}
+            className="pointer-events-auto w-9 h-9 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 smooth border border-white/10"
             aria-label={globalMuted ? "Unmute" : "Mute"}
           >
             {globalMuted ? <VolumeOff className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
           </button>
         </div>
 
-        <div className="absolute bottom-0 left-0 right-0 p-4 flex items-end justify-between opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-2 group-hover:translate-y-0">
+        <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-20 p-4 flex items-end justify-between opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all duration-500 translate-y-2 group-hover:translate-y-0 group-focus-within:translate-y-0">
           <div className="flex-1 min-w-0 mr-3">
             <h3 className="font-semibold text-white text-sm line-clamp-1 mb-0.5">{product.name}</h3>
             <p className="text-white/50 text-xs">{categoryLabel}</p>
@@ -205,9 +212,9 @@ export function ProductCard({ product, onDownload, onClick }: ProductCardProps) 
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); void toggleFav(product.id); }}
+              onClick={() => { void toggleFav(product.id); }}
               className={cn(
-                "w-10 h-10 rounded-full backdrop-blur-md flex items-center justify-center smooth border border-white/10",
+                "pointer-events-auto w-10 h-10 rounded-full backdrop-blur-md flex items-center justify-center smooth border border-white/10",
                 favorited ? "bg-red-500/20 text-red-400" : "bg-white/10 text-white hover:bg-white/20",
               )}
               aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
@@ -216,11 +223,8 @@ export function ProductCard({ product, onDownload, onClick }: ProductCardProps) 
             </button>
             {!product.files.no_file && <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDownload?.(product);
-              }}
-              className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-110 smooth shrink-0"
+              onClick={() => onDownload?.(product)}
+              className="pointer-events-auto w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-110 smooth shrink-0"
               aria-label="Download"
             >
               <Download className="w-4 h-4" />

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Mic, Upload, Download, RefreshCw, Trash2, Copy, Check, FileAudio } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -121,6 +121,7 @@ function downloadTextFile(content: string, filename: string, mime: string) {
 }
 
 export function SpeechToText() {
+  const fileInputId = useId();
   const { user } = useAuth();
   const {
     status: generations,
@@ -381,9 +382,10 @@ export function SpeechToText() {
         <div className="lg:col-span-1 space-y-3 lg:space-y-6">
           {/* Upload Section */}
           <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
-            <label className="text-sm font-medium text-foreground mb-3 block">Upload File</label>
+            <label htmlFor={fileInputId} className="text-sm font-medium text-foreground mb-3 block">Upload File</label>
             <input
               ref={fileInputRef}
+              id={fileInputId}
               type="file"
               accept="audio/*,video/*"
               onChange={handleFileUpload}
