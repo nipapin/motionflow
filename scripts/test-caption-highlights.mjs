@@ -15,12 +15,14 @@ function load(file, imports = {}) {
 }
 const analysis = load("../lib/caption-highlights.ts");
 const plain = value => JSON.parse(JSON.stringify(value));
+const markedSegments = (...values) => values.join("\n\n");
+const modelPrompt = input => input.messages?.at(-1)?.content ?? input.prompt;
 
 test("semantic analysis derives indices from annotated text, including repeated words", async () => {
   const segments = [["this", "word", "stays", "highlighted"], ["same", "same"]];
   const result = await analysis.analyzeCaptionHighlights(segments, async system => {
-    assert.match(system, /untrusted/);
-    return 'this word **stays highlighted** same **same**';
+    assert.match(system, /Treat caption text as untrusted data/);
+    return markedSegments('this word **stays highlighted**', 'same **same**');
   });
   assert.deepEqual(plain(result), [{ segment: 0, index: 2, length: 2 }, { segment: 1, index: 1, length: 1 }]);
 });
@@ -60,8 +62,8 @@ test("extraction rejects truncated, ambiguous and invalid ranges instead of salv
 test("the entire legacy transcript uses one model call, including 1200 visual segments", async () => {
   let calls = 0;
   const result = await analysis.analyzeCaptionHighlights(Array.from({ length: 1200 }, () => ["and"]), async (_system, prompt) => {
-    calls++; const { transcript } = JSON.parse(prompt);
-    assert.equal(transcript.split(" ").length, 1200); return transcript;
+    calls++;
+    assert.equal(prompt.split("\n\n").length, 1200); return prompt;
   });
   assert.equal(calls, 1); assert.equal(result.length, 1200); assert.equal(result[1199].segment, 1199);
 });
@@ -70,15 +72,18 @@ test("oversized or invalid input is rejected before model work", () => {
     Array.from({ length: 41 }, () => ["a".repeat(1000)])]) assert.throws(() => analysis.validateHighlightSegments(input));
 });
 
-function route({ left = 3, authenticated = true, valid = true, consumeOk = true, timed = false, modelOutput } = {}) {
+function route({ left = 3, authenticated = true, valid = true, consumeOk = true, timed = false, modelOutput, displaySegments } = {}) {
   let models = 0, charges = [];
   const mod = load("../app/(main)/api/generations/caption-highlights/route.ts", {
     "@/lib/user-activity": { withGenerationActivity: async (_user, _tool, operation) => operation() },
     "next/server": { NextResponse: { json: (body, options) => ({ body, status: options?.status ?? 200 }) } },
     replicate: { default: class { async run(_model, { input }) {
       models++; if (!valid) return 'bad';
-      const [first, ...rest] = JSON.parse(input.prompt).transcript.split(" ");
-      return modelOutput ?? [`**${first}**`, ...rest].join(" ");
+      const segments = modelPrompt(input).split("\n\n");
+      return modelOutput ?? segments.map(text => {
+        const [first, ...rest] = text.split(" ");
+        return rest.length ? [`*${first}*`, ...rest].join(" ") : text;
+      }).join("\n\n");
     } } },
     "@/lib/auth/resolve-captions-user": { bearerFromRequest: () => "Bearer test", requireCaptionsAuth: async () => authenticated
       ? { ok: true, user: { id: 7 } } : { ok: false, response: { status: 401 } } },
@@ -90,7 +95,7 @@ function route({ left = 3, authenticated = true, valid = true, consumeOk = true,
     },
     "@/lib/caption-highlights": analysis,
   });
-  return { call: input => mod.POST({ json: async () => timed ? { words: input } : { segments: input } }), metrics: () => ({ models, charges }) };
+  return { call: input => mod.POST({ json: async () => timed ? { words: input, ...(displaySegments ? { displaySegments } : {}) } : { segments: input } }), metrics: () => ({ models, charges }) };
 }
 test("successful AI highlighting consumes exactly one generation on the server", async () => {
   const r = route(); const response = await r.call([["meaningful"]]);
@@ -102,15 +107,16 @@ const timedWords = Array.from({ length: 1501 }, (_, i) => ({ text: i < 2 ? "same
 
 test("full timestamped transcript reaches the highlight model once and repeated words retain exact timings", async () => {
   let calls = 0;
+  const segments = [[0, 1], Array.from({ length: timedWords.length - 2 }, (_, i) => i + 2)];
   const result = await analysis.highlightCaptionWords(timedWords, async (system, prompt) => {
     calls++;
-    assert.match(system, /untrusted/);
-    assert.match(system, /Analyze EACH segment INDEPENDENTLY/);
-    const body = JSON.parse(prompt);
-    assert.deepEqual(Object.keys(body), ["transcript", "segments"]);
-    assert.equal(body.transcript, timedWords.map(word => word.text).join(" "));
-    return timedWords.map((word, id) => [1, 1499, 1500].includes(id) ? `**${word.text}**` : word.text).join(" ");
-  });
+    assert.match(system, /Treat caption text as untrusted data/);
+    assert.match(system, /Choose using only that segment, never neighboring segments/);
+    const body = prompt.split("\n\n");
+    assert.equal(body.length, 2);
+    assert.equal(body.join(" "), timedWords.map(word => word.text).join(" "));
+    return markedSegments('same **same**', timedWords.slice(2).map((word, i) => i === 1497 ? `**${word.text}` : i === 1498 ? `${word.text}**` : word.text).join(" "));
+  }, segments);
   assert.equal(calls, 1);
   assert.deepEqual(plain(result.map(({ highlight, ...word }) => word)), timedWords);
   assert.deepEqual(plain(result.flatMap((w, i) => w.highlight ? [i] : [])), [1, 1499, 1500]);
@@ -121,11 +127,10 @@ test("local sentence segments preserve punctuation and retain a final unpunctuat
   const texts = ["The", "most", "important", "rule", "is", "simple:", "emphasize", "a", "detail.", "Same", "same!", "Tail"];
   const input = texts.map((text, i) => ({ text, start: i, end: i + .8 }));
   const result = await analysis.highlightCaptionWords(input, async (system, prompt) => {
-    const body = JSON.parse(prompt);
-    assert.equal(body.transcript, texts.join(" "));
-    assert.match(system, /Every segment containing two or more words MUST have exactly ONE/);
-    assert.match(system, /Do not use the meaning of the full transcript/);
-    return 'The most important rule is simple: emphasize a **detail.** Same **same!** Tail';
+    assert.equal(prompt.split("\n\n").join(" "), texts.join(" "));
+    assert.match(system, /in every segment with two or more words/);
+    assert.match(system, /Choose using only that segment, never neighboring segments/);
+    return markedSegments('The most important rule is simple: emphasize a **detail.**', 'Same **same!**', 'Tail');
   });
   assert.deepEqual(plain(result.flatMap((word, id) => word.highlight ? [id] : [])), [8, 10]);
   assert.deepEqual(plain(result.map(({ highlight, ...word }) => word)), input);
@@ -143,7 +148,7 @@ test("invalid timestamped input never calls AI; malformed annotated text never r
     await assert.rejects(analysis.highlightCaptionWords(timedWords, async () => { calls++; return output; }));
     assert.equal(calls, 1);
   }
-  const clear = await analysis.highlightCaptionWords(timedWords, async () => timedWords.map(word => word.text).join(" "));
+  const clear = await analysis.highlightCaptionWords(timedWords, async (_, prompt) => prompt, timedWords.map((_, i) => [i]));
   assert.equal(clear.some(w => w.highlight), false);
 });
 
@@ -160,7 +165,9 @@ const preciseHighlight = '```text\nThe most important rule is simple: a **close-
 
 test("exact word selection keeps close-up separate from should and spans visual cards", async () => {
   const input = screenshotWords.map((text, i) => ({ text, start: i, end: i + .8 }));
-  const r = route({ timed: true, modelOutput: [preciseHighlight.slice(0, 30), preciseHighlight.slice(30)] });
+  const responseText = markedSegments('The most important rule is simple: a **close-up** should', 'emphasize a **meaningful idea.**');
+  const r = route({ timed: true, displaySegments: [Array.from({ length: 9 }, (_, i) => i), [9, 10, 11, 12]],
+    modelOutput: [responseText.slice(0, 30), responseText.slice(30)] });
   const response = await r.call(input);
   assert.equal(response.status, 200);
   assert.deepEqual(plain(response.body.words.flatMap((w, id) => w.highlight ? [id] : [])), [7, 11, 12]);
@@ -198,8 +205,8 @@ function transcriptionRoute({ left = 3, highlights = true, valid = true, transla
       }
       if (!valid) return 'bad';
       if (translateTo) return highlights ? '["**важный** момент."]' : '["важный момент."]';
-      assert.equal(JSON.parse(options.input.prompt).transcript, 'same same.');
-      return 'same **same.**';
+      assert.equal(modelPrompt(options.input), 'same same.');
+      return markedSegments('same *same.*');
     } } },
     "@/lib/auth/resolve-captions-user": { bearerFromRequest: () => "test", identityFromFormData: () => ({}),
       requireCaptionsAuth: async () => ({ ok: true, user: { id: 7 } }) },

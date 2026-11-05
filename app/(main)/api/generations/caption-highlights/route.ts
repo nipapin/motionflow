@@ -7,7 +7,7 @@ import { bearerFromRequest, requireCaptionsAuth } from "@/lib/auth/resolve-capti
 import { GENERATION_LIMIT_REACHED_CODE } from "@/lib/ai-generation-gate";
 import { generationsStatusForResolvedUser, consumeGenerationForResolvedUser,
   billableAccountRequiredResponse, isMeteredCaptionsUser } from "@/lib/cep-generations";
-import { analyzeCaptionHighlights, validateHighlightSegments, validateHighlightWords, validateHighlightDisplaySegments, highlightCaptionWords, CAPTION_HIGHLIGHT_MODEL, CAPTION_HIGHLIGHT_MODEL_INPUT } from "@/lib/caption-highlights";
+import { analyzeCaptionHighlights, validateHighlightSegments, validateHighlightWords, validateHighlightDisplaySegments, validateHighlightDisplayTexts, highlightCaptionWords, CAPTION_HIGHLIGHT_MODEL, captionHighlightModelInput } from "@/lib/caption-highlights";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -26,12 +26,24 @@ export async function POST(req: NextRequest) {
       let segments: string[][] | undefined;
       let words: ReturnType<typeof validateHighlightWords> | undefined;
       let displaySegments: number[][] | undefined;
+      let displayTexts: string[] | undefined;
       try {
         if (body?.words !== undefined) {
           words = validateHighlightWords(body.words);
           if (body.displaySegments !== undefined) displaySegments = validateHighlightDisplaySegments(body.displaySegments, words);
+          if (body.displayTexts !== undefined) {
+            if (!displaySegments) throw new Error("Caption display texts require display segments.");
+            displayTexts = validateHighlightDisplayTexts(body.displayTexts, words, displaySegments);
+          }
         }
-        else segments = validateHighlightSegments(body?.segments);
+        else {
+          segments = validateHighlightSegments(body?.segments);
+          if (body.displayTexts !== undefined) {
+            let id = 0;
+            const indices = segments.map(segment => segment.map(() => id++));
+            displayTexts = validateHighlightDisplayTexts(body.displayTexts, segments.flat().map(text => ({ text, start: 0, end: 0 })), indices);
+          }
+        }
       }
       catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 400 }); }
       const status = await generationsStatusForResolvedUser(auth.user);
@@ -40,11 +52,11 @@ export async function POST(req: NextRequest) {
       }, { status: 402 });
       const generate = async (system_prompt: string, prompt: string) => {
         req.signal?.throwIfAborted();
-        const output = await replicate.run(CAPTION_HIGHLIGHT_MODEL, { input: { system_prompt, prompt, ...CAPTION_HIGHLIGHT_MODEL_INPUT }, signal: req.signal });
+        const output = await replicate.run(CAPTION_HIGHLIGHT_MODEL, { input: captionHighlightModelInput(system_prompt, prompt), signal: req.signal });
         return Array.isArray(output) ? output.join("") : String(output ?? "");
       };
-      const result = words ? { words: await highlightCaptionWords(words, generate, displaySegments) }
-        : { ranges: await analyzeCaptionHighlights(segments!, generate) };
+      const result = words ? { words: await highlightCaptionWords(words, generate, displaySegments, displayTexts) }
+        : { ranges: await analyzeCaptionHighlights(segments!, generate, displayTexts) };
       req.signal?.throwIfAborted();
       // Exactly one additional caption generation, independent of duration or batches.
       // Consume atomically only after a complete, validated model response.

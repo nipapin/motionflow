@@ -2,26 +2,26 @@
 
 The 2026-11-03 production error `AI highlight selection does not match source words` showed that allowing adjacent model ID drift did not remove the source of recurring failures. Highlights now use this server-only pipeline:
 
-`original text + current display segments → one AI prediction → complete text with **emphasis** → deterministic parser → original word indices`.
+`editor segments as-is → plain TXT → one AI prediction → TXT with *emphasis* → parser → original word highlight flags`.
 
-All credentials, prompts, model calls, markup parsing and index mapping stay in `next-app`. The CEP panel sends its timed transcript plus `displaySegments`, arrays of original word indices for the current editor cards, including manual split/merge boundaries. It receives the existing word-level boolean flags. This segmentation-aware behavior requires the updated panel; older callers without `displaySegments` use sentence segments derived from source punctuation.
+All credentials, prompts, model calls, markup parsing and index mapping stay in `next-app`. The CEP panel sends its timed transcript plus `displaySegments` (original word indices for the current cards) and `displayTexts` (each card's actual text, including internal line breaks). Manual split/merge boundaries and Words mode's displayed punctuation are preserved. The server joins the actual card texts with an empty line and sends that TXT directly as the user message. No JSON, segment labels, word IDs or timestamps are sent to the highlight model. The panel receives the existing word-level boolean flags. Older callers without display metadata use source sentence segments.
 
 Caption generation with highlights uses **one** `POST /api/generations/captions` multipart request with `highlights=true`:
 
 `audio → one Scribe prediction → complete timestamped transcript → one GPT-5 nano prediction → timestamped words + highlight → UI / Adobe`.
 
-GPT-5 nano selects one local highlight within each segment, without using the meaning of preceding/following segments or the full transcript. The transcript field is an exact copying reference only. It copies the entire text and wraps selected words or phrases in `**`; it never supplies word IDs, ranges or timestamps. The server adds boolean `highlight` fields to Scribe words while preserving their text, timestamps and metadata. The response includes `highlightsApplied: true`. Translation and highlights, when both requested, share the same GPT-5 nano prediction: the model returns an array of translated strings containing `**emphasis**`, and the server derives each string's word ranges locally. Translated word timings are rebuilt within the original sentence spans as in the existing translation flow.
+GPT-5 nano selects one local highlight within each TXT segment, without using neighboring segments for meaning. It returns the entire same TXT with `*` around selected words or phrases, preserving all text and segment separators. The parser accepts paired `*` and `**` markers, removes them and sets existing `highlight` booleans on the original words. Literal asterisks and backslashes are escaped for lossless transport. Text, layout and timestamps are retained. The legacy combined translation/highlight request retains its translated-string array contract; translated word timings are rebuilt within the original sentence spans as before.
 
 The panel does not make a follow-up highlight request after transcription. Its progress step covers transcription and highlighting together. Rapid repeated Generate clicks are locked before the first asynchronous preflight.
 
-For Find AI highlights, the system prompt requires exactly one short contiguous highlight in every card with two or more words. Each card is analyzed independently; there is no sentence-level or transcript-level highlight limit. Whole-card highlights are forbidden, and one-word cards stay plain. The server enforces the whole-card restriction after parsing: if every visible word in a card was selected, it clears that card's selection rather than inventing a shorter phrase or retrying a paid request. Hidden punctuation outside the supplied cards remains unselected. If the user changes segmentation later, running Find AI highlights again uses the new card boundaries.
+For Find AI highlights, the system prompt requires exactly one short contiguous highlight in every card with two or more words. Each card is analyzed independently. Whole-card highlights are forbidden, and one-word cards stay plain. The parser validates the complete marker-free TXT against the original editor text, including line breaks and empty-line separators, then maps marked tokens to the supplied original word indices. Missing/extra/rewritten text, changed segment boundaries, malformed/cross-segment markup and missing or invalid multiword-card highlights are rejected before charging. No partial response is applied and there are no automatic paid retries. If the user changes segmentation later, running Find AI highlights again uses the new cards.
 
 For an explicit **Find AI highlights** operation on existing captions, `POST /api/generations/caption-highlights` accepts authenticated Motionflow/CEP users under the existing caption-generation account rules.
 
 Request:
 
 ```json
-{"words":[{"text":"important","start":0.2,"end":0.6},{"text":"idea","start":0.6,"end":1.0}],"displaySegments":[[0,1]]}
+{"words":[{"text":"important","start":0.2,"end":0.6},{"text":"idea","start":0.6,"end":1.0}],"displaySegments":[[0,1]],"displayTexts":["important idea"]}
 ```
 
 Response:
@@ -30,11 +30,11 @@ Response:
 {"words":[{"text":"important","start":0.2,"end":0.6,"highlight":true},{"text":"idea","start":0.6,"end":1.0,"highlight":false}],"cost":1,"generations":{}}
 ```
 
-Each operation starts exactly one GPT-5 nano prediction. For example, segments `A close-up should` and `emphasize a meaningful idea.` can produce `A **close-up** should emphasize a **meaningful idea.**`. The server removes paired markers, decodes escaped literal asterisks/backslashes and matches every returned token to the complete original transcript in order. Whitespace wrapping may vary; spelling, case, punctuation, token count and order must match exactly. Repeated words resolve by position, without searching or correcting model IDs. A selected span maps to the original word(s) it overlaps, including punctuation outside markers. Source words containing internal whitespace keep their original word identity. No markers can represent an empty selection, including all-single-word cards. The client additionally checks word count, text and timestamps before saving flags. Model output cannot replace the transcript or its timings. There are no model batches or automatic billable retries.
+Each operation starts exactly one GPT-5 nano prediction. For example, the input TXT `Bir düşünsenize\n\neditiniz için` can produce `Bir *düşünsenize*\n\n*editiniz* için`. Repeated words resolve by their position inside the existing segment. Source words containing internal whitespace retain their original word identity. LF/CRLF are normalized; internal whitespace and line breaks otherwise remain exact. The client additionally checks word count, text and timestamps before saving flags. Model output cannot replace the transcript or its timings. There are no model batches or automatic billable retries.
 
 A single complete fenced text response is accepted as well as plain text. Empty or unclosed markers, omitted/added/rewritten words, truncated transcripts and explanatory prose are rejected before consuming credits. The Replicate model is `openai/gpt-5-nano`, pinned to version `034fc01c1d162ba028187fc496eb079e6c1329c1c8f686d971eba9d01e7ffb96`, with `reasoning_effort: minimal`, `verbosity: low` and `max_completion_tokens: 64000`. Actual analysis failures are logged on the server.
 
-For compatibility with an older deployed endpoint, the panel includes `segments` alongside `words` when the legacy limits permit. These use the supplied editor cards, or complete transcript sentences for callers that do not supply cards. An older server can return `ranges`; the panel validates and maps them back to the original word IDs. Compatibility uses the same request and never retries a paid operation. Modern servers validate `displaySegments` before invoking the model: each card is nonempty and indices are in range and strictly increasing without overlaps; gaps for invisible punctuation are permitted.
+For compatibility with an older deployed endpoint, the panel includes `segments` alongside `words` when the legacy limits permit. An older server can return `ranges`; the panel validates and maps them back to original word IDs. Compatibility uses the same request. Modern servers validate display metadata before invoking the model: cards are nonempty, indices are in range and strictly increasing without overlaps, and each actual display text matches its source words (including the existing punctuation-hiding presentation). Gaps for invisible punctuation are permitted. Display text is limited to 100000 characters in total.
 
 Limits: 1–10000 timed words, 1000 characters per word, 40000 transcript characters total. Oversized input is rejected rather than split into more predictions. GPT-5 nano uses the existing Replicate credential and pinned model version. The legacy `segments` request / `ranges` response remains supported and also uses a single model prediction.
 
@@ -47,3 +47,5 @@ Limits: 1–10000 timed words, 1000 characters per word, 40000 transcript charac
 Cost is one generation, consumed atomically only after the complete response has been validated. Failed input or model analysis is not charged. Concurrent credit exhaustion returns 402 without the result. Request cancellation is forwarded to Replicate and checked before consuming quota.
 
 The release workflow runs `scripts/test-caption-highlights.mjs` and the required build and release checks before production deployment. Existing model fixtures use the annotated-text contract, including complete-transcript matching, repeated words, malformed markup, translation and generation accounting. These fixtures mock the provider and do not run paid model generations.
+
+The current TXT-contract edits are local: no tests, live generations, builds or deployment were run for this change.
