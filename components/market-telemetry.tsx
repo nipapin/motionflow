@@ -15,7 +15,8 @@ export function MarketTelemetry({ enabled, heatRate, layout }: { enabled: boolea
     }
     let visit = crypto.randomUUID(), width = window.innerWidth, bucket = heatWidth(width), scroll = 0;
     let height = Math.max(document.documentElement.scrollHeight, innerHeight), nextGeometry = 0;
-    const sampled = Math.random() < heatRate;
+    const sample = crypto.getRandomValues(new Uint32Array(1))[0] / 0x100000000;
+    const sampled = sample < heatRate;
     let pointer: { x: number; y: number; target: EventTarget | null; at: number } | null = null;
     let lastMove = "", lastDwell = 0, stopped = false;
     let visitReported = false, reportedScroll = -1;

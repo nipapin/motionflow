@@ -9,13 +9,15 @@ permissions:
   actions: read
 jobs:
   telegram:
-    if: github.event.workflow_run.event != 'pull_request'
+    if: >-
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch')
     runs-on: ubuntu-22.04
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: main
+          ref: refs/heads/main
           persist-credentials: false
       - name: Report build and deployment result through the existing bot
         env:

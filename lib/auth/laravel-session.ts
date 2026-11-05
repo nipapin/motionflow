@@ -41,11 +41,13 @@ function laravelDecrypt(payload: string, key: Buffer): string {
     mac: string;
   };
 
-  const expectedMac = crypto
-    .createHmac("sha256", key)
-    .update(json.iv + json.value)
-    .digest("hex");
-  if (!crypto.timingSafeEqual(Buffer.from(expectedMac, "hex"), Buffer.from(json.mac, "hex"))) {
+  if (typeof json.iv !== "string" || typeof json.value !== "string" ||
+      typeof json.mac !== "string" || !/^[a-f0-9]{64}$/.test(json.mac)) {
+    throw new Error("Invalid Laravel encryption payload");
+  }
+
+  const expectedMac = crypto.createHmac("sha256", key).update(json.iv + json.value).digest();
+  if (!crypto.timingSafeEqual(expectedMac, Buffer.from(json.mac, "hex"))) {
     throw new Error("MAC mismatch");
   }
 
@@ -58,6 +60,7 @@ function laravelDecrypt(payload: string, key: Buffer): string {
 // ─── AES-256-CBC encrypt (mirrors Illuminate\Encryption\Encrypter) ──────
 function laravelEncrypt(plaintext: string, key: Buffer): string {
   const iv = crypto.randomBytes(IV_LENGTH);
+  // Laravel's cookie format authenticates the IV and CBC ciphertext with HMAC-SHA256.
   const cipher = crypto.createCipheriv(CIPHER, key, iv);
   const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
 

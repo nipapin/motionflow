@@ -4,10 +4,12 @@ import { mkdtempSync, copyFileSync, writeFileSync, readFileSync, existsSync, rea
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
+const pm2Cli = createRequire(import.meta.url).resolve("pm2/bin/pm2");
 const root = mkdtempSync(join(tmpdir(), "motionflow-pm2-check-"));
 const env = { ...process.env, PM2_HOME: join(root, "pm2-home") };
 const pm2 = args => {
-  const result = spawnSync("pm2", args, { env, encoding: "utf8", timeout: 30000 });
+  const result = spawnSync(process.execPath, [pm2Cli, ...args], { env, encoding: "utf8", timeout: 30000 });
   assert.equal(result.status, 0, result.stdout + result.stderr);
   return result.stdout;
 };
