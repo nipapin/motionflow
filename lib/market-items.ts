@@ -91,6 +91,7 @@ function rowToProduct(row: RowDataPacket, viewer?: MarketplaceViewer | null): Pr
     sub_category_slug: toStr(row.sub_category_slug),
     name: toStr(row.name),
     version: toStrNull(row.version),
+    extension_slug: toStrNull(row.extension_slug),
     description: toStr(row.description),
     description_html: toStrNull(row.description_html),
     description_json: parseJsonRecord(row.description_json),
