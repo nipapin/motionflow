@@ -1,10 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import vm from "node:vm";
+import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
 import ts from "typescript";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -17,12 +16,12 @@ function loader(mocks) {
     if (!specifier.startsWith("@/")) return require(specifier);
     if (cache.has(specifier)) return cache.get(specifier).exports;
     const filename = path.join(root, `${specifier.slice(2)}.ts`);
-    const source = ts.transpileModule(readFileSync(filename, "utf8"), {
+    const compiledFixture = compileTestFixture(filename, {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
-    }).outputText;
+    });
     const module = { exports: {} };
     cache.set(specifier, module);
-    vm.runInThisContext(`(function(require,module,exports){${source}\n})`, { filename })(load, module, module.exports);
+    compiledFixture.runModule({ require: load, module, exports: module.exports });
     return module.exports;
   }
   return load;

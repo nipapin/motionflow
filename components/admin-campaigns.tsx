@@ -50,7 +50,10 @@ function sampleEmailValues(draft:CampaignDraft,product:string,extension:boolean)
 
 function TemplateEditor({title,description,value,previewValues,onChange,disabled}:{title:string;description:string;value:CampaignTemplate;previewValues:Record<string,string>;onChange:(value:CampaignTemplate)=>void;disabled:boolean}) {
   const [error,setError]=useState("");
-  const previewHtml=value.html.replace(/\{\{\s*([^{}]+?)\s*\}\}/g,(match,key)=>Object.hasOwn(previewValues,key)?escapePreview(previewValues[key]):match);
+  const previewHtml = value.html.replace(/\{\{([^{}]+)\}\}/g, (match, rawKey: string) => {
+    const key = rawKey.trim() || rawKey.slice(-1);
+    return Object.hasOwn(previewValues, key) ? escapePreview(previewValues[key]) : match;
+  });
   async function load(file:File) {
     try {
       if (file.size>500000) throw new Error("File must be smaller than 500 KB");

@@ -36,7 +36,7 @@ export async function DELETE() {
   // epoch first.
   const effectiveAtKey = (() => {
     const raw = current.scheduledChange.effectiveAt;
-    const ms = raw ? new Date(raw as unknown as string).getTime() : NaN;
+    const ms = raw ? new Date(raw as unknown as string).getTime() : Number.NaN;
     return Number.isFinite(ms) ? String(ms) : "unknown";
   })();
   try {

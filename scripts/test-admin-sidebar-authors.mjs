@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import vm from "node:vm";
+import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
 import ts from "typescript";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -22,12 +22,12 @@ function loader(mocks = {}) {
     if (cache.has(specifier)) return cache.get(specifier).exports;
     const base = path.join(root, specifier.slice(2));
     const filename = existsSync(`${base}.ts`) ? `${base}.ts` : `${base}.tsx`;
-    const source = ts.transpileModule(readFileSync(filename, "utf8"), {
+    const compiledFixture = compileTestFixture(filename, {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
-    }).outputText;
+    });
     const module = { exports: {} };
     cache.set(specifier, module);
-    vm.runInThisContext(`(function(require,module,exports){${source}\n})`, { filename })(load, module, module.exports);
+    compiledFixture.runModule({ require: load, module, exports: module.exports });
     return module.exports;
   }
   return load;

@@ -35,7 +35,7 @@ export function normalizeShowcasePrefixInput(
   let bucket: string | null = null;
   let path = trimmed;
 
-  const s3 = /^s3:\/\/([^/]+)\/?(.*)$/i.exec(trimmed);
+  const s3 = /^s3:\/\/([^/]+)(?:\/(.*))?$/i.exec(trimmed);
   if (s3) {
     if (!opts.allowBucket) return { ok: false, error: "INVALID_PREFIX" };
     bucket = s3[1]!.trim();

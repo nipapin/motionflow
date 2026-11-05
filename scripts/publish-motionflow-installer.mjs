@@ -40,6 +40,6 @@ for (const [i,a] of [...assets,setup].entries()) {
   console.log(`Published ${a.id||"setup"}: ${a.bytes} bytes, SHA-256 ${a.sha256}`);
 }
 await client.send(new PutObjectCommand({Bucket:bucket,Key:"public/downloads/motionflow/installer/latest.json",Body:JSON.stringify(manifest),ContentType:"application/json",CacheControl:"no-store"}));
-const cdn=(process.env.R2_PUBLIC_CDN||"https://cdn.motionflow.pro").replace(/\/+$/,""), cep=assets[0];
+const cdn=(process.env.R2_PUBLIC_CDN||"https://cdn.motionflow.pro").replace(/(?<!\/)\/+$/,""), cep=assets[0];
 await client.send(new PutObjectCommand({Bucket:bucket,Key:"public/downloads/motionflow/latest.json",Body:JSON.stringify({product:"motionflow",version,channel:"stable",zxpUrl:`${cdn}/${cep.key}`,sha256:cep.sha256,changelog:args.changelog||"Small Go online installer",publishedAt:new Date().toISOString(),ffmpeg:{win:`${cdn}/public/downloads/ffmpeg/win/ffmpeg.exe`,mac:`${cdn}/public/downloads/ffmpeg/mac/ffmpeg-mac.zip`}}),ContentType:"application/json",CacheControl:"public, max-age=60"}));
 console.log(`Installer and CEP update pointers now use ${version}`);

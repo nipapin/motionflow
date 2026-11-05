@@ -95,6 +95,7 @@
     "@types/react-dom": "^19",
     "@types/ws": "^8.18.1",
     "baseline-browser-mapping": "^2.10.18",
+    "pm2": "7.0.1",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",
     "tw-animate-css": "1.3.3",

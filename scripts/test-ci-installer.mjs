@@ -53,11 +53,11 @@ process.stdout.write(JSON.stringify({status:'ok',release,database:true,redis:tru
     write(join(source, "release.json"), JSON.stringify({ releaseId: id(n), commit, platform: "linux", arch: "x64", nodeMajor: 20 }));
     for (const script of ["verify-ci-release.mjs", "check-ci-health.mjs", "prune-ci-releases.mjs"]) write(join(source, "scripts", script), readFileSync(join(repo, "scripts", script), "utf8"));
     const target = join(incoming, "motionflow.tgz");
-    assert.equal(spawnSync("tar", ["-czf", target, "-C", source, "."]).status, 0);
+    assert.equal(spawnSync("/usr/bin/tar", ["-czf", target, "-C", source, "."]).status, 0);
     write(target + ".sha256", createHash("sha256").update(readFileSync(target)).digest("hex") + "  motionflow.tgz\n");
     return target;
   }
-  const install = (n, extra={}) => spawnSync("bash", [installer, id(n)], { env: { ...env, ...extra }, encoding: "utf8", timeout: 30000 });
+  const install = (n, extra={}) => spawnSync("/usr/bin/bash", [installer, id(n)], { env: { ...env, ...extra }, encoding: "utf8", timeout: 30000 });
   archive(1);
   let result = install(1, { MOCK_FAIL_RELEASE: id(1) });
   assert.notEqual(result.status, 0);

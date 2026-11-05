@@ -15,7 +15,7 @@ export function makeMailgunCsv(users: { email: string }[]): string {
   const rows: string[] = [];
   for (const user of users) {
     const email = user.email.trim().toLowerCase();
-    if (!/^[^\s@,;<>"\\]+@[^\s@,;<>"\\]+\.[^\s@,;<>"\\]+$/.test(email) || seen.has(email)) continue;
+    if (!/^[^\s@,;<>"\\]+@(?=[^\s@,;<>"\\][^\s@,;<>"\\]*\.[^\s@,;<>"\\])[^\s@,;<>"\\]+$/.test(email) || seen.has(email)) continue;
     seen.add(email);
     rows.push(email);
   }

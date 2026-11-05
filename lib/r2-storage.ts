@@ -57,12 +57,12 @@ export function getR2PrivateBucket(): string {
 }
 
 export function getR2PublicBaseUrl(): string {
-    return readEnv("R2_PUBLIC_CDN").replace(/\/+$/, "");
+    return readEnv("R2_PUBLIC_CDN").replace(/(?<!\/)\/+$/, "");
 }
 
 function getR2Endpoint(): string {
     const direct = readEnvOptional("R2_ENDPOINT");
-    if (direct) return direct.replace(/\/+$/, "");
+    if (direct) return direct.replace(/(?<!\/)\/+$/, "");
     const accountId = readEnv("R2_ACCOUNT_ID");
     return `https://${accountId}.r2.cloudflarestorage.com`;
 }
@@ -251,7 +251,7 @@ export async function uploadBufferToR2(
         "",
     );
     const base = opts.baseName ?? randomUUID();
-    const prefix = opts.keyPrefix.replace(/^\/+|\/+$/g, "");
+    const prefix = opts.keyPrefix.replace(/^\/+|(?<!\/)\/+$/g, "");
     const key = `${prefix}/${base}.${ext}`;
 
     await client.send(

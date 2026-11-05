@@ -64,7 +64,7 @@ jobs:
         env:
           BUILD_PUBLIC_ENV: ${{ vars.BUILD_PUBLIC_ENV }}
         run: node scripts/ci-public-env.mjs
-      - run: npm ci --include=dev --no-audit --no-fund
+      - run: npm ci --include=dev --ignore-scripts --no-audit --no-fund
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .next/cache
@@ -79,14 +79,14 @@ jobs:
           node --test scripts/test-paddle-subscription-balance.mjs
           node --test scripts/test-caption-highlights.mjs
           node --test scripts/test-project-visibility.mjs scripts/test-ai-usage.mjs scripts/test-spunkram-replicate.mjs scripts/test-profile-section-overviews.mjs scripts/test-generation-cost.mjs scripts/test-caption-webm-previews.mjs scripts/test-jumpcut-analysis.mjs
-          npm exec --yes --package=pm2@7.0.1 -- node scripts/test-ci-pm2.mjs
+          node scripts/test-ci-pm2.mjs
           npm run build
       - name: Package Linux runtime and verify WebSocket server
         id: package
         run: |
           export RELEASE_COMMIT="$GITHUB_SHA"
           export RELEASE_ID="$GITHUB_SHA-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT"
-          npm prune --omit=dev --no-audit --no-fund
+          npm prune --omit=dev --ignore-scripts --no-audit --no-fund
           node scripts/package-ci-release.mjs
           (cd .release && node scripts/verify-ci-release.mjs "$RELEASE_ID")
           node scripts/smoke-ci-release.mjs

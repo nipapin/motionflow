@@ -80,6 +80,38 @@ function DialogContent({
   )
 }
 
+function DialogPanel({
+  overlayClassName,
+  overlayRef,
+  onOpenAutoFocus,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Content> & {
+  overlayClassName: string
+  overlayRef?: React.Ref<HTMLDivElement>
+}) {
+  const opener = React.useRef<HTMLElement | null>(null)
+
+  return (
+    <DialogPortal>
+      <DialogOverlay className={overlayClassName} ref={overlayRef}>
+        <DialogPrimitive.Content
+          {...props}
+          onOpenAutoFocus={(event) => {
+            const activeElement = document.activeElement
+            opener.current = activeElement instanceof HTMLElement ? activeElement : null
+            onOpenAutoFocus?.(event)
+          }}
+          onCloseAutoFocus={(event) => {
+            if (!opener.current?.isConnected) return
+            event.preventDefault()
+            opener.current.focus()
+          }}
+        />
+      </DialogOverlay>
+    </DialogPortal>
+  )
+}
+
 function DialogHeader({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
@@ -137,6 +169,7 @@ export {
   DialogFooter,
   DialogHeader,
   DialogOverlay,
+  DialogPanel,
   DialogPortal,
   DialogTitle,
   DialogTrigger,

@@ -89,17 +89,6 @@ function adminPaymentId(): string {
   return `admin_${crypto.randomUUID().replace(/-/g, "")}`;
 }
 
-function generatePurchaseCode(
-  itemId: number,
-  buyerId: number,
-  paymentId: string,
-): string {
-  return crypto
-    .createHash("md5")
-    .update(`order${itemId}${buyerId}${paymentId}`)
-    .digest("hex");
-}
-
 function endsAtForDuration(duration: AdminGrantDuration): Date | null {
   if (duration === "until_revoked") return null;
   const d = new Date();
@@ -547,7 +536,7 @@ export async function grantAdminAuthorPacks(opts: {
     }
 
     const paymentId = adminPaymentId();
-    const purchaseCode = generatePurchaseCode(itemId, opts.userId, paymentId);
+    const purchaseCode = crypto.randomBytes(16).toString("hex");
     await pool.execute(
       `INSERT INTO \`${SOLD_TABLE}\`
          (buyer_id, author_id, item_id, status, payment_id,

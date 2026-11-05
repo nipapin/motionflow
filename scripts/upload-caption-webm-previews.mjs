@@ -7,7 +7,7 @@ const args = process.argv.slice(2);
 const option = name => args.find(arg => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
 const source = option("source");
 const bucket = option("bucket");
-const prefix = option("prefix")?.replace(/\/+$/, "");
+const prefix = option("prefix")?.replace(/(?<!\/)\/+$/, "");
 if (!source || !bucket || !prefix || prefix.split("/").some(p => !p || p === "." || p === "..")) {
   throw new Error("Provide --source=<folder> --bucket=<bucket> --prefix=<key prefix>; add --upload to write.");
 }

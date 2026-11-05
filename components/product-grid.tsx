@@ -57,7 +57,7 @@ export function ProductGrid({
     const params = new URLSearchParams(window.location.search);
     const raw = params.get("product");
     if (!raw) return;
-    const id = parseInt(raw, 10);
+    const id = Number.parseInt(raw, 10);
     if (!Number.isFinite(id)) return;
     const match = products.find((p) => p.id === id);
     if (match) setSelectedProduct(match);

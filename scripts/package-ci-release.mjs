@@ -6,7 +6,7 @@ if (process.platform !== "linux" || process.arch !== "x64" || !/^[a-f0-9]{40}-\d
 if (!existsSync(".next/BUILD_ID") || existsSync(".release")) throw new Error("Build missing or release directory exists");
 mkdirSync(".release");
 // Preserve the custom WebSocket server: Next standalone cannot replace it.
-const files = execFileSync("git", ["ls-files", "-z"], { encoding: "utf8" }).split("\0").filter(Boolean);
+const files = execFileSync("/usr/bin/git", ["ls-files", "-z"], { encoding: "utf8" }).split("\0").filter(Boolean);
 for (const file of files) {
   if (file.split("/").some(p => /^\.env(?:\.|$)/.test(p))) continue;
   cpSync(file, join(".release", file), { recursive: true });

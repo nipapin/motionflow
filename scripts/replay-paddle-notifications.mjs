@@ -72,6 +72,18 @@ function summarizePayload(payload) {
   };
 }
 
+function displayToken(value) {
+  return typeof value === "string" ? value.replace(/[^a-zA-Z0-9_.:-]/g, "?").slice(0, 128) : "-";
+}
+
+function writeDump(data) {
+  const json = JSON.stringify(data, null, 2).replace(
+    /[\u007f-\u009f\u2028-\u202e\u2066-\u2069]/g,
+    (character) => "\\u" + character.charCodeAt(0).toString(16).padStart(4, "0"),
+  );
+  process.stdout.write(json + "\n");
+}
+
 async function fetchNotification(ntfId, base) {
   const url = `${base}/notifications/${encodeURIComponent(ntfId)}`;
   const res = await fetch(url, {
@@ -80,11 +92,10 @@ async function fetchNotification(ntfId, base) {
       Accept: "application/json",
     },
   });
-  const text = await res.text();
   if (!res.ok) {
-    throw new Error(`GET /notifications/${ntfId} failed (${res.status}): ${text}`);
+    throw new Error(`Paddle notification lookup failed with HTTP ${res.status}`);
   }
-  const json = JSON.parse(text);
+  const json = await res.json();
   const notification = json?.data;
   const payload = notification?.payload;
   if (!payload?.event_id || !payload?.event_type || !payload?.data) {
@@ -121,8 +132,8 @@ async function replayToWebhook(evtPayload, webhookUrl, webhookSecret) {
     },
     body,
   });
-  const text = await res.text();
-  return { status: res.status, body: text };
+  await res.body?.cancel();
+  return res.status;
 }
 
 function sleep(ms) {
@@ -173,41 +184,34 @@ async function main() {
       const { summary, payload } = resolved;
 
       if (resolveOnly) {
-        console.log(
-          `${ntfId}  ${summary.event_id}  ${summary.entity_id ?? "-"}  ${summary.event_type}`,
+        process.stdout.write(
+          `${ntfId}  ${displayToken(summary.event_id)}  ${displayToken(summary.entity_id)}  ${displayToken(summary.event_type)}\n`,
         );
         okCount += 1;
         continue;
       }
 
       if (dumpOnly) {
-        console.log(
-          JSON.stringify(
-            {
-              notification_id: ntfId,
-              notification_type: resolved.notificationType,
-              notification_status: resolved.notificationStatus,
-              ...summary,
-            },
-            null,
-            2,
-          ),
-        );
+        writeDump({
+          notification_id: ntfId,
+          notification_type: resolved.notificationType,
+          notification_status: resolved.notificationStatus,
+          ...summary,
+        });
         okCount += 1;
         continue;
       }
 
       process.stdout.write(
-        `  ${ntfId} → ${summary.event_id} (${summary.event_type}, ${summary.entity_id ?? "-"}) → `,
+        `  ${ntfId} → ${displayToken(summary.event_id)} (${displayToken(summary.event_type)}, ${displayToken(summary.entity_id)}) → `,
       );
-      const result = await replayToWebhook(payload, webhookUrl, webhookSecret);
-      const trimmed = result.body.replace(/\s+/g, " ").slice(0, 240);
-      console.log(`HTTP ${result.status} ${trimmed}`);
-      if (result.status >= 200 && result.status < 300) okCount += 1;
+      const status = await replayToWebhook(payload, webhookUrl, webhookSecret);
+      console.log(`HTTP ${status}`);
+      if (status >= 200 && status < 300) okCount += 1;
       else errCount += 1;
-    } catch (err) {
+    } catch {
       missingCount += 1;
-      console.error(`  ${ntfId} FAILED: ${err?.message ?? err}`);
+      console.error(`  ${ntfId}: notification lookup or replay failed`);
     }
   }
 

@@ -1,10 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import vm from "node:vm";
+import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
 import ts from "typescript";
 import * as jose from "jose";
 import bcrypt from "bcryptjs";
@@ -30,14 +29,12 @@ function loader(mocks) {
       ? path.join(root, `${specifier.slice(2)}.ts`)
       : path.resolve(parent, `${specifier}.ts`);
     if (cache.has(filename)) return cache.get(filename).exports;
-    const source = ts.transpileModule(readFileSync(filename, "utf8"), {
+    const compiledFixture = compileTestFixture(filename, {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
-    }).outputText;
+    });
     const module = { exports: {} };
     cache.set(filename, module);
-    vm.runInThisContext(`(function(require,module,exports){${source}\n})`, { filename })(
-      s => load(s, path.dirname(filename)), module, module.exports,
-    );
+    compiledFixture.runModule({ require: s => load(s, path.dirname(filename)), module, exports: module.exports });
     return module.exports;
   }
   return load;

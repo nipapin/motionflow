@@ -6,6 +6,7 @@ import Image from "next/image";
 
 import { X, Heart, Play, Download, Monitor, FolderOpen, CalendarDays, FileAudio } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogPanel, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/auth-provider";
 import { useFavorites } from "@/components/favorites-provider";
@@ -64,19 +65,6 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
   useEffect(() => {
     if (open) scrollRef.current?.scrollTo(0, 0);
   }, [open, product.id]);
-
-  useEffect(() => {
-    if (!open) return;
-    document.body.style.overflow = "hidden";
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onOpenChange(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.body.style.overflow = "";
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open, onOpenChange]);
 
   useEffect(() => {
     if (!open) return;
@@ -202,22 +190,21 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
 
   return (
     <>
-      <div
-        data-heatmap-ignore
-        ref={scrollRef}
-        className="fixed inset-0 z-100 bg-black/90 backdrop-blur-sm overflow-y-auto"
-        onClick={() => onOpenChange(false)}
-      >
-        <div className="dark w-full max-w-full mx-auto my-0 min-h-screen px-3 pt-3 pb-10 sm:px-4 sm:my-8 sm:min-h-[calc(100vh-4rem)] lg:w-[70vw] lg:max-w-[70vw] flex flex-col">
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogPanel
+          aria-describedby={undefined}
+          data-heatmap-ignore
+          overlayRef={scrollRef}
+          overlayClassName="z-100 bg-black/90 backdrop-blur-sm overflow-y-auto"
+          className="dark w-full max-w-full mx-auto my-0 min-h-screen px-3 pt-3 pb-10 sm:px-4 sm:my-8 sm:min-h-[calc(100vh-4rem)] lg:w-[70vw] lg:max-w-[70vw] flex flex-col"
+        >
           {/* Header */}
           <div className="flex items-center justify-end gap-2 mb-4 sm:mb-6 shrink-0">
             {!isAudio && (
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void toggleFav(product.id);
-                }}
+                aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
+                onClick={() => { void toggleFav(product.id); }}
                 className={cn(
                   "w-10 h-10 rounded-full flex items-center justify-center smooth",
                   favorited ? "bg-red-500/20 text-red-400" : "bg-white/10 text-white hover:bg-white/20",
@@ -228,6 +215,7 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
             )}
             <button
               type="button"
+              aria-label="Close product details"
               onClick={() => onOpenChange(false)}
               className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 smooth"
             >
@@ -235,7 +223,7 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
             </button>
           </div>
 
-          <div className="flex-1" onClick={(e) => e.stopPropagation()}>
+          <div className="flex-1">
             <div className="w-full">
               <div className="flex flex-col lg:flex-row gap-8">
                 {/* Video / Preview */}
@@ -333,7 +321,9 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
                       </div>
                     )}
                     <div className="p-5 sm:p-6">
-                      <h1 className="text-xl sm:text-2xl font-semibold text-foreground leading-tight">{product.name}</h1>
+                      <DialogTitle asChild className="text-xl sm:text-2xl font-semibold text-foreground leading-tight">
+                        <h1>{product.name}</h1>
+                      </DialogTitle>
 
                       {/* Description */}
                       {product.description_html ? (
@@ -404,8 +394,8 @@ export function ProductDetailModal({ product, open, onOpenChange, similarProduct
               )}
             </div>
           </div>
-        </div>
-      </div>
+        </DialogPanel>
+      </Dialog>
 
       <SignInModal open={signInOpen} onOpenChange={setSignInOpen} onAuthSuccess={() => setSignInOpen(false)} />
       <SubscriptionModal open={subscriptionOpen} onOpenChange={setSubscriptionOpen} />

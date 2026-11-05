@@ -12,13 +12,13 @@ export const MOTIONFLOW_SUBSCRIPTION_TITLE_TEMPLATE = `Motionflow ${PRODUCT_NAME
 /* --- normalization (single pipeline, not exported in pieces) --- */
 
 const PAREN_SUFFIX =
-  /\s*\(\s*(monthly|quarterly|annual|annually|yearly|lifetime|month|year|week|day)\s*\)\s*$/i;
+  /\(\s*(?:monthly|quarterly|annual|annually|yearly|lifetime|month|year|week|day)\s*\)$/i;
 
 const TRAILING_SEGMENT =
-  /\s*[-–—/]\s*(monthly|quarterly|annual|annually|yearly|lifetime|per\s+month|per\s+year)\s*$/i;
+  /[-–—/]\s*(?:monthly|quarterly|annual|annually|yearly|lifetime|per\s+month|per\s+year)$/i;
 
 const TRAILING_WORD =
-  /\s+(monthly|quarterly|quarter|annual|annually|yearly|year|lifetime|weekly|week|daily|day|month)\s*$/i;
+  /\s(?:monthly|quarterly|quarter|annual|annually|yearly|year|lifetime|weekly|week|daily|day|month)$/i;
 
 function stripBillingTail(name: string): string {
   let s = name.trim();

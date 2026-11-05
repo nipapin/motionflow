@@ -270,7 +270,7 @@ export function VideoGenerator() {
       if (genStatus) {
         setGenerationsStatus(genStatus);
       } else {
-        refreshGenerations();
+        void refreshGenerations();
       }
     },
     [setGenerationsStatus, refreshGenerations],

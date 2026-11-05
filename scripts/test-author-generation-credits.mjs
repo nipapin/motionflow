@@ -1,10 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import vm from "node:vm";
+import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
 import ts from "typescript";
 const require = createRequire(import.meta.url);
 const { NextRequest } = require("next/server");
@@ -17,9 +16,9 @@ function loader(mocks) {
     if (!id.startsWith("@/")) return require(id);
     if (cache.has(id)) return cache.get(id).exports;
     const filename = path.join(root, `${id.slice(2)}.ts`);
-    const source = ts.transpileModule(readFileSync(filename, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
+    const compiledFixture = compileTestFixture(filename, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } });
     const module = { exports: {} }; cache.set(id, module);
-    vm.runInThisContext(`(function(require,module,exports){${source}\n})`, { filename })(load, module, module.exports);
+    compiledFixture.runModule({ require: load, module, exports: module.exports });
     return module.exports;
   }
   return load;

@@ -75,7 +75,7 @@ function rowToProduct(row: RowDataPacket, viewer?: MarketplaceViewer | null): Pr
   if (!canViewMarketplaceItem({ admin_only: row.admin_only, author_id: row.author_id }, viewer)) return null;
   if (row.deleted_at != null) return null;
 
-  const id = toNum(row.id, NaN);
+  const id = toNum(row.id, Number.NaN);
   if (!Number.isFinite(id)) return null;
 
   return {
@@ -402,7 +402,7 @@ export async function getSubCategorySlugs(indexCategorySlug: string): Promise<st
         if (slug) set.add(slug);
       }
     }
-    return Array.from(set).sort();
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
   } catch (err) {
     console.error("[getSubCategorySlugs] MySQL query failed:", err);
     return [];

@@ -12,7 +12,7 @@ import { hasActiveMotionflowSubscription } from "@/lib/subscriptions";
  */
 export async function GET(req: NextRequest) {
   const itemIdRaw = req.nextUrl.searchParams.get("itemId");
-  const itemId = itemIdRaw == null ? NaN : Number(itemIdRaw);
+  const itemId = itemIdRaw == null ? Number.NaN : Number(itemIdRaw);
   if (!Number.isFinite(itemId) || itemId <= 0) {
     return NextResponse.json(
       { canDownload: false, error: "invalid itemId" },

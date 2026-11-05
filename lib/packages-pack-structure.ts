@@ -71,7 +71,7 @@ function findPackJsonPath(manifestRaw: string): string | null {
     return null;
   }
   const map = normalizePackManifest(parsed);
-  const paths = [...map.keys()].sort();
+  const paths = [...map.keys()].sort((a, b) => (a < b ? -1 : Number(a > b)));
   for (const p of paths) {
     if (PACK_JSON_EXT.test(p) && !p.split("/").includes("..")) {
       return p.replace(/\\/g, "/").replace(/^\/+/, "");

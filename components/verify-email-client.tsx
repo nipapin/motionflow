@@ -34,7 +34,7 @@ export function VerifyEmailClient() {
   useEffect(() => {
     if (!email || !token) return;
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const res = await fetch("/api/auth/verify-email", {
           method: "POST",

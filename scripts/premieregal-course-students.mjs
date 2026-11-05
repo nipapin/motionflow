@@ -1,6 +1,6 @@
 /** Preparation only until an explicit init/apply/send command is chosen. */
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, realpathSync, readdirSync } from 'node:fs';
+import { extname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { createHash, randomBytes } from 'node:crypto';
@@ -189,7 +189,7 @@ export async function main(args = process.argv.slice(2)) {
   if (positionals.length > 1 || !['validate', 'init', 'preview', 'apply', 'billing-preview', 'billing-apply', 'mail-preview', 'send'].includes(command)) throw new Error('Unknown command. Use --help');
   if (!/^[a-z0-9][a-z0-9_-]{0,99}$/.test(values.campaign)) throw new Error('Invalid campaign id');
   const campaign = values.campaign;
-  const input = command === 'init' ? null : readParticipants(readFileSync(resolve(required(values.csv, '--csv')), 'utf8'));
+  const input = command === 'init' ? null : readParticipants(readCourseInput(values.csv, '--csv', '.csv', ['.campaigns']));
   for (const p of input?.participants || []) {
     if (p.firstName.length > 255 || p.lastName.length > 255) throw new Error(`Record ${p.line}: name too long`);
   }
@@ -202,8 +202,11 @@ export async function main(args = process.argv.slice(2)) {
   if (existsSync(envFile)) process.loadEnvFile(envFile);
   let template, extensionTemplate, from, siteOrigin;
   if (command === 'send' || command === 'mail-preview') {
-    template = validateTemplate(JSON.parse(readFileSync(resolve(required(values.template, '--template')), 'utf8')));
-    if (values['extension-template']) extensionTemplate = validateTemplate(JSON.parse(readFileSync(resolve(values['extension-template']), 'utf8')));
+    const templateDirectories = ['.campaigns', 'docs/email-templates'];
+    template = validateTemplate(JSON.parse(readCourseInput(values.template, '--template', '.json', templateDirectories)));
+    if (values['extension-template']) {
+      extensionTemplate = validateTemplate(JSON.parse(readCourseInput(values['extension-template'], '--extension-template', '.json', templateDirectories)));
+    }
     from = required(values.from || (process.env.MAIL_FROM_ADDRESS && `Premiere Gal <${process.env.MAIL_FROM_ADDRESS}>`), '--from or MAIL_FROM_ADDRESS');
     const url = new URL(values['site-origin'] || 'https://premieregal.motionflow.pro');
     if (url.protocol !== 'https:' || url.username || url.password || url.pathname !== '/' || url.search || url.hash || /^(localhost|127\.|0\.|\[::1\])/.test(url.hostname)) {
@@ -323,6 +326,36 @@ export async function main(args = process.argv.slice(2)) {
       if (acquiredLock) await conn.execute('SELECT RELEASE_LOCK(?)', [lockName]);
     } finally { await conn.end(); }
   }
+}
+
+function readCourseInput(value, option, extension, directories) {
+  const projectRoot = realpathSync(root);
+  const requested = resolve(required(value, option));
+  const invalidPath = `${option} must point to a ${extension} file under ${directories.join(' or ')}`;
+  const isDescendant = local => local && !isAbsolute(local) && local !== '..' && !local.startsWith(`..${sep}`);
+  const allowedRoot = directories.map(directory => resolve(projectRoot, directory))
+    .find(directory => isDescendant(relative(directory, requested)));
+  if (!allowedRoot || extname(requested).toLowerCase() !== extension ||
+      relative(allowedRoot, realpathSync(allowedRoot)) !== '') {
+    throw new Error(invalidPath);
+  }
+
+  // Resolve each component using an actual entry from the approved directory.
+  // Symbolic links are neither directories nor regular files for this lookup.
+  const parts = relative(allowedRoot, requested).split(sep);
+  let selected = allowedRoot;
+  for (const [index, part] of parts.entries()) {
+    const entry = readdirSync(selected, { withFileTypes: true }).find(candidate =>
+      candidate.name === part ||
+      (process.platform === 'win32' && candidate.name.toLowerCase() === part.toLowerCase()));
+    const isFile = index === parts.length - 1;
+    if (!entry || !(isFile ? entry.isFile() : entry.isDirectory())) throw new Error(invalidPath);
+    selected = resolve(selected, entry.name);
+  }
+
+  const canonical = realpathSync(selected);
+  if (!isDescendant(relative(allowedRoot, canonical))) throw new Error(invalidPath);
+  return readFileSync(canonical, 'utf8');
 }
 
 function required(value, name) {

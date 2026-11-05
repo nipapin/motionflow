@@ -1,9 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { createRequire } from 'node:module';
+import { register } from 'node:module';
 import env from '@next/env';
 import mysql from 'mysql2/promise';
-import ts from 'typescript';
 import { HeadObjectCommand } from '@aws-sdk/client-s3';
 
 // Defaults to a read-only plan. --apply binds the four validated releases and
@@ -12,18 +11,7 @@ env.loadEnvConfig(process.cwd());
 const apply = process.argv.includes('--apply');
 const envArg = process.argv.find(arg => arg.startsWith('--env-file='));
 const envFile = path.resolve(envArg?.slice('--env-file='.length) || '.env.local');
-const require = createRequire(import.meta.url), cache = new Map();
-function load(name) {
-  if (name === 'server-only') return {};
-  if (!name.startsWith('@/')) return require(name);
-  if (cache.has(name)) return cache.get(name);
-  const code = ts.transpileModule(fs.readFileSync(path.resolve(name.slice(2) + '.ts'), 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
-  }).outputText;
-  const module = { exports: {} }; cache.set(name, module.exports);
-  new Function('require', 'module', 'exports', code)(load, module, module.exports);
-  return module.exports;
-}
+register('./lib/server-typescript-loader.mjs', import.meta.url);
 const authorId = 900000001;
 const releases = [
   { id: 283, host: 'AE', version: '1.2.0', key: 'odin-pro-ae.zip' },
@@ -39,8 +27,8 @@ try {
   const row = authors[0];
   if (row?.slug !== 'odin' || row.r2_bucket !== 'motionflow-odin') throw Error('Unexpected Odin author or bucket');
   const author = { id: authorId, slug: 'odin', r2Bucket: row.r2_bucket };
-  const { loadPackStructureFromR2 } = load('@/lib/packages-pack-structure');
-  const { getR2Client } = load('@/lib/r2-storage');
+  const { loadPackStructureFromR2 } = await import('../lib/packages-pack-structure.ts');
+  const { getR2Client } = await import('../lib/r2-storage.ts');
   for (const release of releases) {
     await getR2Client().send(new HeadObjectCommand({ Bucket: row.r2_bucket, Key: release.key }));
     const result = await loadPackStructureFromR2({ author, project: { id: release.id, name: 'Odin Pro', version: release.version, downloadKey: release.key } });

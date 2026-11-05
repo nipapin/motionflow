@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
-import vm from "node:vm";
+import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
 import { Readable } from "node:stream";
 import ts from "typescript";
 
@@ -21,12 +20,13 @@ function loader(mocks = {}) {
     if (!specifier.startsWith("@/")) return require(specifier);
     if (cache.has(specifier)) return cache.get(specifier).exports;
     const filename = path.join(root, `${specifier.slice(2)}.ts`);
-    const source = ts.transpileModule(readFileSync(filename, "utf8").replaceAll("import.meta.url", JSON.stringify(pathToFileURL(filename).href)), {
+    const compiledFixture = compileTestFixture(filename, {
+      replaceImportMetaUrl: true,
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
-    }).outputText;
+    });
     const module = { exports: {} };
     cache.set(specifier, module);
-    vm.runInThisContext(`(function(require,module,exports){${source}\n})`, { filename })(load, module, module.exports);
+    compiledFixture.runModule({ require: load, module, exports: module.exports });
     return module.exports;
   }
   return load;
@@ -112,7 +112,7 @@ test("Odin writes behind the custom server proxy accept only the public origin a
   for (const headers of [
     { origin: "https://evil.test" },
     { origin: "https://0.0.0.0:3000" },
-    { origin: "http://motionflow.pro" },
+    { origin: "http://motionflow.pro" }, // NOSONAR: S5332. The test asserts that an insecure origin is rejected.
     { origin: "null" },
     { origin: "" },
     { origin: "https://evil.test", "x-forwarded-host": "evil.test" },

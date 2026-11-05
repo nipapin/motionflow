@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
-import vm from "node:vm";
+import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
 import ts from "typescript";
 import mysql from "mysql2/promise";
 
@@ -24,11 +24,11 @@ const scopedPool = {
   getConnection: async () => wrapConnection(await pool.getConnection()),
 };
 function load(file, imports) {
-  const code = ts.transpileModule(readFileSync(new URL(file, import.meta.url), "utf8"), {
+  const compiledFixture = compileTestFixture(new URL(file, import.meta.url), {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
-  }).outputText;
+  });
   const exports = {};
-  vm.runInNewContext(code, { exports, Buffer, Response, console, require(name) {
+  compiledFixture.runIsolated({ exports, Buffer, Response, console, require(name) {
     if (name === "server-only") return {};
     if (!Object.hasOwn(imports, name)) throw new Error(`Unexpected import ${name}`);
     return imports[name];

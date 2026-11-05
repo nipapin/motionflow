@@ -39,17 +39,6 @@ function adminPaymentId(): string {
   return `admin_${crypto.randomUUID().replace(/-/g, "")}`;
 }
 
-function generatePurchaseCode(
-  itemId: number,
-  buyerId: number,
-  paymentId: string,
-): string {
-  return crypto
-    .createHash("md5")
-    .update(`order${itemId}${buyerId}${paymentId}`)
-    .digest("hex");
-}
-
 function likeContains(q: string): string {
   return `%${q.replace(/[\\%_]/g, "\\$&")}%`;
 }
@@ -469,7 +458,7 @@ export async function grantAdminUserPurchase(opts: {
   }
 
   const paymentId = adminPaymentId();
-  const purchaseCode = generatePurchaseCode(opts.itemId, opts.userId, paymentId);
+  const purchaseCode = crypto.randomBytes(16).toString("hex");
   const [ins] = await pool.execute<ResultSetHeader>(
     `INSERT INTO \`${SOLD_TABLE}\`
        (buyer_id, author_id, item_id, status, payment_id,

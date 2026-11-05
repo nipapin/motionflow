@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { test } from "node:test";
-import vm from "node:vm";
+import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
 import ts from "typescript";
 const require = createRequire(import.meta.url);
 
@@ -13,11 +12,11 @@ function loader(mocks = {}, env = {}, globals = {}) {
     if (name === "server-only") return {};
     if (!name.startsWith("@/")) return require(name);
     if (cache.has(name)) return cache.get(name);
-    const code = ts.transpileModule(readFileSync(new URL(`../${name.slice(2)}.ts`, import.meta.url), "utf8"), {
+    const compiledFixture = compileTestFixture(new URL(`../${name.slice(2)}.ts`, import.meta.url), {
       compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
-    }).outputText;
+    });
     const exports = {}; cache.set(name, exports);
-    vm.runInNewContext(code, { exports, require: load, process: { env }, URL, URLSearchParams, Request, Response,
+    compiledFixture.runIsolated({ exports, require: load, process: { env }, URL, URLSearchParams, Request, Response,
       AbortSignal, Buffer, console: { error() {} }, ...globals });
     return exports;
   }
@@ -134,7 +133,8 @@ test("rate limits retain the last saved page; simultaneous sync is rejected", as
 
 test("provider pagination cannot redirect the API key to another host", () => {
   const { replicateNextCursor } = syncFixture();
-  for (const url of ["https://evil.test/v1/predictions?cursor=1", "http://api.replicate.com/v1/predictions?cursor=1",
+  const insecureUrl = "http://api.replicate.com/v1/predictions?cursor=1"; // NOSONAR: S5332. The test asserts that HTTP is rejected before any request.
+  for (const url of ["https://evil.test/v1/predictions?cursor=1", insecureUrl,
     "https://api.replicate.com/v1/models?cursor=1", "https://user:secret@api.replicate.com/v1/predictions?cursor=1"]) {
     assert.throws(() => replicateNextCursor(url));
   }

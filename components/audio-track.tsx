@@ -41,18 +41,26 @@ export function AudioTrack({
 
   return (
     <div
-      className={
-        containerClassName ??
-        "group flex items-center gap-3 px-3 py-4 sm:gap-4 sm:px-5 hover:bg-foreground/2 smooth cursor-pointer"
-      }
-      onClick={onClick}
+      className={cn(
+        "relative",
+        containerClassName ?? "group flex items-center gap-3 px-3 py-4 sm:gap-4 sm:px-5 hover:bg-foreground/2 smooth",
+        onClick && "cursor-pointer",
+      )}
     >
+      {onClick && (
+        <button
+          type="button"
+          aria-label={`View ${product.name}`}
+          className="absolute inset-0 z-10 size-full focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-500"
+          onClick={onClick}
+        />
+      )}
       <WaveformPlayer
         audioUrl={audioUrl}
         initialDuration={productAudioDurationSeconds(product)}
         className="flex-1 min-w-0 gap-2 sm:gap-4"
-        buttonClassName="w-9 h-9 sm:w-10 sm:h-10"
-        waveformClassName="h-8 sm:h-10"
+        buttonClassName="relative z-20 w-9 h-9 sm:w-10 sm:h-10"
+        waveformClassName="pointer-events-none z-20 h-8 sm:pointer-events-auto sm:h-10"
         timeClassName="hidden sm:inline"
         hideWaveformOnMobile
         trackMeta={{ title: product.name, subtitle: productCategoryLabel(product) }}
@@ -73,7 +81,7 @@ export function AudioTrack({
             <button
               type="button"
               className={cn(
-                "w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-full smooth",
+                "relative z-20 w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-full smooth",
                 favorited
                   ? "text-red-400 hover:bg-red-500/10"
                   : "text-muted-foreground hover:text-foreground hover:bg-foreground/5",
@@ -91,7 +99,7 @@ export function AudioTrack({
             {!hideDownloadButton && !product.files.no_file && (
               <button
                 type="button"
-                className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-foreground/5 rounded-full smooth"
+                className="relative z-20 w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-foreground/5 rounded-full smooth"
                 aria-label="Download"
                 onClick={(e) => {
                   e.stopPropagation();

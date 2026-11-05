@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Loader2, Paperclip, Send, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -58,6 +58,7 @@ export function ContactPageClient() {
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
     const [status, setStatus] = useState<Status>("idle");
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const fileInputId = useId();
 
     const isOther = formData.requestType === "other";
     const isSending = status === "sending";
@@ -336,7 +337,7 @@ export function ContactPageClient() {
             </div>
 
             <div className="mb-8">
-                <label className="block text-sm font-medium text-foreground mb-2">
+                <label htmlFor={fileInputId} className="block text-sm font-medium text-foreground mb-2">
                     Attach a file (optional)
                 </label>
                 <div className="flex items-center gap-3 flex-wrap">
@@ -351,6 +352,7 @@ export function ContactPageClient() {
                     </button>
                     <input
                         ref={fileInputRef}
+                        id={fileInputId}
                         type="file"
                         name="attachFile"
                         accept=".jpg,.jpeg,.png,.zip"

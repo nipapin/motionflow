@@ -1,17 +1,16 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import vm from "node:vm";
+import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import ts from "typescript";
 const require = createRequire(import.meta.url);
 function load(file, imports = {}, globals = {}) {
-  const code = ts.transpileModule(readFileSync(new URL(file, import.meta.url), "utf8"), {
+  const compiledFixture = compileTestFixture(new URL(file, import.meta.url), {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText;
+  });
   const exports = {};
-  vm.runInNewContext(code, { exports, Buffer, URL, URLSearchParams, Blob, crypto: { randomUUID }, process: { env: {} },
+  compiledFixture.runIsolated({ exports, Buffer, URL, URLSearchParams, Blob, crypto: { randomUUID }, process: { env: {} },
     console: { error() {}, warn() {} }, require(name) {
       if (name === "server-only") return {};
       if (Object.hasOwn(imports, name)) return imports[name];

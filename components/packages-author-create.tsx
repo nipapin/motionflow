@@ -95,7 +95,7 @@ export function PackagesAuthorCreate() {
       const data = await res.json() as { bucket?: string; message?: string };
       if (!res.ok || !data.bucket) throw new Error(data.message || "Could not create the bucket");
       const bucket = data.bucket;
-      setBuckets((current) => [...new Set([...current, bucket])].sort());
+      setBuckets((current) => [...new Set([...current, bucket])].sort((a, b) => a.localeCompare(b)));
       setR2Bucket(bucket);
       setBucketsError(false);
       setBucketMode("existing");

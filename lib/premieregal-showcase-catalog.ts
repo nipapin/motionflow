@@ -75,7 +75,7 @@ function basename(fileName: string): string {
  */
 export function premieregalShowcaseMediaUrl(relativeKey: string): string {
   const normalized = relativeKey.replace(/^\/+/, "");
-  const cdn = process.env.R2_PREMIEREGAL_CDN?.trim().replace(/\/+$/, "");
+  const cdn = process.env.R2_PREMIEREGAL_CDN?.trim().replace(/(?<!\/)\/+$/, "");
   if (cdn) {
     const fullKey = `${PREMIEREGAL_SHOWCASE_PREFIX}${normalized}`;
     const encoded = fullKey

@@ -13,7 +13,7 @@ export function createRunPayload(env = process.env) {
   } catch { /* Manual runs can still read the checked-out commit below. */ }
   if (!commitMessage && /^[a-f0-9]{40}$/i.test(sha ?? "")) {
     try {
-      commitMessage = execFileSync("git", ["show", "--no-patch", "--format=%B", sha], {
+      commitMessage = execFileSync("/usr/bin/git", ["show", "--no-patch", "--format=%B", sha], {
         encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 5000,
       }).trim();
     } catch { /* Missing metadata must not prevent a deployment notification. */ }

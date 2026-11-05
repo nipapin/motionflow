@@ -229,7 +229,7 @@ export function compareVersionsAsc(a: string, b: string): number {
     const dash = clean.indexOf("-");
     const core = (dash >= 0 ? clean.slice(0, dash) : clean)
       .split(".")
-      .map((x) => parseInt(x, 10) || 0);
+      .map((x) => Number.parseInt(x, 10) || 0);
     const pre = dash >= 0 ? clean.slice(dash + 1) : null;
     return { core, pre };
   };
@@ -245,7 +245,7 @@ export function compareVersionsAsc(a: string, b: string): number {
   if (A.pre === null && B.pre === null) return 0;
   const preNum = (p: string) => {
     const m = p.match(/beta\.(\d+)/i);
-    return m ? parseInt(m[1], 10) : 0;
+    return m ? Number.parseInt(m[1], 10) : 0;
   };
   return preNum(A.pre!) - preNum(B.pre!);
 }

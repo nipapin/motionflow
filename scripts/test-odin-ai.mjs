@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import vm from "node:vm";
+import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
 import ts from "typescript";
 
 const require = createRequire(import.meta.url);
@@ -14,12 +13,12 @@ function loader(mocks = {}, globals = {}) {
     if (!name.startsWith("@/")) return require(name);
     if (cache.has(name)) return cache.get(name).exports;
     const url = new URL(`../${name.slice(2)}.ts`, import.meta.url);
-    const code = ts.transpileModule(readFileSync(url, "utf8"), {
+    const compiledFixture = compileTestFixture(url, {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
-    }).outputText;
+    });
     const mod = { exports: {} };
     cache.set(name, mod);
-    vm.runInThisContext(`(function(require,module,exports,${Object.keys(globals).join(",")}){${code}\n})`, { filename: url.pathname })(load, mod, mod.exports, ...Object.values(globals));
+    compiledFixture.runModule({ require: load, module: mod, exports: mod.exports, ...globals });
     return mod.exports;
   }
   return load;
@@ -128,7 +127,7 @@ test("100 monthly generations are shared across tools/devices and reset only in 
 
 test("invalid costs and database failures cannot grant or consume credits", async () => {
   const f = ledger();
-  for (const amount of [-1, NaN, Infinity, 0.5]) await assert.rejects(f.api.consumeOdinAi(user, amount), /Invalid/);
+  for (const amount of [-1, Number.NaN, Infinity, 0.5]) await assert.rejects(f.api.consumeOdinAi(user, amount), /Invalid/);
   assert.equal(f.calls, 0);
   f.failUpdate(true);
   await assert.rejects(f.api.consumeOdinAi(user, 1), /DB failure/);
