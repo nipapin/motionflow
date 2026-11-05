@@ -1,18 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { readTestFixture, runIsolatedFixture } from "./lib/test-fixture-runtime.mjs";
+import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
 import ts from 'typescript';
 
 const require = createRequire(import.meta.url);
 function load(file, mocks) {
-  const code = ts.transpileModule(readTestFixture(new URL('../lib/' + file + '.ts', import.meta.url)), {
+  const compiledFixture = compileTestFixture(new URL('../lib/' + file + '.ts', import.meta.url), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
-  }).outputText;
+  });
   const module = { exports: {} };
-  runIsolatedFixture(code, { module, exports: module.exports, process: { env: {} }, console, Buffer,
+  compiledFixture.runIsolated({ module, exports: module.exports, process: { env: {} }, console, Buffer,
     require: name => name === 'server-only' ? {} : Object.hasOwn(mocks, name) ? mocks[name] : name.startsWith('@/') ? {} : require(name),
-  }, { filename: file + '.ts' });
+  });
   return module.exports;
 }
 

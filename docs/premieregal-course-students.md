@@ -26,6 +26,8 @@
 $courseCsv = '.campaigns/course-students.csv'
 ```
 
+CSV-файл должен находиться в `.campaigns`. Шаблоны JSON можно хранить в `.campaigns` или `docs/email-templates`. Команда проверяет фактический путь файла после разрешения символических ссылок.
+
 Проверка формата CSV, без базы и рассылки:
 
 ```powershell

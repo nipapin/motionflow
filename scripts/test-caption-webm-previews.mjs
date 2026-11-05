@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readTestFixture, runIsolatedFixture } from "./lib/test-fixture-runtime.mjs";
+import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
 import ts from "typescript";
 
 function catalog(keys) {
@@ -10,10 +10,10 @@ function catalog(keys) {
     "@/lib/r2-storage": { getR2Bucket: () => "public", getR2PrivateBucket: () => "public",
       getR2Client: () => ({ send: async () => ({ Contents: keys.map(Key => ({ Key })) }) }),
       r2PublicUrlForKey: key => "https://cdn.example.test/" + key.split("/").map(encodeURIComponent).join("/") } };
-  const code = ts.transpileModule(readTestFixture(new URL("../lib/captions-catalog.ts", import.meta.url)), {
+  const compiledFixture = compileTestFixture(new URL("../lib/captions-catalog.ts", import.meta.url), {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
-  }).outputText;
-  runIsolatedFixture(code, { exports, require: name => { if (!(name in imports)) throw Error(name); return imports[name]; } });
+  });
+  compiledFixture.runIsolated({ exports, require: name => { if (!(name in imports)) throw Error(name); return imports[name]; } });
   return exports;
 }
 

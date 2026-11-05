@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { test } from 'node:test';
-import { readTestFixture, runIsolatedFixture } from "./lib/test-fixture-runtime.mjs";
+import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
 import { createRequire } from 'node:module';
 import crypto from 'node:crypto';
 import path from 'node:path';
@@ -316,9 +316,10 @@ test('MySQL: both cabinets read stored movements, pending states and current use
     const pending=sale({id:'txn_pending',status:'paid'});pending.details.payout_totals=null;
     await f.engine.transaction(pending,source);
     const require=createRequire(import.meta.url), ts=require('typescript');
-    const body=readTestFixture(new URL('../lib/paddle-actual.ts',import.meta.url));
-    const code=ts.transpileModule(body,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
-    const exported={};runIsolatedFixture(code,{exports:exported,process,console,require:name=>{
+    const compiledFixture = compileTestFixture(new URL('../lib/paddle-actual.ts', import.meta.url), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    });
+    const exported={};compiledFixture.runIsolated({exports:exported,process,console,require:name=>{
       if(name==='server-only')return {};
       if(name==='@/lib/db')return {getPool:()=>({execute:f.conn.execute.bind(f.conn)})};
       if(name==='@/lib/paddle-api')return {};
@@ -337,9 +338,10 @@ test('MySQL: both cabinets read stored movements, pending states and current use
     const phpEntries=[];
     for(const [,sql,params] of queries){const [rows]=await f.conn.execute(sql,[params==='$userId'?11:'11']);phpEntries.push(...rows);}
     assert.equal(phpEntries.length,3);
-    const componentCode=ts.transpileModule(readTestFixture(new URL('../components/paddle-actual-earnings.ts',import.meta.url)),
-      {compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
-    const component={};runIsolatedFixture(componentCode,{exports:component,require:name=>name==='@/lib/paddle-actual'?exported:require(name)});
+    const componentFixture = compileTestFixture(new URL('../components/paddle-actual-earnings.ts', import.meta.url), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    });
+    const component={};componentFixture.runIsolated({exports:component,require:name=>name==='@/lib/paddle-actual'?exported:require(name)});
     const html=require('react-dom/server').renderToStaticMarkup(await component.ActualPaddleEarnings({userId:11}));
     assert.match(html,/31\.50 USD/);assert.match(html,/-15\.75 USD/);assert.match(html,/Pending/);
   } finally {await f.close();}
@@ -347,9 +349,10 @@ test('MySQL: both cabinets read stored movements, pending states and current use
 
 async function serverFixture({actualResult={handled:true,status:'applied',buyerId:1,fresh:false},isActual=true}={}) {
   const require=createRequire(import.meta.url), ts=require('typescript'), counts={reversals:0,sql:0};
-  const code=ts.transpileModule(readTestFixture(new URL('../lib/paddle-server.ts',import.meta.url)),
-    {compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
-  const exported={};runIsolatedFixture(code,{exports:exported,process:{env:{}},console,Buffer,setTimeout,require:name=>{
+  const compiledFixture = compileTestFixture(new URL('../lib/paddle-server.ts', import.meta.url), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+  });
+  const exported={};compiledFixture.runIsolated({exports:exported,process:{env:{}},console,Buffer,setTimeout,require:name=>{
     if(name==='server-only')return {};
     if(name==='@/lib/db')return {getPool:()=>({execute:async sql=>{counts.sql++;return [sql.trim().startsWith('SELECT')?[]:{affectedRows:1}];}})};
     if(name==='@/lib/paddle-actual')return {actualAccounting:{transaction:async()=>actualResult},accountingSource:()=>source,isActualSubscription:async()=>isActual};
@@ -380,9 +383,10 @@ test('router: past_due preserves both historical and journal-owned author earnin
 test('Laravel bridge: HMAC, timestamp and environment are checked before financial processing',async()=>{
   const require=createRequire(import.meta.url), ts=require('typescript'), secret='test-bridge-secret-with-at-least-32-characters';
   const route={};let calls=0;
-  const code=ts.transpileModule(readTestFixture(new URL('../app/(main)/api/internal/paddle-accounting/route.ts',import.meta.url)),
-    {compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
-  runIsolatedFixture(code,{exports:route,console:{error(){}},Buffer,require:name=>{
+  const compiledFixture = compileTestFixture(new URL('../app/(main)/api/internal/paddle-accounting/route.ts', import.meta.url), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+  });
+  compiledFixture.runIsolated({exports:route,console:{error(){}},Buffer,require:name=>{
     if(name==='next/server')return {NextResponse:{json:(body,options)=>({body,status:options?.status??200})}};
     if(name==='@/lib/paddle-accounting-config')return {getAccountingBridgeConfig:async()=>({bridgeSecret:secret,environment:'production'})};
     if(name==='@/lib/spunkram-paddle-config')return {SPUNKRAM_AUTHOR_ID:1691};

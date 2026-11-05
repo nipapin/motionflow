@@ -80,11 +80,10 @@ async function fetchNotification(ntfId, base) {
       Accept: "application/json",
     },
   });
-  const text = await res.text();
   if (!res.ok) {
-    throw new Error(`GET /notifications/${ntfId} failed (${res.status}): ${text}`);
+    throw new Error(`Paddle notification lookup failed with HTTP ${res.status}`);
   }
-  const json = JSON.parse(text);
+  const json = await res.json();
   const notification = json?.data;
   const payload = notification?.payload;
   if (!payload?.event_id || !payload?.event_type || !payload?.data) {
@@ -205,13 +204,9 @@ async function main() {
       console.log(`HTTP ${result.status} ${trimmed}`);
       if (result.status >= 200 && result.status < 300) okCount += 1;
       else errCount += 1;
-    } catch (err) {
+    } catch {
       missingCount += 1;
-      console.error(JSON.stringify({
-        notification_id: ntfId,
-        status: "failed",
-        message: String(err?.message ?? err),
-      }));
+      console.error(`  ${ntfId}: notification lookup or replay failed`);
     }
   }
 

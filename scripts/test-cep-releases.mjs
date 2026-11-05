@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { createHmac } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { readTestFixture, runModuleFixture } from "./lib/test-fixture-runtime.mjs";
+import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -16,11 +16,11 @@ const require = createRequire(import.meta.url);
 // Run the actual route handlers with publication, auth and HTTP mocked.
 // No environment files, databases, R2 writes or production requests are used.
 function route(relative, mocks, fetchMock = () => assert.fail("Unexpected HTTP request")) {
-  const source = ts.transpileModule(readTestFixture(path.join(root, relative)), {
+  const compiledFixture = compileTestFixture(path.join(root, relative), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  }).outputText;
+  });
   const module = { exports: {} };
-  runModuleFixture(source, {
+  compiledFixture.runModule({
     require: name => Object.hasOwn(mocks, name) ? mocks[name] : require(name),
     module, exports: module.exports, fetch: fetchMock,
   });

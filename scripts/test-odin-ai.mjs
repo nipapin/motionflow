@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createRequire } from "node:module";
-import { readTestFixture, runModuleFixture } from "./lib/test-fixture-runtime.mjs";
+import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
 import ts from "typescript";
 
 const require = createRequire(import.meta.url);
@@ -13,12 +13,12 @@ function loader(mocks = {}, globals = {}) {
     if (!name.startsWith("@/")) return require(name);
     if (cache.has(name)) return cache.get(name).exports;
     const url = new URL(`../${name.slice(2)}.ts`, import.meta.url);
-    const code = ts.transpileModule(readTestFixture(url), {
+    const compiledFixture = compileTestFixture(url, {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
-    }).outputText;
+    });
     const mod = { exports: {} };
     cache.set(name, mod);
-    runModuleFixture(code, { require: load, module: mod, exports: mod.exports, ...globals }, url.pathname);
+    compiledFixture.runModule({ require: load, module: mod, exports: mod.exports, ...globals });
     return mod.exports;
   }
   return load;

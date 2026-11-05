@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { readTestFixture, runModuleFixture } from "./lib/test-fixture-runtime.mjs";
+import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
 import ts from "typescript";
 import * as jose from "jose";
 import bcrypt from "bcryptjs";
@@ -29,12 +29,12 @@ function loader(mocks) {
       ? path.join(root, `${specifier.slice(2)}.ts`)
       : path.resolve(parent, `${specifier}.ts`);
     if (cache.has(filename)) return cache.get(filename).exports;
-    const source = ts.transpileModule(readTestFixture(filename), {
+    const compiledFixture = compileTestFixture(filename, {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
-    }).outputText;
+    });
     const module = { exports: {} };
     cache.set(filename, module);
-    runModuleFixture(source, { require: s => load(s, path.dirname(filename)), module, exports: module.exports }, filename);
+    compiledFixture.runModule({ require: s => load(s, path.dirname(filename)), module, exports: module.exports });
     return module.exports;
   }
   return load;

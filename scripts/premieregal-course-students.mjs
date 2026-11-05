@@ -1,6 +1,6 @@
 /** Preparation only until an explicit init/apply/send command is chosen. */
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, realpathSync, statSync } from 'node:fs';
+import { extname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { createHash, randomBytes } from 'node:crypto';
@@ -189,7 +189,7 @@ export async function main(args = process.argv.slice(2)) {
   if (positionals.length > 1 || !['validate', 'init', 'preview', 'apply', 'billing-preview', 'billing-apply', 'mail-preview', 'send'].includes(command)) throw new Error('Unknown command. Use --help');
   if (!/^[a-z0-9][a-z0-9_-]{0,99}$/.test(values.campaign)) throw new Error('Invalid campaign id');
   const campaign = values.campaign;
-  const input = command === 'init' ? null : readParticipants(readFileSync(resolve(required(values.csv, '--csv')), 'utf8'));
+  const input = command === 'init' ? null : readParticipants(readCourseInput(values.csv, '--csv', '.csv', ['.campaigns']));
   for (const p of input?.participants || []) {
     if (p.firstName.length > 255 || p.lastName.length > 255) throw new Error(`Record ${p.line}: name too long`);
   }
@@ -202,8 +202,11 @@ export async function main(args = process.argv.slice(2)) {
   if (existsSync(envFile)) process.loadEnvFile(envFile);
   let template, extensionTemplate, from, siteOrigin;
   if (command === 'send' || command === 'mail-preview') {
-    template = validateTemplate(JSON.parse(readFileSync(resolve(required(values.template, '--template')), 'utf8')));
-    if (values['extension-template']) extensionTemplate = validateTemplate(JSON.parse(readFileSync(resolve(values['extension-template']), 'utf8')));
+    const templateDirectories = ['.campaigns', 'docs/email-templates'];
+    template = validateTemplate(JSON.parse(readCourseInput(values.template, '--template', '.json', templateDirectories)));
+    if (values['extension-template']) {
+      extensionTemplate = validateTemplate(JSON.parse(readCourseInput(values['extension-template'], '--extension-template', '.json', templateDirectories)));
+    }
     from = required(values.from || (process.env.MAIL_FROM_ADDRESS && `Premiere Gal <${process.env.MAIL_FROM_ADDRESS}>`), '--from or MAIL_FROM_ADDRESS');
     const url = new URL(values['site-origin'] || 'https://premieregal.motionflow.pro');
     if (url.protocol !== 'https:' || url.username || url.password || url.pathname !== '/' || url.search || url.hash || /^(localhost|127\.|0\.|\[::1\])/.test(url.hostname)) {
@@ -323,6 +326,24 @@ export async function main(args = process.argv.slice(2)) {
       if (acquiredLock) await conn.execute('SELECT RELEASE_LOCK(?)', [lockName]);
     } finally { await conn.end(); }
   }
+}
+
+function readCourseInput(value, option, extension, directories) {
+  const projectRoot = realpathSync(root);
+  const allowedRoots = directories.map(directory => resolve(projectRoot, directory));
+  const isAllowed = filename => extname(filename).toLowerCase() === extension &&
+    allowedRoots.some(directory => {
+      const local = relative(directory, filename);
+      return local && !isAbsolute(local) && local !== '..' && !local.startsWith(`..${sep}`);
+    });
+
+  const filename = resolve(required(value, option));
+  const invalidPath = `${option} must point to a ${extension} file under ${directories.join(' or ')}`;
+  if (!isAllowed(filename)) throw new Error(invalidPath);
+
+  const canonical = realpathSync(filename);
+  if (!isAllowed(canonical) || !statSync(canonical).isFile()) throw new Error(invalidPath);
+  return readFileSync(canonical, 'utf8');
 }
 
 function required(value, name) {
