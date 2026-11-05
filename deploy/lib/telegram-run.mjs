@@ -23,9 +23,9 @@ export function recentRunSummaries(directory, currentKey) {
     for (const { name } of files) {
       try {
         const state = JSON.parse(readFileSync(join(directory, name), "utf8"));
-        const text = typeof state.translatedCommitMessage === "string" ? state.translatedCommitMessage.trim().slice(0, 300) : "";
+        const text = typeof state.translatedCommitMessage === "string" ? state.translatedCommitMessage.trim().slice(0, 600) : "";
         if (text && !summaries.includes(text)) summaries.push(text);
-        if (summaries.length === 4) break;
+        if (summaries.length === 8) break;
       } catch { /* A missing or malformed previous run must not block a notification. */ }
     }
     return summaries;

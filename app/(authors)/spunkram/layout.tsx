@@ -5,8 +5,8 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/components/auth-provider";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { SpunkramMainHeader } from "@/components/spunkram-main-header";
-import { PaddleProvider } from "@/lib/paddle";
-import { getDefaultPaddleEnvironment } from "@/lib/paddle-accounting-config";
+import { SpunkramPaddleProvider } from "@/components/spunkram-paddle-provider";
+import { getDefaultPaddleCheckoutEnvironment, getDefaultPaddleEnvironment } from "@/lib/paddle-accounting-config";
 import { actualAccountingCatalog, isSpunkramSandboxBuyer } from "@/lib/paddle-actual";
 import { spunkramUsesDefaultLiveAccount } from "@/lib/paddle-accounting/spunkram-credentials.mjs";
 import { spunkramPaddleEnvironment } from "@/lib/spunkram-paddle-config";
@@ -58,10 +58,16 @@ export default async function RootLayout({
 }) {
   const sessionUser = await getSessionUser();
   const sandboxBuyer = !!sessionUser && isSpunkramSandboxBuyer(sessionUser.id);
-  const checkoutToken = await getCheckoutToken(sandboxBuyer).catch((error) => {
-    console.error("[spunkram] Paddle credentials unavailable", error);
-    return "";
-  });
+  const [checkoutToken, marketplaceEnvironment] = await Promise.all([
+    getCheckoutToken(sandboxBuyer).catch((error) => {
+      console.error("[spunkram] Paddle credentials unavailable", error);
+      return "";
+    }),
+    getDefaultPaddleCheckoutEnvironment(),
+  ]);
+  const marketplaceToken = process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN?.trim() ?? "";
+  const marketplaceTokenMatches = marketplaceEnvironment !== null &&
+    marketplaceToken.startsWith(marketplaceEnvironment === "production" ? "live_" : "test_");
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -91,9 +97,9 @@ export default async function RootLayout({
           storageKey="motionflow-theme"
         >
           <AuthProvider initialUser={sessionUser ?? null} reloadAfterSignIn>
-            <PaddleProvider
-              token={checkoutToken}
-              environment={sandboxBuyer ? "sandbox" : spunkramPaddleEnvironment}
+            <SpunkramPaddleProvider
+              storefront={{ token: checkoutToken, environment: sandboxBuyer ? "sandbox" : spunkramPaddleEnvironment }}
+              oneTimeCheckout={{ token: marketplaceToken, environment: marketplaceTokenMatches ? marketplaceEnvironment : null }}
               localSandboxPreview={spunkramLocalSandbox}
               sandboxBuyerIds={spunkramLocalSandbox ? actualAccountingCatalog().sandboxBuyerIds : undefined}
             >
@@ -107,7 +113,7 @@ export default async function RootLayout({
                 <SiteFooter className="left-0!" sidebarCollapsed />
                 <Toaster />
               </div>
-            </PaddleProvider>
+            </SpunkramPaddleProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

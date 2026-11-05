@@ -22,7 +22,7 @@ import {
 import { uploadBufferToR2 } from "@/lib/r2-storage";
 import { issueCaptionsChaptersReceipt } from "@/lib/captions-chapters-receipt";
 import { analyzeZoomPhrases, type ZoomPhrase, type ZoomFrequency } from "@/lib/jumpcut-analysis";
-import { highlightCaptionWords, parseHighlightWordRanges, parseHighlightedCaptionText, CAPTION_HIGHLIGHT_MODEL, CAPTION_HIGHLIGHT_MODEL_INPUT } from "@/lib/caption-highlights";
+import { highlightCaptionWords, parseHighlightWordRanges, parseHighlightedCaptionText, CAPTION_HIGHLIGHT_MODEL, captionHighlightModelInput } from "@/lib/caption-highlights";
 import {
   durationGenerationsCost,
   durationFromTimestampChunks,
@@ -289,10 +289,8 @@ async function translateChunks(
 
   const output = await replicate.run(highlights ? CAPTION_HIGHLIGHT_MODEL : TRANSLATE_MODEL, {
     signal,
-    input: {
-      prompt,
-      system_prompt,
-      ...(highlights ? CAPTION_HIGHLIGHT_MODEL_INPUT : { max_tokens: Math.min(8192, Math.max(1024, chunks.length * 40)) }),
+    input: highlights ? captionHighlightModelInput(system_prompt, prompt) : {
+      prompt, system_prompt, max_tokens: Math.min(8192, Math.max(1024, chunks.length * 40)),
     },
   });
 
@@ -546,7 +544,7 @@ export async function POST(req: NextRequest) {
             Number.isFinite(w.start) && Number.isFinite(w.end));
           const marked = await highlightCaptionWords(spoken, async (system_prompt, prompt) => {
             req.signal?.throwIfAborted();
-            const output = await replicate.run(CAPTION_HIGHLIGHT_MODEL, { input: { system_prompt, prompt, ...CAPTION_HIGHLIGHT_MODEL_INPUT }, signal: req.signal });
+            const output = await replicate.run(CAPTION_HIGHLIGHT_MODEL, { input: captionHighlightModelInput(system_prompt, prompt), signal: req.signal });
             return Array.isArray(output) ? output.join("") : String(output ?? "");
           });
           let index = 0;

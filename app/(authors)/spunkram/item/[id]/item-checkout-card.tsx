@@ -1,31 +1,26 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Info } from "lucide-react";
 import { usePaddle } from "@/lib/paddle";
 import { useAuth } from "@/components/auth-provider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  extractSpunkramPriceIdsFromJsonArgs,
   SPUNKRAM_LICENSE_OPTIONS,
   type SpunkramLicenseType,
 } from "@/lib/spunkram-paddle-config";
 
 export function ItemCheckoutCard({
   itemId,
-  itemName,
   basePrice,
-  jsonArgs,
   withoutProjectFile = false,
 }: {
   itemId: number;
-  itemName: string;
   basePrice: number;
-  jsonArgs: string | null;
   withoutProjectFile?: boolean;
 }) {
-  const { paddle, ready, subscribe } = usePaddle();
+  const { paddle, subscribe } = usePaddle();
   const router = useRouter();
   const { user, openSignIn } = useAuth();
   const [licenseType, setLicenseType] = useState<SpunkramLicenseType>("personal");
@@ -33,16 +28,8 @@ export function ItemCheckoutCard({
   const [feedback, setFeedback] = useState<string | null>(null);
   const awaitingCheckout = useRef(false);
 
-  const pricing = useMemo(
-    () => extractSpunkramPriceIdsFromJsonArgs(jsonArgs),
-    [jsonArgs],
-  );
   const selected = SPUNKRAM_LICENSE_OPTIONS.find((opt) => opt.value === licenseType)!;
   const checkoutAmount = Math.max(0, Number(basePrice) || 0) * selected.multiplier;
-  const selectedPriceId =
-    licenseType === "commercial" ? (pricing.commercial ?? pricing.personal) : pricing.personal;
-  const selectedQuantity =
-    licenseType === "commercial" && !pricing.commercial ? selected.multiplier : 1;
 
   useEffect(() => {
     return subscribe((event) => {
@@ -61,19 +48,16 @@ export function ItemCheckoutCard({
     });
   }, [subscribe, paddle, router]);
 
-  const openCheckout = () => {
+  const openCheckout = async () => {
+    if (awaitingCheckout.current) return;
     setFeedback(null);
 
     if (!user) {
       openSignIn("signin");
       return;
     }
-    if (!selectedPriceId) {
-      setFeedback("Paddle price id is missing in item json_args.");
-      return;
-    }
     if (!paddle) {
-      setFeedback(ready ? "Checkout is not ready yet. Please retry." : "Checkout is still loading.");
+      setFeedback("Secure checkout is loading. Please try again in a moment.");
       return;
     }
 
@@ -81,27 +65,29 @@ export function ItemCheckoutCard({
     awaitingCheckout.current = true;
 
     try {
+      const response = await fetch("/api/spunkram/item-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId, license: licenseType }),
+      });
+      const result = await response.json() as { transactionId?: string; error?: string };
+      if (!response.ok || !result.transactionId) {
+        throw new Error(result.error || "Could not prepare secure checkout.");
+      }
+
       paddle.Checkout.open({
         settings: {
           displayMode: "overlay",
           theme: "light",
           allowLogout: false,
         },
-        items: [{ priceId: selectedPriceId, quantity: selectedQuantity }],
+        transactionId: result.transactionId,
         customer: { email: user.email ?? undefined },
-        customData: {
-          buyer_id: Number(user.id),
-          kind: "spunkram_item",
-          item_id: Number(itemId),
-          itemName,
-          license: licenseType,
-          pricingSource: pricing.commercial && licenseType === "commercial" ? "json_args_commercial_price" : "json_args_personal_price",
-        },
       });
     } catch (err) {
       awaitingCheckout.current = false;
       setIsOpening(false);
-      setFeedback("Could not open checkout popup. Try again.");
+      setFeedback(err instanceof Error ? err.message : "Could not open checkout. Please try again.");
       console.error("[spunkram-item] paddle checkout open failed:", err);
     }
   };
@@ -135,6 +121,7 @@ export function ItemCheckoutCard({
           </span>
           <Select
             value={licenseType}
+            disabled={isOpening}
             onValueChange={(value) => setLicenseType(value as SpunkramLicenseType)}
           >
             <SelectTrigger className="mt-1.5 !h-8 w-full rounded-lg border-white/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] px-2.5 !py-1 text-xs font-medium text-foreground shadow-[inset_0_1px_0_0_rgb(255_255_255/0.14)] focus-visible:border-brand-500/70 focus-visible:ring-brand-500/20 data-placeholder:text-foreground">

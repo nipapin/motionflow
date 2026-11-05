@@ -152,6 +152,7 @@ export interface PaddleApiSubscription {
 export interface PaddleApiPrice {
   id: string;
   product_id: string;
+  status?: string;
   name?: string | null;
   unit_price?: PaddleApiUnitPrice | null;
   billing_cycle?: PaddleApiBillingCycle | null;

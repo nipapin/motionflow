@@ -16,12 +16,23 @@ exec 9>"$root/deploy.lock"
 flock -n 9 || { echo 'Deployment already running' >&2; exit 1; }
 cd "$incoming"
 sha256sum -c motionflow.tgz.sha256
+check_release_health() {
+  curl --fail --silent --max-time 10 http://127.0.0.1:3000/api/deploy-health | node "$release/scripts/check-ci-health.mjs" "$id"
+}
 previous=""
 config="$legacy/ecosystem.config.cjs"
 if [[ -L "$root/current" ]]; then
   previous=$(readlink -f "$root/current")
   [[ "$previous" == "$root/releases/"* && -f "$previous/ecosystem.release.config.cjs" ]]
   config="$previous/ecosystem.release.config.cjs"
+fi
+if [[ "$previous" == "$release" ]]; then
+  if check_release_health; then
+    echo "Release $id is already active and healthy."
+    exit 0
+  fi
+  echo "Current release $id failed readiness." >&2
+  exit 1
 fi
 [[ ! -e "$release" ]] || { echo 'Release exists; rerun all jobs with a new attempt' >&2; exit 1; }
 stage=$(mktemp -d "$root/releases/.staging-$id-XXXXXX")
@@ -71,7 +82,7 @@ switched=1
 start_app "$release/ecosystem.release.config.cjs"
 healthy=0
 for attempt in $(seq 1 25); do
-  if curl --fail --silent --max-time 10 http://127.0.0.1:3000/api/deploy-health | node "$release/scripts/check-ci-health.mjs" "$id"; then
+  if check_release_health; then
     healthy=1; break
   fi
   sleep 2
