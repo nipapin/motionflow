@@ -1,11 +1,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readFileSync } from "node:fs";
+import { readTestFixture, runModuleFixture } from "./lib/test-fixture-runtime.mjs";
 import { createRequire } from "node:module";
 import ts from "typescript";
 import { NextRequest } from "next/server.js";
 const require = createRequire(import.meta.url);
-function load(file,mocks){const module={exports:{}};const source=ts.transpileModule(readFileSync(new URL('../'+file,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;new Function('require','module','exports',source)(name=>Object.hasOwn(mocks,name)?mocks[name]:name==='server-only'?{}:require(name),module,module.exports);return module.exports}
+function load(file, mocks) {
+  const module = { exports: {} };
+  const source = ts.transpileModule(readTestFixture(new URL('../' + file, import.meta.url)), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  runModuleFixture(source, {
+    require: name => Object.hasOwn(mocks, name) ? mocks[name] : name === 'server-only' ? {} : require(name),
+    module,
+    exports: module.exports,
+  });
+  return module.exports;
+}
 const sha='a'.repeat(64),raw='b'.repeat(64);
 const manifest=()=>({schema:1,product:'motionflow',version:'0.3.0',assets:[{id:'cep',key:'public/downloads/motionflow/0.3.0/motionflow.zip',bytes:123,sha256:sha},{id:'ffmpeg',key:`public/downloads/motionflow/runtime/ffmpeg/${raw}.exe.gz`,bytes:456,sha256:sha,unpackedBytes:789,unpackedSha256:raw}],setup:{key:'public/downloads/motionflow/0.3.0/MotionFlow-Setup.exe',bytes:100,sha256:sha}});
 test('installer manifest restricts product, keys, sizes and digests',()=>{const {validateInstallerManifest}=load('lib/motionflow-installer.ts',{'@/lib/r2-storage':{}});assert.equal(validateInstallerManifest(manifest()).version,'0.3.0');for(const change of [m=>m.product='spunkram',m=>m.version='1.0.0-beta',m=>m.assets[0].key='private/secret',m=>m.assets[1].unpackedBytes=-1,m=>m.assets[0].bytes=301*1024*1024,m=>m.assets[0].sha256='invalid',m=>m.assets[1].id='cep',m=>m.setup.key='private/setup']){const m=manifest();change(m);assert.throws(()=>validateInstallerManifest(m))}});
