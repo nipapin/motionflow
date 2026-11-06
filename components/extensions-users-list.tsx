@@ -40,6 +40,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ExtensionsGiveAccessDialog } from "@/components/extensions-give-access-dialog";
+import { AuthorBulkGenerations } from "@/components/author-bulk-generations";
 import { cn } from "@/lib/utils";
 import { DateFilter, FilterSelect, UserCsvExport } from "@/components/user-list-controls";
 import { ADMIN_USER_SOLD_FILTERS, ADMIN_USER_SUB_FILTERS, ADMIN_USER_VERIFIED_FILTERS } from "@/lib/admin-users-shared";
@@ -96,6 +97,7 @@ type ExtensionUserGroup = {
 };
 
 type ListResponse = {
+  credits_supported?: boolean;
   client?: string | null;
   extension_name?: string | null;
   users: ExtensionUserGroup[];
@@ -348,6 +350,7 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [extensionName, setExtensionName] = useState<string | null>(null);
+  const [creditsSupported, setCreditsSupported] = useState(false);
   const [q, setQ] = useState("");
   const [qDraft, setQDraft] = useState("");
   const [filters, setFilters] = useState<ExtensionUserFilters>(DEFAULT_EXTENSION_USER_FILTERS);
@@ -418,6 +421,7 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
       setDeviceTotal(data.device_total ?? 0);
       setPageSize(data.page_size ?? 50);
       setExtensionName(data.extension_name ?? null);
+      setCreditsSupported(data.credits_supported === true);
     } catch (e) {
       if (controller.signal.aborted) return;
       setError(e instanceof Error ? e.message : "Failed to load users");
@@ -590,6 +594,7 @@ export function ExtensionsUsersList({ authorId }: { authorId: number }) {
           Refresh
         </Button>
         <UserCsvExport endpoint={`/api/extensions/${authorId}/users`} params={exportParams} disabled={loading || Boolean(dateError)} />
+        {creditsSupported ? <AuthorBulkGenerations authorId={authorId} query={exportParams.toString()} disabled={loading || Boolean(dateError)} /> : null}
       </div>
 
       <div className="flex flex-wrap items-end gap-3">

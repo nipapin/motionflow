@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getPackagesAuthorById, isPackagesAdmin } from "@/lib/packages-admin";
+import { getCepClientByAuthorId, ODIN_CEP_CLIENT } from "@/lib/cep-client-registry";
 import { exportExtensionUsersForAuthor, extensionUsersTableFacet, listExtensionUsersForAuthor } from "@/lib/cep-extension-users";
 import { isTableQueryError, parseTableView } from "@/lib/table-query";
 import { parseExtensionUserFilters, validateUserDateRanges } from "@/lib/user-list-filters";
@@ -52,7 +53,8 @@ export async function GET(
       return userCsvResponse(csv, `author-${authorId}-users-${format}-${new Date().toISOString().slice(0, 10)}.csv`);
     }
     const result = await listExtensionUsersForAuthor({ authorId, q, page, filters, tableView });
-    return NextResponse.json(result);
+    const cfg = getCepClientByAuthorId(authorId);
+    return NextResponse.json({ ...result, credits_supported: Boolean(cfg && !cfg.platformSubscription && cfg.client !== ODIN_CEP_CLIENT) });
   } catch (err) {
     if (isTableQueryError(err)) return NextResponse.json({ error: "Invalid column filters or sorting." }, { status: 400 });
     console.error("[extensions/users GET]", err);
