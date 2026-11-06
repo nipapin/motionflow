@@ -1,12 +1,13 @@
 import "server-only";
 import type { AiUsageIdentity } from "@/lib/ai-usage-shared";
 import { saveAiPrediction } from "@/lib/ai-usage-store";
+import { queuedReplicateFetch } from "@/lib/replicate-request-queue";
 
 /** Attribute provider prediction IDs at creation, including each step of chained models. */
 export function trackedReplicateFetch(user: AiUsageIdentity): typeof fetch {
   const identity = { id: user.id, email: user.email, source: user.source, cepClient: user.cepClient };
   return async (input, init) => {
-    const response = await fetch(input, init);
+    const response = await queuedReplicateFetch(identity, input, init);
     // Replicate passes a URL object, whereas Request exposes its address as .url.
     // All accounting work is best-effort: a successful provider response must
     // reach the caller even if address parsing, JSON decoding or storage fails.

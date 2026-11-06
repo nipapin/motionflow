@@ -68,8 +68,10 @@ test("prediction persistence excludes prompts and secrets and retains provider m
 
 test("tracking preserves the response and attributes every prediction, even on shared accounts", async () => {
   const recorded = [], response = Response.json(prediction);
-  const { trackedReplicateFetch } = loader({ "@/lib/ai-usage-store": { saveAiPrediction: async (p, user) => recorded.push([p, user]) } }, {},
-    { fetch: async () => response })("@/lib/replicate-usage-fetch");
+  const { trackedReplicateFetch } = loader({
+    "@/lib/ai-usage-store": { saveAiPrediction: async (p, user) => recorded.push([p, user]) },
+    "@/lib/replicate-request-queue": { queuedReplicateFetch: async () => response },
+  })("@/lib/replicate-usage-fetch");
   const user = { id: 7, cepClient: "gal-cep" }, tracked = trackedReplicateFetch(user);
   user.cepClient = "spunkram-cep";
   assert.equal(await tracked("https://api.replicate.com/v1/models/owner/model/predictions"), response);
@@ -80,8 +82,10 @@ test("tracking preserves the response and attributes every prediction, even on s
 
 test("a usage-storage failure never interrupts an otherwise successful generation", async () => {
   const response = Response.json(prediction);
-  const { trackedReplicateFetch } = loader({ "@/lib/ai-usage-store": { saveAiPrediction: async () => { throw Error("DB unavailable"); } } }, {},
-    { fetch: async () => response })("@/lib/replicate-usage-fetch");
+  const { trackedReplicateFetch } = loader({
+    "@/lib/ai-usage-store": { saveAiPrediction: async () => { throw Error("DB unavailable"); } },
+    "@/lib/replicate-request-queue": { queuedReplicateFetch: async () => response },
+  })("@/lib/replicate-usage-fetch");
   assert.equal(await trackedReplicateFetch({})("https://api.replicate.com/v1/predictions/p123"), response);
 });
 
