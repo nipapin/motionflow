@@ -284,14 +284,14 @@ export default async function SpunkramItemPage({
           {showSubscriptionPromo ? (
             <section className="card rounded-2xl border border-brand-500/30 bg-[linear-gradient(180deg,rgba(110,60,255,0.16),rgba(110,60,255,0.06))] px-4 py-4 shadow-[inset_0_1px_0_0_rgb(255_255_255/0.12)]">
               <h3 className="text-base font-semibold leading-snug text-white sm:text-lg">
-                Get all projects with Editor from $14.90 per month.
+                All projects in one subscription for $9.90/month.
               </h3>
               <p className="mt-2 text-sm leading-relaxed text-muted">
-                Get access to all items in one convenient subscription.
+                Editor plan · Billed annually.
               </p>
               <div className="mt-4 border-t border-white/12 pt-4">
                 <Link
-                  href="/#pricing"
+                  href="/spunkram#pricing"
                   className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-violet px-4 py-3 text-sm font-semibold text-white shadow-[0_14px_28px_-16px_rgb(110_60_255/0.92)] transition-all hover:bg-brand-violet-hover"
                 >
                   Unlock all projects

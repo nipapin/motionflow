@@ -2,7 +2,7 @@
 
 import { SpunkramText, useSpunkramLanguage } from "@/components/spunkram-language";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Lock } from "lucide-react";
 
 type TabId = "all-in-one" | "one-click" | "drag-drop" | "customize" | "resize";
@@ -31,6 +31,7 @@ const tabs: Array<ShowcaseTab & { id: TabId }> = [
     description:
       "Browse projects, preview results, and apply assets without leaving Premiere Pro or After Effects.",
     videoSrc: "/spunkram/all-in-one.mp4",
+    posterSrc: "/spunkram/all-in-one-poster.jpg",
   },
   {
     id: "one-click",
@@ -39,6 +40,7 @@ const tabs: Array<ShowcaseTab & { id: TabId }> = [
     description:
       "Download the extension and get it running in minutes. Updates are delivered automatically.",
     videoSrc: "/spunkram/install.mp4",
+    posterSrc: "/spunkram/install-poster.jpg",
   },
   {
     id: "drag-drop",
@@ -47,6 +49,7 @@ const tabs: Array<ShowcaseTab & { id: TabId }> = [
     description:
       "Double-click presets, transitions, and titles to apply them to your timeline — no extra steps.",
     videoSrc: "/spunkram/double-click-apply.mp4",
+    posterSrc: "/spunkram/double-click-apply-poster.jpg",
   },
   {
     id: "customize",
@@ -55,6 +58,7 @@ const tabs: Array<ShowcaseTab & { id: TabId }> = [
     description:
       "Swap colors, text, and timing quickly. Designed to be flexible for different styles and formats.",
     videoSrc: "/spunkram/customize.mp4",
+    posterSrc: "/spunkram/customize-poster.jpg",
   },
   {
     id: "resize",
@@ -63,6 +67,7 @@ const tabs: Array<ShowcaseTab & { id: TabId }> = [
     description:
       "Switch between 16:9, 9:16 and 1:1 with smart scaling rules so layouts stay clean.",
     videoSrc: "/spunkram/smart-resize.mp4",
+    posterSrc: "/spunkram/smart-resize-poster.jpg",
   },
 ];
 
@@ -74,6 +79,7 @@ const aiToolsTabs: Array<ShowcaseTab & { id: AiToolsTabId }> = [
     description:
       "Generate accurate subtitles from speech and drop them onto your timeline automatically — no manual typing.",
     videoSrc: "/spunkram/captions.mp4",
+    posterSrc: "/spunkram/captions-poster.jpg",
   },
   {
     id: "chapters",
@@ -82,6 +88,7 @@ const aiToolsTabs: Array<ShowcaseTab & { id: AiToolsTabId }> = [
     description:
       "AI detects scene changes and inserts chapter points for easier navigation and exports.",
     videoSrc: "/spunkram/chapters.mp4",
+    posterSrc: "/spunkram/chapters-poster.jpg",
   },
   {
     id: "silence-remover",
@@ -90,10 +97,12 @@ const aiToolsTabs: Array<ShowcaseTab & { id: AiToolsTabId }> = [
     description:
       "Detect and remove silent gaps automatically to tighten edits and keep the pacing moving.",
     videoSrc: "/spunkram/silence-remover.mp4",
+    posterSrc: "/spunkram/silence-remover-poster.jpg",
   },
   {
     id: "jump-cut",
     videoSrc: "/spunkram/jump-cut.mp4",
+    posterSrc: "/spunkram/jump-cut-poster.jpg",
     label: "Jump Cut",
     title: "Automatic zoom in & out",
     description:
@@ -192,6 +201,25 @@ function scrollToContact() {
   document.getElementById("contact")?.scrollIntoView({ behavior: "smooth" });
 }
 
+function ShowcaseVideo({ src, poster, contain = false, label }: { src: string; poster?: string; contain?: boolean; label?: string }) {
+  const [playing, setPlaying] = useState(false);
+  return (
+    <video
+      aria-label={label}
+      className={`absolute inset-0 w-full h-full ${contain ? "object-contain" : "object-cover"} transition-opacity duration-150 ${playing ? "opacity-100" : "opacity-0"}`}
+      src={src}
+      poster={poster}
+      muted
+      loop
+      playsInline
+      autoPlay
+      onPlaying={() => setPlaying(true)}
+      onWaiting={() => setPlaying(false)}
+      onError={() => setPlaying(false)}
+    />
+  );
+}
+
 function ShowcaseExplorerPanel({
   tabs: panelTabs,
   active,
@@ -211,6 +239,28 @@ function ShowcaseExplorerPanel({
   footerAction?: { label: string; onClick: () => void };
   reversed?: boolean;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    const images: HTMLImageElement[] = [];
+    const preload = () => {
+      for (const item of panelTabs) {
+        if (!item.posterSrc) continue;
+        const image = new Image();
+        image.src = item.posterSrc;
+        images.push(image);
+      }
+    };
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+      preload();
+      observer.disconnect();
+    }, { rootMargin: "400px" });
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, [panelTabs]);
+
   const tab = useMemo(
     () => panelTabs.find((t) => t.id === active) ?? panelTabs[0],
     [active, panelTabs],
@@ -238,14 +288,7 @@ function ShowcaseExplorerPanel({
               />
             )}
             {tab.videoSrc && (
-              <video
-                className="absolute inset-0 w-full h-full object-cover"
-                src={tab.videoSrc}
-                muted
-                loop
-                playsInline
-                autoPlay
-              />
+              <ShowcaseVideo key={tab.videoSrc} src={tab.videoSrc} poster={tab.posterSrc} />
             )}
           </div>
           <div className="p-5 sm:p-6">
@@ -350,7 +393,7 @@ function ShowcaseExplorerPanel({
   );
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+    <div ref={panelRef} className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
       {reversed ? (
         <>
           {switcherColumn}
@@ -447,15 +490,19 @@ export function Showcase() {
                   <div className="card-sheen-pricing pointer-events-none absolute inset-0 z-0" aria-hidden="true" />
                   <div className="relative z-[1] h-full">
                     <div className="relative w-full aspect-video bg-surface-2">
-                      <video
-                        src="/spunkram/stock-footages-v2.mp4"
-                        aria-label={t("Search Stock Footage")}
-                        autoPlay
-                        muted
-                        loop
-                        playsInline
-                        preload="metadata"
+                      {/* Load the first frame near the viewport and keep it behind the video. */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src="/spunkram/stock-footages-poster.jpg"
+                        alt=""
+                        loading="lazy"
                         className="absolute inset-0 w-full h-full object-contain"
+                      />
+                      <ShowcaseVideo
+                        src="/spunkram/stock-footages-v2.mp4"
+                        poster="/spunkram/stock-footages-poster.jpg"
+                        label={t("Search Stock Footage")}
+                        contain
                       />
                     </div>
                     <div className="p-5 sm:p-6">

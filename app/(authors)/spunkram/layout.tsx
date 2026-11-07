@@ -60,7 +60,14 @@ export default async function RootLayout({
   const sandboxBuyer = !!sessionUser && isSpunkramSandboxBuyer(sessionUser.id);
   const [checkoutToken, marketplaceEnvironment] = await Promise.all([
     getCheckoutToken(sandboxBuyer).catch((error) => {
-      console.error("[spunkram] Paddle credentials unavailable", error);
+      const missingLocalKey = process.env.NODE_ENV === "development" &&
+        error instanceof Error &&
+        error.message === "SPUNKRAM_PADDLE_CREDENTIALS_KEY must contain 32 hex-encoded bytes";
+      if (missingLocalKey) {
+        console.warn("[spunkram] Local Paddle checkout is disabled: configure SPUNKRAM_PADDLE_CREDENTIALS_KEY to decrypt saved credentials.");
+      } else {
+        console.error("[spunkram] Paddle credentials unavailable", error);
+      }
       return "";
     }),
     getDefaultPaddleCheckoutEnvironment(),

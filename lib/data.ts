@@ -166,8 +166,8 @@ export const faq = [
     a: "The subscription gives you access to the entire library and all new packs as they are released. A one-time purchase gives you one specific project forever.",
   },
   {
-    q: "Can I cancel the subscription?",
-    a: "Yes, you can cancel in 1 click from your account. You keep access until the end of the paid period.",
+    q: "Where can I download my pack after purchase?",
+    a: "You can download your purchased pack directly in the Spunkram Library extension. Sign in with the same account you used for your purchase.",
   },
   {
     q: "Is there a commercial license?",

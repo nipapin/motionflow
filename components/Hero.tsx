@@ -11,12 +11,12 @@ export function Hero() {
   return (
     <section id="top" className="relative pt-2 pb-10">
       <div className="max-w-7xl mx-auto px-5 sm:px-8">
-        {/* Video 16:9 — sidebar height is locked to video (absolute inset-y-0) */}
-        <div className="relative w-full lg:pr-[calc(18rem+1rem)] xl:pr-[calc(20rem+1rem)]">
+        {/* Let the sidebar keep its natural minimum height on narrower screens. */}
+        <div className="grid w-full grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_18rem] xl:grid-cols-[minmax(0,1fr)_20rem] items-start">
           <VideoTile />
 
-          <aside className="mt-4 flex flex-col gap-4 lg:mt-0 lg:absolute lg:inset-y-0 lg:right-0 lg:w-72 xl:w-80 lg:min-h-0 lg:overflow-hidden">
-            <DownloadTile className="lg:flex-1 lg:min-h-0" />
+          <aside className="flex min-w-0 flex-col gap-4 lg:self-stretch">
+            <DownloadTile className="hidden md:flex lg:flex-1" />
             <TechnicalDetailsTile />
             <ExploreLibraryButton />
           </aside>
@@ -72,7 +72,7 @@ function VideoTile() {
         <video
           ref={videoRef}
           className="absolute inset-0 z-[2] w-full h-full object-cover bg-black"
-          src="/hero.mp4"
+          src="/spunkram/main-preview-web.mp4"
           controls
           autoPlay
           playsInline
@@ -94,10 +94,10 @@ function DownloadTile({ className }: { className?: string }) {
   return (
     <div
       id="download"
-      className={cn("card relative overflow-hidden rounded-3xl border border-brand-500/25 flex flex-col min-h-0", className)}
+      className={cn("card relative overflow-hidden rounded-3xl border border-brand-500/25 flex flex-col", className)}
     >
       <div className="card-sheen-pricing pointer-events-none absolute inset-0 z-0" aria-hidden="true" />
-      <div className="relative z-[1] flex min-h-0 flex-1 flex-col p-4 sm:p-5">
+      <div className="relative z-[1] flex flex-1 flex-col p-4 sm:p-5">
         <div className="flex shrink-0 items-center justify-between">
           <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-md bg-surface-2 text-muted border border-line"><SpunkramText>{"Free download"}</SpunkramText></span>
           <span className="text-[11px] text-subtle">v2.1</span>
