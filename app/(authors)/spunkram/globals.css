@@ -239,19 +239,19 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Liquid glass panels (Apple-style frosted glass) */
+/* Solid panels avoid backdrop-filter repaint seams over the page grid. */
 .card {
   pointer-events: auto;
-  background-color: rgb(var(--surface) / 0.48);
+  background-color: rgb(var(--surface));
   border: 1px solid rgb(var(--line) / 0.55);
-  -webkit-backdrop-filter: blur(28px) saturate(185%);
-  backdrop-filter: blur(28px) saturate(185%);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.1),
     0 4px 24px -6px rgb(0 0 0 / 0.55), 0 12px 40px -16px rgb(45 20 90 / 0.35);
 }
 
 html.light .card {
-  background-color: rgb(255 255 255 / 0.52);
+  background-color: rgb(255 255 255);
   border: 2px solid rgb(230 232 240 / 0.94);
   box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.92),
     0 4px 28px -8px rgb(15 23 42 / 0.07),

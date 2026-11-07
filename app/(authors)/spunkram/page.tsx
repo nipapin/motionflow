@@ -52,7 +52,16 @@ export default async function HomePage({
   const [items, extraBuyerId] = await Promise.all([getSpunkramStorefrontItems(), extraCheckoutBuyer(extraCheckout)]);
   const projects = items
     .map(toProject)
-    .filter((item): item is Project => item != null);
+    .filter((item): item is Project => item != null)
+    .sort((a, b) => {
+      const priority = (project: Project) => {
+        if (project.price === 0) return 0;
+        if (project.id === "1138") return 1;
+        if (project.id === "414") return 2;
+        return 3;
+      };
+      return priority(a) - priority(b);
+    });
 
   let extraCheckoutDialog = null;
   if (extraBuyerId !== null) {

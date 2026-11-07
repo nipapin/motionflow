@@ -104,7 +104,7 @@ function ProjectCard({ project }: { project: Project }) {
           )}
 
           <span className="shrink-0 self-center text-2xl font-bold tabular-nums tracking-tight text-foreground">
-            ${project.price}
+            {project.price === 0 ? "Free" : `$${project.price}`}
           </span>
         </div>
       </div>
@@ -182,7 +182,7 @@ export function Projects({ projects = fallbackProjects }: { projects?: Project[]
   const filtered = useMemo(() => {
     if (filter === "all") return projects;
     return projects.filter((p) => p.app === filter);
-  }, [filter]);
+  }, [filter, projects]);
 
   return (
     <section id="projects" className="relative pt-12 pb-20">

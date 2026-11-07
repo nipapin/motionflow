@@ -246,10 +246,9 @@ export default async function SpunkramItemPage({
               itemId={item.id}
               basePrice={item.price}
               withoutProjectFile={item.files.no_file === true}
-            />
-
+            >
             <dl className="mt-3 space-y-1.5 text-sm">
-              {details.map((detail) => (
+              {details.filter((detail) => detail.label !== "Software version" && detail.label !== "File size").map((detail) => (
                 <div key={detail.label} className="flex items-start justify-between gap-4">
                   <dt className="inline-flex items-center gap-2 text-muted">
                     {detail.variant === "host" ? (
@@ -263,6 +262,7 @@ export default async function SpunkramItemPage({
                 </div>
               ))}
             </dl>
+            </ItemCheckoutCard>
 
             {!showSubscriptionPromo && tags.length > 0 ? (
               <div className="mt-5 border-t border-white/10 pt-4">
@@ -284,11 +284,9 @@ export default async function SpunkramItemPage({
           {showSubscriptionPromo ? (
             <section className="card rounded-2xl border border-brand-500/30 bg-[linear-gradient(180deg,rgba(110,60,255,0.16),rgba(110,60,255,0.06))] px-4 py-4 shadow-[inset_0_1px_0_0_rgb(255_255_255/0.12)]">
               <h3 className="text-base font-semibold leading-snug text-white sm:text-lg">
-                All projects in one subscription for $9.90/month.
+                All projects in one subscription from $9.90/month.
               </h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted">
-                Editor plan · Billed annually.
-              </p>
+
               <div className="mt-4 border-t border-white/12 pt-4">
                 <Link
                   href="/spunkram#pricing"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Info } from "lucide-react";
 import { usePaddle } from "@/lib/paddle";
@@ -15,10 +15,12 @@ export function ItemCheckoutCard({
   itemId,
   basePrice,
   withoutProjectFile = false,
+  children,
 }: {
   itemId: number;
   basePrice: number;
   withoutProjectFile?: boolean;
+  children?: ReactNode;
 }) {
   const { paddle, subscribe } = usePaddle();
   const router = useRouter();
@@ -93,11 +95,11 @@ export function ItemCheckoutCard({
   };
 
   return (
-    <div className="border-b border-white/10 pb-3">
+    <div className="flex flex-col py-2">
       <div className="flex items-end gap-3">
         <div className="min-w-24 flex-[0.8]">
           <div className="text-sm text-muted">Price</div>
-          <div className="mt-1 text-3xl font-semibold text-foreground">${checkoutAmount}</div>
+          <div className="mt-1 text-3xl font-semibold text-foreground">{checkoutAmount === 0 ? "Free" : `$${checkoutAmount}`}</div>
         </div>
 
         <div className="min-w-44 flex-[1.2] text-sm text-muted">
@@ -107,15 +109,20 @@ export function ItemCheckoutCard({
               <button
                 type="button"
                 aria-label="License info"
+                aria-describedby="spunkram-license-info"
                 className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted transition-colors hover:text-foreground"
               >
                 <Info className="h-3.5 w-3.5" />
               </button>
               <span
+                id="spunkram-license-info"
                 role="tooltip"
-                className="pointer-events-none invisible absolute right-0 top-6 z-20 w-56 rounded-lg border border-white/12 bg-[#11152f] px-3 py-2 text-xs font-normal leading-relaxed text-muted opacity-0 shadow-xl transition-all duration-150 group-hover/tooltip:visible group-hover/tooltip:opacity-100"
+                className="pointer-events-none invisible absolute right-0 top-6 z-20 w-56 rounded-lg border border-white/12 bg-[#11152f] px-3 py-2 text-xs font-normal leading-relaxed text-muted opacity-0 shadow-xl transition-all duration-150 group-hover/tooltip:visible group-hover/tooltip:opacity-100 group-focus-within/tooltip:visible group-focus-within/tooltip:opacity-100"
               >
-                License details will be added here soon.
+                <span className="block font-semibold text-foreground">Personal License</span>
+                <span className="mt-1 block">For personal, non-commercial projects only. Not for monetized content or client work.</span>
+                <span className="mt-3 block font-semibold text-foreground">Commercial License</span>
+                <span className="mt-1 block">For commercial and monetized projects, including paid client work.</span>
               </span>
             </span>
           </span>
@@ -145,11 +152,13 @@ export function ItemCheckoutCard({
         </div>
       </div>
 
+      {children}
+      <div className="pt-4">
       <button
         type="button"
         onClick={openCheckout}
         disabled={isOpening}
-        className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-brand-violet px-4 py-2.5 text-sm font-semibold text-white shadow-[0_14px_28px_-16px_rgb(110_60_255/0.92)] transition-all hover:bg-brand-violet-hover disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex w-full items-center justify-center rounded-xl bg-brand-violet px-4 py-2.5 text-sm font-semibold text-white shadow-[0_14px_28px_-16px_rgb(110_60_255/0.92)] transition-all hover:bg-brand-violet-hover disabled:cursor-not-allowed disabled:opacity-60"
       >
         {isOpening ? "Opening secure checkout..." : "Buy now"}
       </button>
@@ -160,6 +169,7 @@ export function ItemCheckoutCard({
       ) : null}
 
       {feedback ? <p className="mt-3 text-xs text-muted">{feedback}</p> : null}
+      </div>
     </div>
   );
 }
