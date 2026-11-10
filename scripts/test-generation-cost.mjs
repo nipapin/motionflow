@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
 import ts from "typescript";
+import * as crypto from "node:crypto";
+import * as asyncHooks from "node:async_hooks";
 
 function load(file, imports = {}) {
   const compiledFixture = compileTestFixture(new URL(file, import.meta.url), {
@@ -14,6 +16,14 @@ function load(file, imports = {}) {
       if (name === "@/lib/viral-titles") return load("../lib/viral-titles.ts", {
         "server-only": {},
         "@/lib/viral-titles-prompts.json": { default: JSON.parse(readFileSync(new URL("../lib/viral-titles-prompts.json", import.meta.url), "utf8")) },
+      });
+      if (name === "@/lib/odin-ai-context") return load("../lib/odin-ai-context.ts", {
+        "server-only": {}, "node:async_hooks": asyncHooks,
+      });
+      if (name === "@/lib/odin-ai-operations") return load("../lib/odin-ai-operations.ts", {
+        "server-only": {}, "node:crypto": crypto,
+        "@/lib/db": { getPool: () => assert.fail("Motionflow cost checks must not access the Odin ledger") },
+        "@/lib/odin-ai": {}, "@/lib/odin-ai-context": {},
       });
       if (!Object.hasOwn(imports, name)) throw new Error(`Unexpected import: ${name}`);
       return imports[name];
@@ -76,7 +86,7 @@ function route(tool, { seconds = 301, modelSeconds = seconds, left = 10, highlig
     },
     "@/lib/r2-storage": { uploadBufferToR2: async () => ({ url: "https://example.test/audio.mp3" }) },
     "@/lib/captions-chapters-receipt": {
-      issueCaptionsChaptersReceipt: () => "receipt", verifyCaptionsChaptersReceipt: () => ({ ok: receipt }),
+      issueCaptionsChaptersReceipt: () => "receipt", claimCaptionsChaptersReceipt: async () => ({ ok: receipt }),
     },
     "@/lib/generation-languages": { LANGUAGE_NAMES: {} },
     "@/lib/generation-cost": metering,

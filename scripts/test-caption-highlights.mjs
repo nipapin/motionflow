@@ -2,11 +2,18 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import ts from "typescript";
 import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
+import { odinTestLoader } from "./lib/odin-ai-test-runtime.mjs";
+const operationsLoad=odinTestLoader({'@/lib/db':{getPool(){throw new Error('Non-Odin test must not use the Odin ledger');}}});
 
 function load(file, imports = {}) {
   const compiledFixture = compileTestFixture(new URL(file, import.meta.url), { compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS } });
   const exports = {};
-  compiledFixture.runIsolated({ exports, require: name => { if (name === "@/lib/ai-usage-shared") return load("../lib/ai-usage-shared.ts"); if (name === "@/lib/replicate-usage-fetch") return { trackedReplicateFetch: () => undefined }; if (name === "@/lib/replicate-auth") return load("../lib/replicate-auth.ts", { "server-only": {} }); if (!(name in imports)) throw Error(name); return imports[name]; },
+  compiledFixture.runIsolated({ exports, require: name => {
+    if (["@/lib/odin-ai-operations","@/lib/odin-ai-context"].includes(name)) return operationsLoad(name);
+    if (name === "@/lib/ai-usage-shared") return load("../lib/ai-usage-shared.ts");
+    if (name === "@/lib/replicate-usage-fetch") return { trackedReplicateFetch: () => undefined };
+    if (name === "@/lib/replicate-auth") return load("../lib/replicate-auth.ts", { "server-only": {} });
+    if (!(name in imports)) throw Error(name); return imports[name]; },
     File, Buffer, console: { info() {}, error() {} },
     process: { env: { REPLICATE_API_TOKEN: "test-only" } } });
   return exports;

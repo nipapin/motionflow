@@ -2,6 +2,7 @@ import { trackedReplicateFetch } from "@/lib/replicate-usage-fetch";
 import { getReplicateApiToken } from "@/lib/replicate-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { withGenerationActivity } from "@/lib/user-activity";
+import { withOdinAiOperation } from "@/lib/odin-ai-operations";
 import Replicate from "replicate";
 import { bearerFromRequest, requireCaptionsAuth } from "@/lib/auth/resolve-captions-user";
 import { GENERATION_LIMIT_REACHED_CODE } from "@/lib/ai-generation-gate";
@@ -18,11 +19,11 @@ export async function POST(req: NextRequest) {
     const auth = await requireCaptionsAuth({ bearer: bearerFromRequest(req) });
     if (!auth.ok) return auth.response;
     if (!isMeteredCaptionsUser(auth.user)) return billableAccountRequiredResponse();
-    return await withGenerationActivity(auth.user, "caption_highlights", async () => {
+    const body = await req.json().catch(() => null);
+    return await withOdinAiOperation(req, auth.user, "caption_highlights", body, () => withGenerationActivity(auth.user, "caption_highlights", async () => {
       const replicateApiToken = getReplicateApiToken(auth.user);
       if (!replicateApiToken) return NextResponse.json({ error: "AI highlights are temporarily unavailable." }, { status: 503 });
       const replicate = new Replicate({ auth: replicateApiToken, fetch: trackedReplicateFetch(auth.user) });
-      const body = await req.json().catch(() => null);
       let segments: string[][] | undefined;
       let words: ReturnType<typeof validateHighlightWords> | undefined;
       let displaySegments: number[][] | undefined;
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
         code: GENERATION_LIMIT_REACHED_CODE, error: "GENERATION_LIMIT_REACHED", ...consumed.status, cost,
       }, { status: 402 });
       return NextResponse.json({ ...result, cost, generations: consumed.status });
-    });
+    }));
   } catch (error) {
     console.error("[caption highlights] failed:", error);
     return NextResponse.json({ error: "Could not find AI highlights. Please try again.", code: "CAPTION_HIGHLIGHTS_FAILED" }, { status: 502 });

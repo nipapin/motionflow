@@ -1,5 +1,6 @@
 import "server-only";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { getRedis } from "@/lib/redis";
 
 /**
  * Short-lived server receipt proving captions ASR was already billed.
@@ -32,6 +33,8 @@ function fromB64url(s: string): Buffer {
 }
 
 export type CaptionsChaptersReceiptPayload = {
+  /** Unique server-issued job identity, atomically claimed once in Redis. */
+  jti: string;
   uid: number | string;
   /** Metered duration used for the captions charge (seconds). */
   dur: number;
@@ -54,6 +57,7 @@ export function issueCaptionsChaptersReceipt(opts: {
     return undefined;
   }
   const payload: CaptionsChaptersReceiptPayload = {
+    jti: randomBytes(16).toString("hex"),
     uid: opts.userId,
     dur: Math.max(0, opts.durationSeconds),
     cost: Math.max(0, Math.floor(opts.cost)),
@@ -68,7 +72,7 @@ export function verifyCaptionsChaptersReceipt(
   token: unknown,
   userId: number | string,
 ): { ok: true; payload: CaptionsChaptersReceiptPayload } | { ok: false } {
-  if (typeof token !== "string" || !token.includes(".")) return { ok: false };
+  if (typeof token !== "string" || token.split(".").length !== 2) return { ok: false };
   const [body, sig] = token.split(".");
   if (!body || !sig) return { ok: false };
 
@@ -100,13 +104,35 @@ export function verifyCaptionsChaptersReceipt(
   }
 
   if (
+    typeof payload.jti !== "string" || !/^[a-f0-9]{32}$/.test(payload.jti) ||
     (typeof payload.uid !== "number" && typeof payload.uid !== "string") ||
     payload.uid !== userId ||
-    typeof payload.exp !== "number" ||
-    payload.exp < Math.floor(Date.now() / 1000)
+    !Number.isFinite(payload.exp) ||
+    payload.exp <= Math.floor(Date.now() / 1000)
   ) {
     return { ok: false };
   }
 
   return { ok: true, payload };
+}
+
+/** A signature proves issuance; a shared atomic claim prevents replay across workers.
+ * Redis failures throw so a free follow-up cannot silently become an extra charge.
+ */
+export async function claimCaptionsChaptersReceipt(
+  token: unknown,
+  userId: number | string,
+  operationId?: string,
+): Promise<{ ok: true; payload: CaptionsChaptersReceiptPayload } | { ok: false }> {
+  const verified = verifyCaptionsChaptersReceipt(token, userId);
+  if (!verified.ok) return verified;
+  const redis = getRedis();
+  await redis.connect().catch(() => {});
+  const ttl = Math.max(1, verified.payload.exp - Math.floor(Date.now() / 1000));
+  const key = `captions:chapters-receipt:${verified.payload.jti}`;
+  const claim = operationId ? `${userId}:${operationId}` : "1";
+  const claimed = await redis.set(key, claim, "EX", ttl, "NX");
+  if (claimed === "OK") return verified;
+  // A failed Odin operation can retry its own free follow-up; another operation cannot replay it.
+  return operationId && await redis.get(key) === claim ? verified : { ok: false };
 }

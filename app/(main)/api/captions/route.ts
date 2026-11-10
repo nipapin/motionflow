@@ -54,14 +54,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  const b = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  if (b.brand !== undefined && !["gal", "spunkram", "odin"].includes(String(b.brand))) {
+    return NextResponse.json({ error: "Invalid brand" }, { status: 400 });
+  }
+  const brand = parseCaptionsBrand(b.brand);
   const access = await requireCaptionsAccess({
     ...identityFromJsonBody(body),
     bearer: bearerFromRequest(req),
-  });
+  }, brand);
   if (!access.ok) return access.response;
-
-  const b = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
-  const brand = parseCaptionsBrand(b.brand);
 
   const id = typeof b.id === "string" ? b.id.trim() : "";
   if (!id) {

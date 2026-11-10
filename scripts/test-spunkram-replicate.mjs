@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { compileTestFixture } from "./lib/test-fixture-runtime.mjs";
+import { odinTestLoader } from "./lib/odin-ai-test-runtime.mjs";
+const operationsLoad=odinTestLoader({'@/lib/db':{getPool(){throw new Error('Non-Odin test must not use the Odin ledger');}}});
 import ts from "typescript";
 
 function load(file, imports = {}, env = {}, globals = {}) {
@@ -9,7 +11,9 @@ function load(file, imports = {}, env = {}, globals = {}) {
   });
   const exports = {};
   compiledFixture.runIsolated({
-    exports, require: name => name === "server-only" ? {} : name === "@/lib/ai-usage-shared" ? load("lib/ai-usage-shared.ts") : name === "@/lib/replicate-usage-fetch" ? { trackedReplicateFetch: () => undefined } : imports[name] ?? {},
+    exports, require: name => ["@/lib/odin-ai-operations","@/lib/odin-ai-context"].includes(name)
+      ? operationsLoad(name) : name === "server-only" ? {} : name === "@/lib/ai-usage-shared" ? load("lib/ai-usage-shared.ts")
+      : name === "@/lib/replicate-usage-fetch" ? { trackedReplicateFetch: () => undefined } : imports[name] ?? {},
     process: { env }, Buffer, File, URL,
     console: { info() {}, error() {} }, ...globals,
   });
@@ -18,6 +22,11 @@ function load(file, imports = {}, env = {}, globals = {}) {
 
 const tokens = { REPLICATE_API_TOKEN: "shared-test", REPLICATE_SPUNKRAM_API_TOKEN: "spunkram-test", REPLICATE_TOOLKIT_API_TOKEN: "toolkit-test", REPLICATE_ODINPRO_API_TOKEN: "odin-test" };
 const spunkram = { id: 7, source: "cep-bearer", cepClient: "spunkram-cep" };
+test('Odin uses only its dedicated provider key; missing configuration never falls back',()=>{
+  const odin={id:'odin:fixture',source:'odin-bearer',cepClient:'odin-cep'};
+  assert.equal(load('lib/replicate-auth.ts',{},tokens).getReplicateApiToken(odin),'odin-test');
+  assert.equal(load('lib/replicate-auth.ts',{}, {REPLICATE_API_TOKEN:'shared-test'}).getReplicateApiToken(odin),undefined);
+});
 
 test("Spunkram has no fallback; other panels and web use the shared account", () => {
   const env = { ...tokens };
@@ -84,7 +93,8 @@ function route(tool, user, env, extras = {}, globals = {}) {
 
 for (const tool of routes) {
   test(`${tool}: missing Spunkram token returns 503 before using the shared account`, async () => {
-    for (const user of [spunkram, { id: 7, cepClient: "gal-cep" }, { id: 7, source: "odin-bearer", cepClient: "odin-cep" }]) {
+    // Odin routes require the full attested allocation; exercised by HTTP/MySQL integration tests.
+    for (const user of [spunkram, { id: 7, cepClient: "gal-cep" }]) {
       const r = route(tool, user, { REPLICATE_API_TOKEN: tokens.REPLICATE_API_TOKEN });
       assert.equal((await r.post()).status, 503);
       assert.deepEqual(r.clients, []);
@@ -95,7 +105,6 @@ for (const tool of routes) {
     for (const [user, expected, env] of [
       [spunkram, "spunkram-test", { REPLICATE_SPUNKRAM_API_TOKEN: "spunkram-test" }],
       [{ id: 7, cepClient: "gal-cep" }, "toolkit-test", tokens],
-      [{ id: 7, source: "odin-bearer", cepClient: "odin-cep" }, "odin-test", tokens],
       [{ id: 7, source: "session" }, "shared-test", tokens],
       [{ id: 7, source: "cep-bearer", cepClient: "motionflow-adobe" }, "shared-test", tokens],
     ]) {

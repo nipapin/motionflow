@@ -9,6 +9,7 @@ import {
 } from "@/lib/cep-client-registry";
 import { getActiveAuthorSubscription } from "@/lib/cep-entitlements";
 import { resolveOdinAiUser, type OdinAiUser } from "@/lib/odin-ai";
+import type { CaptionsBrand } from "@/lib/captions-catalog";
 
 export const SUBSCRIPTION_REQUIRED_CODE = "SUBSCRIPTION_REQUIRED" as const;
 export const UNAUTHORIZED_CODE = "UNAUTHORIZED" as const;
@@ -59,6 +60,7 @@ export async function resolveCaptionsUser(
         cepClient: bearerUser.client,
       };
     }
+    return null;
   }
 
   const session = await getSessionUser();
@@ -149,23 +151,30 @@ export async function requireCaptionsAuth(
  */
 export async function userCanDownloadCaptionProject(
   user: ResolvedCaptionsUser,
+  brand?: CaptionsBrand,
 ): Promise<boolean> {
   if (user.source === "odin-bearer") {
-    return user.odinSubscriptionActive && (!user.odinSubscriptionExpiresAt ||
+    return (!brand || brand === "odin") && user.odinSubscriptionActive && (!user.odinSubscriptionExpiresAt ||
       Date.parse(user.odinSubscriptionExpiresAt) > Date.now());
   }
   if (typeof user.id !== "number") return false;
+  if (brand === "odin") return false;
 
   if (user.source === "cep-bearer") {
-    const cfg =
-      getCepClientConfig(user.cepClient || "spunkram-cep") ??
-      requireCepClientConfig("spunkram-cep");
-    if (cfg.platformSubscription) return hasActiveMotionflowSubscription(user.id);
+    const cfg = getCepClientConfig(user.cepClient || "");
+    if (!cfg) return false;
+    // Preserve the existing Motionflow web/platform Gal caption catalog. Author
+    // tokens are additionally restricted to their own server-registered brand.
+    if (cfg.platformSubscription) return (!brand || brand === "gal") && hasActiveMotionflowSubscription(user.id);
+    const target = getCepClientConfig(brand === "gal" ? "gal-cep" : brand === "spunkram" ? "spunkram-cep" : cfg.client);
+    if (!target || target.authorId !== cfg.authorId) return false;
     const sub = await getActiveAuthorSubscription(user.id, cfg.authorId);
     return sub.active;
   }
 
-  return hasActiveMotionflowSubscription(user.id);
+  const target = requireCepClientConfig(brand === "spunkram" ? "spunkram-cep" : "gal-cep");
+  const sub = await getActiveAuthorSubscription(user.id, target.authorId);
+  return sub.active || ((!brand || brand === "gal") && await hasActiveMotionflowSubscription(user.id));
 }
 
 /**
@@ -173,6 +182,7 @@ export async function userCanDownloadCaptionProject(
  */
 export async function requireCaptionsAccess(
   identity: CaptionsIdentityInput = {},
+  brand?: CaptionsBrand,
 ): Promise<
   | { ok: true; user: ResolvedCaptionsUser }
   | { ok: false; response: NextResponse }
@@ -180,7 +190,7 @@ export async function requireCaptionsAccess(
   const auth = await requireCaptionsAuth(identity);
   if (!auth.ok) return auth;
 
-  const allowed = await userCanDownloadCaptionProject(auth.user);
+  const allowed = await userCanDownloadCaptionProject(auth.user, brand);
   if (!allowed) {
     return {
       ok: false,

@@ -2,6 +2,7 @@ import { trackedReplicateFetch } from "@/lib/replicate-usage-fetch";
 import { getReplicateApiToken } from "@/lib/replicate-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { withGenerationActivity } from "@/lib/user-activity";
+import { withOdinAiOperation } from "@/lib/odin-ai-operations";
 import Replicate from "replicate";
 import {
   bearerFromRequest,
@@ -379,7 +380,7 @@ export async function POST(req: NextRequest) {
 
     const replicate = new Replicate({ auth: replicateApiToken, fetch: trackedReplicateFetch(access.user) });
 
-    return await withGenerationActivity(access.user, "captions", async () => {
+    return await withOdinAiOperation(req, access.user, "captions", form, () => withGenerationActivity(access.user, "captions", async () => {
 
       console.info(
         "[captions generation] user",
@@ -631,7 +632,7 @@ export async function POST(req: NextRequest) {
         ...(zoomPhrases ? { zoomPhrases } : {}),
         generations: consumed.status,
       });
-    });
+    }));
   } catch (error) {
     console.error("[captions generation] unexpected error:", error);
     return NextResponse.json({ error: GENERIC_ERROR }, { status: 500 });

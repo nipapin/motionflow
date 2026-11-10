@@ -2,6 +2,8 @@ import { trackedReplicateFetch } from "@/lib/replicate-usage-fetch";
 import { getReplicateApiToken } from "@/lib/replicate-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { withGenerationActivity } from "@/lib/user-activity";
+import { withOdinAiOperation } from "@/lib/odin-ai-operations";
+import { odinAiOperationContext } from "@/lib/odin-ai-context";
 import Replicate from "replicate";
 import { LANGUAGE_NAMES } from "@/lib/generation-languages";
 import {
@@ -22,7 +24,7 @@ import {
   parseDurationSeconds,
   resolveMeterDuration,
 } from "@/lib/generation-cost";
-import { verifyCaptionsChaptersReceipt } from "@/lib/captions-chapters-receipt";
+import { claimCaptionsChaptersReceipt } from "@/lib/captions-chapters-receipt";
 import {
   VIRAL_CANDIDATE_COUNT,
   parseViralEditedTitles,
@@ -478,7 +480,7 @@ export async function POST(req: NextRequest) {
         });
         if (!access.ok) return access.response;
         const user = access.user;
-        return await withGenerationActivity(user, "chapters", async () => {
+        return await withOdinAiOperation(req, user, "chapters", body, () => withGenerationActivity(user, "chapters", async () => {
           if (!isMeteredCaptionsUser(user)) return billableAccountRequiredResponse();
 
           const replicateApiToken = getReplicateApiToken(user);
@@ -558,8 +560,9 @@ export async function POST(req: NextRequest) {
           const receiptToken = (body as { chaptersReceipt?: unknown } | null)
               ?.chaptersReceipt;
           const receiptOk =
+              target === "all" &&
               isMeteredCaptionsUser(user) &&
-              verifyCaptionsChaptersReceipt(receiptToken, user.id).ok;
+              (await claimCaptionsChaptersReceipt(receiptToken, user.id, odinAiOperationContext.getStore()?.operationId)).ok;
           const clientDuration = parseDurationSeconds(
               (body as { durationSeconds?: unknown } | null)?.durationSeconds,
           );
@@ -603,6 +606,7 @@ export async function POST(req: NextRequest) {
               let output: unknown;
               try {
                   output = await replicate.run(CHAPTERS_MODEL, {
+                      signal: req.signal,
                       input: {
                           prompt,
                           system_prompt: systemPromptFor(target, languageName, style),
@@ -697,6 +701,7 @@ export async function POST(req: NextRequest) {
               let editorOutput: unknown;
               try {
                   editorOutput = await replicate.run(CHAPTERS_MODEL, {
+                      signal: req.signal,
                       input: {
                           prompt: viralTitleEditorInput(
                               chunks.map((chunk) => chunk.text.trim()).join("\n"),
@@ -759,7 +764,7 @@ export async function POST(req: NextRequest) {
               cost,
               durationSeconds: meterSeconds || undefined,
           });
-        });
+        }));
     } catch (error) {
         console.error("[chapters generation] unexpected error:", error);
         return NextResponse.json(
