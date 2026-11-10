@@ -14,6 +14,7 @@ export function usagePage(value: unknown): number {
 
 /** Current allocation and its committed charges; result bodies never leave storage. */
 export async function odinAccountUsage(user: OdinAiUser, page: number) {
+  page = usagePage(page);
   const balance = await odinAiStatus(user);
   if (!balance.period_id) return { balance, usage: { items: [], total: 0, page, pageSize: PAGE_SIZE } };
   const args = [user.id, balance.period_id];
@@ -22,7 +23,7 @@ export async function odinAccountUsage(user: OdinAiUser, page: number) {
       "SELECT count(*) AS total FROM odin_ai_operations WHERE user_id=? AND period_id=?", args),
     getPool().execute<UsageRow[]>(`SELECT operation_id,tool,cost,UNIX_TIMESTAMP(created_at) AS created_ts
       FROM odin_ai_operations WHERE user_id=? AND period_id=?
-      ORDER BY created_at DESC,operation_id DESC LIMIT ? OFFSET ?`, [...args, PAGE_SIZE, (page - 1) * PAGE_SIZE]),
+      ORDER BY created_at DESC,operation_id DESC LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}`, args),
   ]);
   return { balance, usage: {
     items: rows.map(row => ({ id: row.operation_id, tool: row.tool, cost: Number(row.cost),
