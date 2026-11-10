@@ -31,7 +31,17 @@ export async function resolveOdinAiUser(authorization: string): Promise<OdinAiUs
   });
   if (response.status === 401 || response.status === 403) return null;
   if (!response.ok) throw new Error("Odin account service unavailable");
-  const profile = await response.json();
+  return odinAiUserFromProfile(await response.json());
+}
+
+/** Input must come from Odin over a verified Bearer or authenticated service transport. */
+export function odinAiUserFromProfile(value: unknown): OdinAiUser | null {
+  if (!value || typeof value !== "object") return null;
+  const profile = value as {
+    user?: { id?: unknown; email?: unknown; name?: unknown };
+    subscription?: { active?: unknown; renews_at?: unknown };
+    entitlements?: { ai?: OdinAiAllocation };
+  };
   const id = String(profile?.user?.id ?? "");
   if (!/^[a-zA-Z0-9-]{1,128}$/.test(id) || typeof profile?.user?.email !== "string") return null;
   const ai = profile.entitlements?.ai;

@@ -44,6 +44,9 @@ export async function startOdinTestServer() {
   await mysql.query('DELETE FROM odin_ai_operations');await mysql.query('DELETE FROM odin_ai_period_usage');
   process.env.NEXT_PUBLIC_APP_URL=origin;
   process.env.MOTIONFLOW_MANAGEMENT_ENABLED='true';
+  process.env.MOTIONFLOW_MANAGEMENT_SECRET='isolated-odin-usage-management-secret';
+  process.env.ODIN_MANAGEMENT_SECRET=process.env.MOTIONFLOW_MANAGEMENT_SECRET;
+  process.env.MOTIONFLOW_AI_ORIGIN=origin;
   process.env.PAYPRO_VALIDATION_KEY='odin-isolated-webhook-key';
   process.env.PAYPRO_VENDOR_ACCOUNT_ID='1';process.env.PAYPRO_API_SECRET_KEY='isolated-provider-secret';
   process.env.REPLICATE_ODINPRO_API_TOKEN='isolated-replicate-key';
@@ -53,6 +56,7 @@ export async function startOdinTestServer() {
   const orders=new Map();let providerMode='success';let providerCalls=0;
   const query=async(sql,args)=>(await pg.query(sql,args)).rows;
   const paypro=async(url,options)=>{
+    if(String(url)===origin+'/api/integrations/odin/ai')return fetch(url,options);
     if(url==='https://api.get-atomx.com/atomx/v1/webhook_esubs')return Response.json({});
     const input=JSON.parse(options.body);
     if(url.endsWith('/Orders/GetOrderDetails'))return Response.json({isSuccess:true,response:orders.get(String(input.orderId))});
@@ -107,6 +111,8 @@ export async function startOdinTestServer() {
     '@/lib/captions-catalog':captionsStorage,
   },{fetch:accountTransport});
   const routes={
+    '/api/account/usage':site('@/app/api/account/usage/route'),
+    '/api/integrations/odin/ai':ai('@/app/(main)/api/integrations/odin/ai/route'),
     '/api/cep/generations':ai('@/app/(main)/api/cep/generations/route'),
     '/api/generations/captions':ai('@/app/(main)/api/generations/captions/route'),
     '/api/generations/chapters':ai('@/app/(main)/api/generations/chapters/route'),
