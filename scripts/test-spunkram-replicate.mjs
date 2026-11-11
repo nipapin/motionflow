@@ -13,7 +13,8 @@ function load(file, imports = {}, env = {}, globals = {}) {
   compiledFixture.runIsolated({
     exports, require: name => ["@/lib/odin-ai-operations","@/lib/odin-ai-context"].includes(name)
       ? operationsLoad(name) : name === "server-only" ? {} : name === "@/lib/ai-usage-shared" ? load("lib/ai-usage-shared.ts")
-      : name === "@/lib/replicate-usage-fetch" ? { trackedReplicateFetch: () => undefined } : imports[name] ?? {},
+      : name === "@/lib/replicate-usage-fetch" ? { trackedReplicateFetch: () => undefined }
+      : name === "@/lib/caption-highlights" ? load("lib/caption-highlights.ts") : imports[name] ?? {},
     process: { env }, Buffer, File, URL,
     console: { info() {}, error() {} }, ...globals,
   });
