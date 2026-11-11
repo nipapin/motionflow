@@ -140,12 +140,12 @@ test('revoked/invalid tokens never fall back to client identity, cookies or a ca
   assert.equal(await resolveCaptionsUser({bearer:'Bearer odincep_'+'0'.repeat(64),email:accounts.paid.email,userId:accounts.paid.id}),null);
 });
 
-test('protected caption assets require the requested brand and the real subscription of that author',async()=>{
+test('protected caption assets require the requested brand and a subscription or available generations',async()=>{
   const auth=load('@/lib/auth/resolve-captions-user');const registry=load('@/lib/cep-client-registry');
   const paid=await user();const free=await user('trial');
   assert.equal(await auth.userCanDownloadCaptionProject(paid,'odin'),true);
   for(const brand of ['gal','spunkram'])assert.equal(await auth.userCanDownloadCaptionProject(paid,brand),false);
-  assert.equal(await auth.userCanDownloadCaptionProject(free,'odin'),false);
+  assert.equal(await auth.userCanDownloadCaptionProject(free,'odin'),true);
   assert.equal(await auth.userCanDownloadCaptionProject({id:1001,source:'session'},'odin'),false);
   for(const client of ['gal-cep','spunkram-cep']){
     const cfg=registry.requireCepClientConfig(client);const brand=client==='gal-cep'?'gal':'spunkram';

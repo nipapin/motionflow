@@ -38,11 +38,11 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * POST /api/captions — download style file (session or CEP Bearer + real subscription).
+ * POST /api/captions — download style file with a matching account's subscription or AI generations.
  *
  * Body: `{ id: string, file?: "mogrt" | "aep" | "definition", brand?: "gal" | "spunkram" }`
- * - CEP: Spunkram author subscription required
- * - Web session: Motionflow Creator subscription required
+ * - CEP: matching author/brand plus an active subscription OR remaining generations
+ * - Web session: caption catalog entitlement OR remaining Motionflow generations
  * - mogrt / aep → `{Pack}/{Pack}.mogrt|aep` (id = pack name or caption id); falls back to master.*
  * - definition → per-caption JSON body (legacy)
  */

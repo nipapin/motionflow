@@ -9,9 +9,11 @@ import {
 } from "@/lib/cep-client-registry";
 import { getActiveAuthorSubscription } from "@/lib/cep-entitlements";
 import { resolveOdinAiUser, type OdinAiUser } from "@/lib/odin-ai";
+import { generationsStatusForResolvedUser } from "@/lib/cep-generations";
 import type { CaptionsBrand } from "@/lib/captions-catalog";
 
 export const SUBSCRIPTION_REQUIRED_CODE = "SUBSCRIPTION_REQUIRED" as const;
+export const CAPTIONS_ACCESS_REQUIRED_CODE = "CAPTIONS_ACCESS_REQUIRED" as const;
 export const UNAUTHORIZED_CODE = "UNAUTHORIZED" as const;
 
 export type CaptionsIdentityInput = {
@@ -146,16 +148,18 @@ export async function requireCaptionsAuth(
 
 /**
  * Style project download entitlement:
- * - CEP Bearer → active Spunkram (author) subscription
- * - Web session → active Motionflow Creator subscription
+ * Matching-brand access requires an active subscription OR remaining AI generations.
  */
 export async function userCanDownloadCaptionProject(
   user: ResolvedCaptionsUser,
   brand?: CaptionsBrand,
 ): Promise<boolean> {
+  const hasGenerations = async () => (await generationsStatusForResolvedUser(user)).total_generations_left > 0;
   if (user.source === "odin-bearer") {
-    return (!brand || brand === "odin") && user.odinSubscriptionActive && (!user.odinSubscriptionExpiresAt ||
+    if (brand && brand !== "odin") return false;
+    const subscribed = user.odinSubscriptionActive && (!user.odinSubscriptionExpiresAt ||
       Date.parse(user.odinSubscriptionExpiresAt) > Date.now());
+    return subscribed || await hasGenerations();
   }
   if (typeof user.id !== "number") return false;
   if (brand === "odin") return false;
@@ -165,20 +169,22 @@ export async function userCanDownloadCaptionProject(
     if (!cfg) return false;
     // Preserve the existing Motionflow web/platform Gal caption catalog. Author
     // tokens are additionally restricted to their own server-registered brand.
-    if (cfg.platformSubscription) return (!brand || brand === "gal") && hasActiveMotionflowSubscription(user.id);
+    if (cfg.platformSubscription) return (!brand || brand === "gal") &&
+      (await hasActiveMotionflowSubscription(user.id) || await hasGenerations());
     const target = getCepClientConfig(brand === "gal" ? "gal-cep" : brand === "spunkram" ? "spunkram-cep" : cfg.client);
     if (!target || target.authorId !== cfg.authorId) return false;
     const sub = await getActiveAuthorSubscription(user.id, cfg.authorId);
-    return sub.active;
+    return sub.active || await hasGenerations();
   }
 
   const target = requireCepClientConfig(brand === "spunkram" ? "spunkram-cep" : "gal-cep");
   const sub = await getActiveAuthorSubscription(user.id, target.authorId);
-  return sub.active || ((!brand || brand === "gal") && await hasActiveMotionflowSubscription(user.id));
+  return sub.active || ((!brand || brand === "gal") &&
+    (await hasActiveMotionflowSubscription(user.id) || await hasGenerations()));
 }
 
 /**
- * Auth + subscription gate for caption style downloads (mogrt/aep/definition).
+ * Auth + subscription-or-generations access for caption style downloads.
  */
 export async function requireCaptionsAccess(
   identity: CaptionsIdentityInput = {},
@@ -196,8 +202,8 @@ export async function requireCaptionsAccess(
       ok: false,
       response: NextResponse.json(
         {
-          error: "Active subscription required.",
-          code: SUBSCRIPTION_REQUIRED_CODE,
+          error: "An active subscription or available generations is required.",
+          code: CAPTIONS_ACCESS_REQUIRED_CODE,
         },
         { status: 403 },
       ),

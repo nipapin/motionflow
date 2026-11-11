@@ -44,8 +44,11 @@ for retries. There is no automatic pruning job in this change; a future retentio
 job must retain records throughout their active allocation period.
 
 Protected caption project downloads validate the requested brand before file
-lookup/signing. Odin tokens authorize only Odin with active paid library access;
-author CEP tokens require their registered brand and that author's subscription.
+lookup/signing. Odin tokens authorize only Odin with an active subscription OR
+remaining Odin AI generations, including the free trial allocation. Author CEP
+tokens require their registered brand and an active subscription OR remaining
+generations for that author's account. Downloading a caption template does not
+consume generations; AI requests retain their separate quota check and atomic debit.
 Motionflow web/platform preserves its existing Gal catalog entitlement. A
 supplied invalid Bearer token never falls back to a logged-in cookie identity.
 
