@@ -39,8 +39,8 @@ export const maxDuration = 300;
 const CAPTIONS_MODEL =
   "elevenlabs/scribe-v2:5cd433d181bb49b09d24d61c770861b169253acf02e58865a39200c81e727676" as const;
 
-/** Same Claude model as chapters — used for real target-language translation. */
-const TRANSLATE_MODEL =
+/** Claude model used by the optional JumpCut phrase analysis. */
+const JUMPCUT_MODEL =
   "anthropic/claude-4.5-haiku:1ad171f62532e2099a3ed7d8d80327911f5f8d332e83cf4c8959da0be9a8bf3e" as const;
 
 const MP3_CONTENT_TYPES = new Set(["audio/mpeg", "audio/mp3"]);
@@ -288,10 +288,13 @@ async function translateChunks(
 
   const prompt = `Caption segments (one per line, "index: text"):\n\n${numbered}`;
 
-  const output = await replicate.run(highlights ? CAPTION_HIGHLIGHT_MODEL : TRANSLATE_MODEL, {
+  // Use the existing captions text model for both translation paths. The
+  // highlight flag changes the requested annotation, not the provider.
+  const output = await replicate.run(CAPTION_HIGHLIGHT_MODEL, {
     signal,
-    input: highlights ? captionHighlightModelInput(system_prompt, prompt) : {
-      prompt, system_prompt, max_tokens: Math.min(8192, Math.max(1024, chunks.length * 40)),
+    input: {
+      ...captionHighlightModelInput(system_prompt, prompt),
+      ...(!highlights ? { max_completion_tokens: Math.min(8192, Math.max(1024, chunks.length * 40)) } : {}),
     },
   });
 
@@ -530,7 +533,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json(
             {
               error:
-                status === 500
+                status >= 500
                   ? "We couldn't translate the captions. Please try again."
                   : message,
             },
@@ -566,7 +569,7 @@ export async function POST(req: NextRequest) {
       if (zoomFrequency) {
         try {
           zoomPhrases = await analyzeZoomPhrases(scribe.words || [], zoomFrequency as ZoomFrequency, async (system_prompt, prompt) => {
-            const output = await replicate.run(TRANSLATE_MODEL, { input: { system_prompt, prompt, max_tokens: 4096 } });
+            const output = await replicate.run(JUMPCUT_MODEL, { input: { system_prompt, prompt, max_tokens: 4096 } });
             return typeof output === "string" ? output : Array.isArray(output) ? output.map(String).join("") : String(output ?? "");
           });
         } catch (error) {
