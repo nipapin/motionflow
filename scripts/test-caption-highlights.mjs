@@ -14,7 +14,7 @@ function load(file, imports = {}) {
     if (name === "@/lib/replicate-usage-fetch") return { trackedReplicateFetch: () => undefined };
     if (name === "@/lib/replicate-auth") return load("../lib/replicate-auth.ts", { "server-only": {} });
     if (!(name in imports)) throw Error(name); return imports[name]; },
-    File, Buffer, console: { info() {}, error() {} },
+    File, Buffer, AbortController, AbortSignal, console: { info() {}, error() {} },
     process: { env: { REPLICATE_API_TOKEN: "test-only" } } });
   return exports;
 }
