@@ -43,6 +43,8 @@ const CAPTIONS_MODEL =
 const HAIKU_MODEL =
   "anthropic/claude-4.5-haiku:1ad171f62532e2099a3ed7d8d80327911f5f8d332e83cf4c8959da0be9a8bf3e" as const;
 
+const TRANSLATION_FALLBACK_MODEL = "google/gemini-3.5-flash" as const;
+
 const MP3_CONTENT_TYPES = new Set(["audio/mpeg", "audio/mp3"]);
 const MAX_BYTES = 25 * 1024 * 1024;
 const MAX_TRANSLATE_CHARS = 40_000;
@@ -288,14 +290,25 @@ async function translateChunks(
 
   const prompt = `Caption segments (one per line, "index: text"):\n\n${numbered}`;
 
-  const output = await replicate.run(HAIKU_MODEL, {
-    signal,
-    input: {
-      system_prompt,
-      prompt,
-      max_tokens: highlights ? 8192 : Math.min(8192, Math.max(1024, chunks.length * 40)),
-    },
-  });
+  const maxTokens = highlights ? 8192 : Math.min(8192, Math.max(1024, chunks.length * 40));
+  let output: unknown;
+  try {
+    output = await replicate.run(HAIKU_MODEL, {
+      signal,
+      input: { system_prompt, prompt, max_tokens: maxTokens },
+    });
+  } catch (error) {
+    signal?.throwIfAborted();
+    // Replicate can accept the prediction before its Anthropic credential is rejected.
+    if (!(error instanceof Error) || !/\b(?:authentication_error|invalid x-api-key)\b/i.test(error.message)) {
+      throw error;
+    }
+    console.warn("[captions generation] Haiku authentication failed, using Gemini for translation");
+    output = await replicate.run(TRANSLATION_FALLBACK_MODEL, {
+      signal,
+      input: { system_instruction: system_prompt, prompt, max_output_tokens: maxTokens },
+    });
+  }
 
   const text =
     typeof output === "string"
