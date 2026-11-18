@@ -47,7 +47,11 @@ const TRANSLATION_FALLBACK_MODEL = "google/gemini-3.5-flash" as const;
 
 const MP3_CONTENT_TYPES = new Set(["audio/mpeg", "audio/mp3"]);
 const MAX_BYTES = 25 * 1024 * 1024;
-const MAX_TRANSLATE_CHARS = 40_000;
+const MAX_TRANSLATION_SEGMENT_CHARS = 2000;
+const MAX_TRANSLATION_BATCH_CHARS = 8000;
+const MAX_TRANSLATION_BATCH_SEGMENTS = 80;
+const MAX_CONCURRENT_TRANSLATION_BATCHES = 4;
+const MAX_TRANSLATION_OUTPUT_TOKENS = 8192;
 
 const GENERIC_ERROR =
   "We couldn't generate captions right now. Please try again in a moment.";
@@ -166,23 +170,77 @@ function spokenWordChunks(output: ScribeOutput): CaptionChunk[] {
   return out;
 }
 
+function* translationWords(words: CaptionChunk[]): Iterable<CaptionChunk> {
+  for (const word of words) {
+    if (word.text.length <= MAX_TRANSLATION_SEGMENT_CHARS) {
+      yield word;
+      continue;
+    }
+    const [start, end] = word.timestamp;
+    let offset = 0;
+    let partStart = start;
+    // A text-only transcription can contain a long run with no word separators.
+    const parts = word.text.match(/[\s\S]{1,1000}/gu) ?? [];
+    for (const text of parts) {
+      offset += text.length;
+      const partEnd = start + (end - start) * offset / word.text.length;
+      yield { text, timestamp: [partStart, partEnd] };
+      partStart = partEnd;
+    }
+  }
+}
+
 function sentencesFromWords(words: CaptionChunk[]): CaptionChunk[] {
   const out: CaptionChunk[] = [];
   let cur: CaptionChunk[] = [];
+  let chars = 0;
   const flush = () => {
     if (!cur.length) return;
     out.push({
-      text: cur.map((w) => w.text.trim()).join(" "),
+      text: cur.map((w) => w.text).join(" "),
       timestamp: [cur[0].timestamp[0], cur[cur.length - 1].timestamp[1]],
     });
     cur = [];
+    chars = 0;
   };
-  for (const w of words) {
-    cur.push(w);
-    if (SENTENCE_END.test(w.text.trim())) flush();
+  for (const word of translationWords(words)) {
+    if (chars && chars + 1 + word.text.length > MAX_TRANSLATION_SEGMENT_CHARS) flush();
+    chars += word.text.length + Number(cur.length > 0);
+    cur.push(word);
+    if (SENTENCE_END.test(word.text)) flush();
   }
   flush();
   return out;
+}
+
+function translationSource(scribe: ScribeOutput): CaptionChunk[] {
+  const words = spokenWordChunks(scribe);
+  if (words.length) return sentencesFromWords(words);
+
+  const text = scribe.text.trim();
+  if (!text) return [];
+  if (text.length <= MAX_TRANSLATION_SEGMENT_CHARS) return [{ text, timestamp: [0, 0] }];
+
+  return sentencesFromWords(wordsFromChunks([{ text, timestamp: [0, scribe.duration_seconds ?? 0] }]));
+}
+
+function translationBatches(chunks: CaptionChunk[]): CaptionChunk[][] {
+  const batches: CaptionChunk[][] = [];
+  let batch: CaptionChunk[] = [];
+  let chars = 0;
+  for (const chunk of chunks) {
+    // Allow for the number, colon, space, and newline on each indexed line.
+    const length = chunk.text.length + 5;
+    if (batch.length === MAX_TRANSLATION_BATCH_SEGMENTS || chars + length > MAX_TRANSLATION_BATCH_CHARS) {
+      batches.push(batch);
+      batch = [];
+      chars = 0;
+    }
+    batch.push(chunk);
+    chars += length;
+  }
+  if (batch.length) batches.push(batch);
+  return batches;
 }
 
 async function transcribe(
@@ -261,14 +319,8 @@ async function translateChunks(
   highlights = false,
   signal?: AbortSignal,
 ): Promise<CaptionChunk[]> {
-  if (!chunks.length) return chunks;
-
-  const numbered = chunks
-    .map((c, i) => `${i}: ${c.text}`)
-    .join("\n");
-  if (numbered.length > MAX_TRANSLATE_CHARS) {
-    throw new Error("Transcript too long to translate");
-  }
+  const batches = translationBatches(chunks);
+  if (!batches.length) return [];
 
   const system_prompt = [
     "You translate video caption segments.",
@@ -288,28 +340,56 @@ async function translateChunks(
     ] : []),
   ].join("\n");
 
-  const prompt = `Caption segments (one per line, "index: text"):\n\n${numbered}`;
-
-  const maxTokens = highlights ? 8192 : Math.min(8192, Math.max(1024, chunks.length * 40));
-  let output: unknown;
-  try {
-    output = await replicate.run(HAIKU_MODEL, {
-      signal,
-      input: { system_prompt, prompt, max_tokens: maxTokens },
-    });
-  } catch (error) {
-    signal?.throwIfAborted();
-    // Replicate can accept the prediction before its Anthropic credential is rejected.
-    if (!(error instanceof Error) || !/\b(?:authentication_error|invalid x-api-key)\b/i.test(error.message)) {
-      throw error;
+  const controller = new AbortController();
+  const batchSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+  let useFallback = false;
+  const runModel = async (prompt: string) => {
+    batchSignal.throwIfAborted();
+    if (!useFallback) {
+      try {
+        return await replicate.run(HAIKU_MODEL, {
+          signal: batchSignal,
+          input: { system_prompt, prompt, max_tokens: MAX_TRANSLATION_OUTPUT_TOKENS },
+        });
+      } catch (error) {
+        batchSignal.throwIfAborted();
+        // Replicate can accept the prediction before its Anthropic credential is rejected.
+        if (!(error instanceof Error) || !/\b(?:authentication_error|invalid x-api-key)\b/i.test(error.message)) {
+          throw error;
+        }
+        if (!useFallback) {
+          console.warn("[captions generation] Haiku authentication failed, using Gemini for translation");
+          useFallback = true;
+        }
+      }
     }
-    console.warn("[captions generation] Haiku authentication failed, using Gemini for translation");
-    output = await replicate.run(TRANSLATION_FALLBACK_MODEL, {
-      signal,
-      input: { system_instruction: system_prompt, prompt, max_output_tokens: maxTokens },
+    return replicate.run(TRANSLATION_FALLBACK_MODEL, {
+      signal: batchSignal,
+      input: { system_instruction: system_prompt, prompt, max_output_tokens: MAX_TRANSLATION_OUTPUT_TOKENS },
     });
-  }
+  };
+  const translateBatch = async (batch: CaptionChunk[]) => {
+    const numbered = batch.map((chunk, i) => `${i}: ${chunk.text}`).join("\n");
+    const prompt = `Caption segments (one per line, "index: text"):\n\n${numbered}`;
+    return parseTranslatedChunks(batch, await runModel(prompt), highlights);
+  };
 
+  try {
+    // Resolve the provider on the first batch before starting parallel requests.
+    const translated = await translateBatch(batches[0]);
+    for (let i = 1; i < batches.length; i += MAX_CONCURRENT_TRANSLATION_BATCHES) {
+      const wave = batches.slice(i, i + MAX_CONCURRENT_TRANSLATION_BATCHES);
+      const results = await Promise.all(wave.map(translateBatch));
+      for (const result of results) translated.push(...result);
+    }
+    return translated;
+  } catch (error) {
+    controller.abort(error);
+    throw error;
+  }
+}
+
+function parseTranslatedChunks(chunks: CaptionChunk[], output: unknown, highlights: boolean): CaptionChunk[] {
   const text =
     typeof output === "string"
       ? output
@@ -519,17 +599,7 @@ export async function POST(req: NextRequest) {
       if (translateTo) {
         const languageName = languageNameFor(translateTo)!;
         try {
-          const wordChunks = spokenWordChunks(scribe);
-          const sentenceChunks = wordChunks.length
-            ? sentencesFromWords(wordChunks)
-            : [];
-          const source = sentenceChunks.length
-            ? sentenceChunks
-            : wordChunks.length
-              ? wordChunks
-              : scribe.text.trim()
-                ? [{ text: scribe.text.trim(), timestamp: [0, 0] as [number, number] }]
-                : [];
+          const source = translationSource(scribe);
           if (source.length) {
             const translatedChunks = await translateChunks(replicate, source, languageName, highlights, req.signal);
             // ASR word timings no longer match translated text — rebuild words
