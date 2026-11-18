@@ -241,12 +241,12 @@ test("audio operation performs Scribe then one GPT-5 nano and returns original t
   assert.deepEqual(plain(response.body.words), [{ ...r.words[0], highlight: false }, r.words[1], { ...r.words[2], highlight: true }]);
 });
 
-test("translation and highlights share one GPT-5 nano call and retain the source sentence time span", async () => {
+test("translation and highlights share one Claude Haiku call and retain the source sentence time span", async () => {
   const r = transcriptionRoute({ translateTo: "ru" }); const response = await r.call();
   assert.equal(response.status, 200);
   assert.equal(response.body.translated, true);
   assert.equal(response.body.highlightsApplied, true);
-  assert.deepEqual(r.metrics(), { models: ["elevenlabs/scribe-v2", "openai/gpt-5-nano"], charges: [2] });
+  assert.deepEqual(r.metrics(), { models: ["elevenlabs/scribe-v2", "anthropic/claude-4.5-haiku"], charges: [2] });
   assert.equal(response.body.words[0].start, .2);
   assert.equal(response.body.words.at(-1).end, .8);
   assert.deepEqual(plain(response.body.words.map(w => [w.text, w.highlight])), [["важный", true], ["момент.", false]]);
