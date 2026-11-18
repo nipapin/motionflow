@@ -15,7 +15,7 @@ function load(file, imports = {}, env = {}, globals = {}) {
       ? operationsLoad(name) : name === "server-only" ? {} : name === "@/lib/ai-usage-shared" ? load("lib/ai-usage-shared.ts")
       : name === "@/lib/replicate-usage-fetch" ? { trackedReplicateFetch: () => undefined }
       : name === "@/lib/caption-highlights" ? load("lib/caption-highlights.ts") : imports[name] ?? {},
-    process: { env }, Buffer, File, URL,
+    process: { env }, Buffer, File, URL, AbortController, AbortSignal,
     console: { info() {}, error() {} }, ...globals,
   });
   return exports;
