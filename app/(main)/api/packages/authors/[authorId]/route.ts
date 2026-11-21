@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getPackagesAuthorById, isPackagesAdmin } from "@/lib/packages-admin";
 import { packagesAuthorLogoUrl } from "@/lib/packages-admin-client";
@@ -10,6 +11,8 @@ import { normalizePackagesBucketName, listR2AccountBuckets } from "@/lib/package
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const webStoreUrlSchema = z.string().max(1024).url().refine((url) => /^https?:\/\//i.test(url));
 
 function parseAuthorId(raw: string): number | null {
   const n = Number(raw);
@@ -28,6 +31,7 @@ function authorDto(a: NonNullable<Awaited<ReturnType<typeof getPackagesAuthorByI
     slug: a.slug,
     label: a.label,
     r2_bucket: a.r2Bucket,
+    web_store_url: a.webStoreUrl,
     logoUrl: packagesAuthorLogoUrl(a.slug),
   };
 }
@@ -70,6 +74,16 @@ export async function PATCH(
   }
 
   const patch: PackagesAuthorPatch = { ...body };
+  if (body.web_store_url !== undefined) {
+    const url = typeof body.web_store_url === "string" ? body.web_store_url.trim() : body.web_store_url;
+    if (url !== null && url !== "" && !webStoreUrlSchema.safeParse(url).success) {
+      return NextResponse.json(
+        { error: "INVALID_WEB_STORE_URL", message: "Enter an HTTP or HTTPS URL up to 1024 characters." },
+        { status: 400 },
+      );
+    }
+    patch.web_store_url = url || null;
+  }
   if (body.r2_bucket !== undefined) {
     const normalized = normalizePackagesBucketName(body.r2_bucket);
     if (!normalized.ok) {

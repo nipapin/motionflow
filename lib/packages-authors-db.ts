@@ -22,6 +22,7 @@ export type PackagesAuthorRow = {
   label: string;
   r2_bucket: string | null;
   r2_prefix: string;
+  web_store_url: string | null;
   demo_pr_key: string | null;
   demo_ae_key: string | null;
   demo_pr_version: string | null;
@@ -60,6 +61,7 @@ export async function ensurePackagesAuthorsTable(): Promise<void> {
        label VARCHAR(255) NOT NULL,
        r2_bucket VARCHAR(255) NULL,
        r2_prefix VARCHAR(512) NOT NULL,
+       web_store_url VARCHAR(1024) NULL,
        demo_pr_key VARCHAR(512) NULL,
        demo_ae_key VARCHAR(512) NULL,
        demo_pr_version VARCHAR(64) NULL,
@@ -70,6 +72,13 @@ export async function ensurePackagesAuthorsTable(): Promise<void> {
        UNIQUE KEY uq_packages_authors_slug (slug)
      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
   );
+  try {
+    await pool.query(
+      `ALTER TABLE \`${AUTHORS_TABLE}\` ADD COLUMN web_store_url VARCHAR(1024) NULL`,
+    );
+  } catch (error) {
+    if ((error as { code?: string }).code !== "ER_DUP_FIELDNAME") throw error;
+  }
   authorsTableEnsured = true;
 }
 
@@ -171,6 +180,7 @@ function rowToAuthor(row: RowDataPacket): PackagesAuthorRow {
         ? null
         : String(row.r2_bucket).trim(),
     r2_prefix: String(row.r2_prefix ?? "").replace(/^\/+/, ""),
+    web_store_url: row.web_store_url == null ? null : String(row.web_store_url),
     demo_pr_key: row.demo_pr_key == null ? null : String(row.demo_pr_key),
     demo_ae_key: row.demo_ae_key == null ? null : String(row.demo_ae_key),
     demo_pr_version:
@@ -212,6 +222,7 @@ export async function getPackagesAuthorRow(
 export type PackagesAuthorPatch = {
   label?: string;
   r2_bucket?: string | null;
+  web_store_url?: string | null;
 };
 
 export class PackagesAuthorCreationError extends Error {
@@ -289,23 +300,29 @@ export async function updatePackagesAuthorRow(
   const existing = await getPackagesAuthorRow(id);
   if (!existing) throw new Error("NOT_FOUND");
 
-  const label =
-    patch.label !== undefined
-      ? patch.label.trim().slice(0, 255) || existing.label
-      : existing.label;
-  const r2_bucket =
-    patch.r2_bucket !== undefined
-      ? patch.r2_bucket?.trim()
-        ? patch.r2_bucket.trim().slice(0, 255)
-        : null
-      : existing.r2_bucket;
+  const assignments: string[] = [];
+  const values: (string | null)[] = [];
+  const label = patch.label?.trim().slice(0, 255);
+  if (label) {
+    assignments.push("label = ?");
+    values.push(label);
+  }
+  if (patch.r2_bucket !== undefined) {
+    assignments.push("r2_bucket = ?");
+    values.push(patch.r2_bucket?.trim().slice(0, 255) || null);
+  }
+  if (patch.web_store_url !== undefined) {
+    assignments.push("web_store_url = ?");
+    values.push(patch.web_store_url);
+  }
+  if (!assignments.length) return existing;
 
   const pool = getPool();
   await pool.query<ResultSetHeader>(
     `UPDATE \`${AUTHORS_TABLE}\`
-     SET label = ?, r2_bucket = ?, updated_at = NOW()
+     SET ${assignments.join(", ")}, updated_at = NOW()
      WHERE id = ?`,
-    [label, r2_bucket, id],
+    [...values, id],
   );
 
   const updated = await getPackagesAuthorRow(id);

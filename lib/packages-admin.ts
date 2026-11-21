@@ -1,6 +1,8 @@
 import "server-only";
 
 import type { NextRequest } from "next/server";
+import { motionflowMainSiteUrl } from "@/lib/motionflow-urls";
+import { SPUNKRAM_AUTHOR_ID } from "@/lib/spunkram-paddle-config";
 import {
   getPackagesAuthorRow,
   listPackagesAuthorRows,
@@ -17,6 +19,7 @@ export type PackagesAuthor = {
   label: string;
   /** R2 bucket for this author's packs; null = not configured. */
   r2Bucket: string | null;
+  webStoreUrl: string | null;
 };
 
 function rowToPackagesAuthor(row: PackagesAuthorRow): PackagesAuthor {
@@ -25,6 +28,7 @@ function rowToPackagesAuthor(row: PackagesAuthorRow): PackagesAuthor {
     slug: row.slug,
     label: row.label,
     r2Bucket: row.r2_bucket,
+    webStoreUrl: row.web_store_url ?? (row.id === SPUNKRAM_AUTHOR_ID ? motionflowMainSiteUrl("/spunkram") : null),
   };
 }
 

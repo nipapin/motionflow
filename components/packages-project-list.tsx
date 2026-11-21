@@ -57,6 +57,12 @@ type Project = {
   updated_at: string;
 };
 
+type AuthorSettings = {
+  label: string;
+  r2_bucket: string | null;
+  web_store_url: string | null;
+};
+
 const DEFAULT_PAID_PRICE = 9.99;
 
 function formatUpdated(iso: string): string {
@@ -139,6 +145,8 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
 
   const [displayLabel, setDisplayLabel] = useState(author?.label ?? "");
   const [r2Bucket, setR2Bucket] = useState("");
+  const [webStoreUrl, setWebStoreUrl] = useState("");
+  const [savedAuthorSettings, setSavedAuthorSettings] = useState<AuthorSettings | null>(null);
   const [buckets, setBuckets] = useState<string[]>([]);
   const [bucketsError, setBucketsError] = useState<string | null>(null);
   const [settingsBusy, setSettingsBusy] = useState(false);
@@ -169,13 +177,12 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
         fetch(`/api/packages/authors/${authorId}`),
         fetch("/api/packages/buckets"),
       ]);
-      if (authorRes.ok) {
-        const data = (await authorRes.json()) as {
-          author: { label: string; r2_bucket: string | null };
-        };
-        setDisplayLabel(data.author.label);
-        setR2Bucket(data.author.r2_bucket || "");
-      }
+      if (!authorRes.ok) throw new Error("Could not load author settings");
+      const { author } = (await authorRes.json()) as { author: AuthorSettings };
+      setSavedAuthorSettings(author);
+      setDisplayLabel(author.label);
+      setR2Bucket(author.r2_bucket || "");
+      setWebStoreUrl(author.web_store_url || "");
       if (bucketsRes.ok) {
         const data = (await bucketsRes.json()) as { buckets: string[] };
         setBuckets(data.buckets || []);
@@ -200,15 +207,19 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
   })();
 
   const saveAuthorSettings = async () => {
+    if (!savedAuthorSettings) return;
     setSettingsBusy(true);
     setSettingsMsg(null);
     try {
+      const bucket = r2Bucket.trim() || null;
+      const storeUrl = webStoreUrl.trim() || null;
       const res = await fetch(`/api/packages/authors/${authorId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          label: displayLabel,
-          r2_bucket: r2Bucket.trim() || null,
+          label: displayLabel === savedAuthorSettings.label ? undefined : displayLabel,
+          r2_bucket: bucket === savedAuthorSettings.r2_bucket ? undefined : bucket,
+          web_store_url: storeUrl === savedAuthorSettings.web_store_url ? undefined : storeUrl,
         }),
       });
       if (!res.ok) {
@@ -218,11 +229,11 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
         };
         throw new Error(body.message || body.error || `Save failed (${res.status})`);
       }
-      const data = (await res.json()) as {
-        author: { label: string; r2_bucket: string | null };
-      };
-      setDisplayLabel(data.author.label);
-      setR2Bucket(data.author.r2_bucket || "");
+      const { author } = (await res.json()) as { author: AuthorSettings };
+      setSavedAuthorSettings(author);
+      setDisplayLabel(author.label);
+      setR2Bucket(author.r2_bucket || "");
+      setWebStoreUrl(author.web_store_url || "");
       setSettingsMsg("Saved");
       setSettingsOk(true);
     } catch (e) {
@@ -414,7 +425,7 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
           <div>
             <h2 className="text-sm font-semibold tracking-tight">Author settings</h2>
             <p className="mt-0.5 text-[13px] text-muted-foreground">
-              Display name and R2 bucket used for zip archives.
+              Display name, R2 bucket for zip archives, and the Web store link in the extension.
             </p>
           </div>
           {settingsMsg ? (
@@ -460,11 +471,22 @@ export function PackagesProjectList({ authorId }: { authorId: number }) {
               <p className="text-[12px] text-destructive">{bucketsError}</p>
             ) : null}
           </div>
+          <div className="min-w-0 flex-[1.4] space-y-2">
+            <Label htmlFor="author-web-store-url">Web store URL</Label>
+            <Input
+              id="author-web-store-url"
+              type="url"
+              value={webStoreUrl}
+              maxLength={1024}
+              disabled={settingsBusy || !savedAuthorSettings}
+              onChange={(e) => setWebStoreUrl(e.target.value)}
+            />
+          </div>
           <Button
             type="button"
             size="sm"
             className="h-9 shrink-0 gap-1.5"
-            disabled={settingsBusy}
+            disabled={settingsBusy || !savedAuthorSettings}
             onClick={() => void saveAuthorSettings()}
           >
             {settingsBusy ? (

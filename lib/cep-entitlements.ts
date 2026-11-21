@@ -320,13 +320,15 @@ export async function buildCepMarketPackages(opts: {
 }): Promise<{
   subscription_active: boolean;
   subscribe_url: string;
+  web_store_url: string | null;
   Packages: CepMarketPackageDto[];
 }> {
   const { userId, cfg, host, viewerEmail } = opts;
   const viewerIsAdmin = isPackagesAdmin(viewerEmail);
-  const [subscription, projectsRaw] = await Promise.all([
+  const [subscription, projectsRaw, author] = await Promise.all([
     getActiveAuthorSubscription(userId, cfg.authorId),
     listVisiblePackagesProjects(cfg.authorId, host),
+    getPackagesAuthorById(cfg.authorId),
   ]);
   const projects = viewerIsAdmin
     ? projectsRaw
@@ -396,6 +398,7 @@ export async function buildCepMarketPackages(opts: {
   return {
     subscription_active: subscriptionActive,
     subscribe_url: cepSubscribeUrl(cfg),
+    web_store_url: author?.webStoreUrl ?? null,
     Packages: packages,
   };
 }
