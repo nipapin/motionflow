@@ -65,7 +65,7 @@ async function handleStatus(req: NextRequest) {
       return billableAccountRequiredResponse();
     }
 
-    // CEP Bearer → Spunkram author tier (5 free / 10 Editor / 100 Editor AI).
+    // CEP Bearer → the author's quota and Extra balance.
     const cepUser = identity.bearer
       ? await resolveCepBearerUser(identity.bearer)
       : null;

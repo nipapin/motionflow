@@ -61,7 +61,7 @@ const REGISTRY: Record<string, CepClientConfig> = {
       "The Spunkram extension in Premiere Pro / After Effects is asking to use your account.",
     verificationPath: "/spunkram",
     platformSubscription: false,
-    freeGenerationsLimit: 5,
+    freeGenerationsLimit: 0,
     editorGenerationsLimit: 10,
     editorAiGenerationsLimit: 100,
     subscribedGenerationsLimit: 100,

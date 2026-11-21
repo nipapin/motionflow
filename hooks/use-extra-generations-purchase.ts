@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/components/auth-provider";
 import { usePaddle } from "@/lib/paddle";
 import { EXTRA_GEN_PACKS } from "@/lib/extra-generation-packs";
+import { SPUNKRAM_AUTHOR_ID } from "@/lib/spunkram-paddle-config";
 
 type ExtraGenPack = { count: number; priceId: string | undefined };
 
@@ -80,7 +81,7 @@ export function useExtraGenerationsPurchase(options?: {
     });
   }, [subscribe, paddle, onSuccess, authorId]);
 
-  const continuePurchase = useCallback((priceIdOverride?: string) => {
+  const continuePurchase = useCallback(async (priceIdOverride?: string) => {
     const pack = packs.find((p) => p.count === selectedCount);
     if (!pack) return;
     const priceId = priceIdOverride?.trim() || pack.priceId?.trim() || undefined;
@@ -93,25 +94,40 @@ export function useExtraGenerationsPurchase(options?: {
 
     if (priceId && paddle) {
       setCheckoutLoading(true);
-      flushSync(() => setBuyOpen(false));
-      awaitingExtraCheckout.current = true;
       try {
+        let transactionId: string | undefined;
+        if (authorId === SPUNKRAM_AUTHOR_ID) {
+          const response = await fetch("/api/spunkram/extra-checkout", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ count: pack.count }),
+          });
+          const result = await response.json() as { transactionId?: string; error?: string };
+          if (!response.ok || !result.transactionId) {
+            toast.error(result.error ?? "Could not open checkout. Please try again.");
+            return;
+          }
+          transactionId = result.transactionId;
+        }
+
+        flushSync(() => setBuyOpen(false));
+        awaitingExtraCheckout.current = true;
         paddle.Checkout.open({
           settings: {
             displayMode: "overlay",
             theme: "light",
             allowLogout: false,
           },
-          items: [{ priceId, quantity: 1 }],
           customer: { email: user.email ?? undefined },
-          customData: {
-            buyer_id: String(user.id),
-            kind: "extra_ai_generations",
-            generations: String(pack.count),
-            ...(authorId != null && authorId > 0
-              ? { author_id: String(authorId) }
-              : {}),
-          },
+          ...(transactionId ? { transactionId } : {
+            items: [{ priceId, quantity: 1 }],
+            customData: {
+              buyer_id: String(user.id),
+              kind: "extra_ai_generations",
+              generations: String(pack.count),
+              ...(authorId != null && authorId > 0 ? { author_id: String(authorId) } : {}),
+            },
+          }),
         });
       } catch (err) {
         awaitingExtraCheckout.current = false;

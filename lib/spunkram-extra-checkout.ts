@@ -1,6 +1,8 @@
 import "server-only";
 import { createHmac } from "node:crypto";
 import { jwtVerify, SignJWT } from "jose";
+import { getActiveAuthorSubscription } from "@/lib/cep-entitlements";
+import { SPUNKRAM_AUTHOR_ID } from "@/lib/spunkram-paddle-config";
 
 const audience = "spunkram-cep-extra-checkout";
 
@@ -21,15 +23,18 @@ export function signExtraCheckout(userId: number) {
 
 export async function extraCheckoutBuyer(ticket?: string) {
   if (typeof ticket !== "string" || ticket.length > 512) return null;
+  let id: number;
   try {
     const { payload } = await jwtVerify(ticket, signingKey(), {
       audience,
       algorithms: ["HS256"],
       requiredClaims: ["exp", "sub"],
     });
-    const id = Number(payload.sub);
-    return Number.isSafeInteger(id) && id > 0 ? id : null;
+    id = Number(payload.sub);
   } catch {
     return null;
   }
+  if (!Number.isSafeInteger(id) || id <= 0) return null;
+  const subscription = await getActiveAuthorSubscription(id, SPUNKRAM_AUTHOR_ID);
+  return subscription.active ? id : null;
 }
