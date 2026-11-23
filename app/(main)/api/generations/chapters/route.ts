@@ -37,9 +37,8 @@ import {
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
-/** @see https://replicate.com/anthropic/claude-4.5-haiku */
-const CHAPTERS_MODEL =
-    "anthropic/claude-4.5-haiku:1ad171f62532e2099a3ed7d8d80327911f5f8d332e83cf4c8959da0be9a8bf3e" as const;
+/** @see https://replicate.com/google/gemini-3.5-flash */
+const CHAPTERS_MODEL = "google/gemini-3.5-flash" as const;
 
 const MAX_CHUNKS = 500;
 /** Cap on transcript size fed to the model (cost / abuse bound after auth). */
@@ -599,8 +598,7 @@ export async function POST(req: NextRequest) {
           const wantDescription = target === "all" || target === "description";
           const wantTags = target === "all" || target === "tags";
           const useViralEditor = style === "viral" && wantTitles;
-          // Claude on Replicate requires max_tokens >= 1024 (422 otherwise).
-          const maxTokens = useViralEditor ? 4096 : target === "all" || target === "chapters" ? 3072 : 1024;
+          const maxOutputTokens = useViralEditor ? 4096 : target === "all" || target === "chapters" ? 3072 : 1024;
 
           const runOnce = async (): Promise<ChaptersResponse> => {
               let output: unknown;
@@ -609,8 +607,8 @@ export async function POST(req: NextRequest) {
                       signal: req.signal,
                       input: {
                           prompt,
-                          system_prompt: systemPromptFor(target, languageName, style),
-                          max_tokens: maxTokens,
+                          system_instruction: systemPromptFor(target, languageName, style),
+                          max_output_tokens: maxOutputTokens,
                       },
                   });
               } catch (err) {
@@ -660,7 +658,7 @@ export async function POST(req: NextRequest) {
               }
           };
 
-          // One retry — Haiku occasionally returns empty / non-JSON for titles-only.
+          // Retry once if the model's response fails validation.
           let result: ChaptersResponse | null = null;
           let lastErr: (Error & { status?: number; code?: string }) | null = null;
           for (let attempt = 0; attempt < 2; attempt++) {
@@ -708,8 +706,8 @@ export async function POST(req: NextRequest) {
                               candidates,
                               languageName,
                           ),
-                          system_prompt: viralTitleEditorSystemPrompt(languageName),
-                          max_tokens: 4096,
+                          system_instruction: viralTitleEditorSystemPrompt(languageName),
+                          max_output_tokens: 4096,
                       },
                   });
               } catch (err) {
