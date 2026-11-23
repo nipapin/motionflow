@@ -34,7 +34,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const revoked = await revokeDevice(user.id, deviceId);
+    const client = user.client === "motionflow-adobe" ? user.client : undefined;
+    const revoked = await revokeDevice(user.id, deviceId, client);
     if (!revoked) {
       return NextResponse.json(
         { error: "INVALID_DEVICE", message: "Device not found" },

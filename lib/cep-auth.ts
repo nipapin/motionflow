@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
-import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
+import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { getPool } from "@/lib/db";
 import {
   findReusableOccupiedDevice,
@@ -30,9 +30,34 @@ export const DEVICE_CODE_TTL_SECONDS = 300;
 export const DEVICE_CODE_POLL_INTERVAL_SECONDS = 3;
 
 /** Max simultaneously signed-in CEP devices per user. */
-export function cepDeviceLimit(): number {
+export function cepDeviceLimit(client?: string): number {
+  if (client === "motionflow-adobe") return 2;
   const n = Number(process.env.CEP_DEVICE_LIMIT);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 3;
+}
+
+type DeviceQueries = Pick<PoolConnection, "execute">;
+
+async function withAdobeDeviceTransaction<T extends { ok: boolean }>(
+  client: string,
+  userId: number,
+  action: (queries: DeviceQueries) => Promise<T>,
+): Promise<T> {
+  if (client !== "motionflow-adobe") return action(getPool());
+  const connection = await getPool().getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.execute("SELECT id FROM users WHERE id = ? FOR UPDATE", [userId]);
+    const result = await action(connection);
+    if (result.ok) await connection.commit();
+    else await connection.rollback();
+    return result;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 let schemaEnsured = false;
@@ -309,9 +334,8 @@ export type ApproveResult =
  * Approve a pending login session as the signed-in web user: create (or
  * refresh) the CEP device, generate its Bearer token and stash it on the
  * session row for the panel's next poll.
- * If this panel already occupies a seat (same MAC+client, or at the limit the
- * same OS username), completes sign-in so the browser shows success. Only a
- * new occupant (not in the list) gets `device_limit` for the panel picker.
+ * An existing computer reuses its seat. Adobe matches its hashed fingerprint.
+ * Other CEP clients retain their MAC and OS username matching behavior.
  */
 export async function approveAuthSession(
   code: string,
@@ -324,88 +348,88 @@ export async function approveAuthSession(
   if (status === "expired") return { ok: false, error: "CODE_EXPIRED" };
   if (status !== "pending") return { ok: false, error: "INVALID_CODE" };
 
-  const fingerprint = parseFingerprint(row.device_json);
-  const pool = getPool();
+  return withAdobeDeviceTransaction<ApproveResult>(row.client, userId, async (pool) => {
+    const fingerprint = parseFingerprint(row.device_json);
 
-  // Reuse an occupied seat instead of asking the user to kick themselves:
-  // same MAC+client always, and at the limit the same OS username+client
-  // (User B already in the list). User D (not in the list) still gets
-  // device_limit so the panel can pick a slot. Gal and Spunkram stay
-  // independent because rows are filtered by `client`.
-  const occupied = await listActiveDevicesForUserClient(userId, row.client);
-  let existing = findReusableOccupiedDevice(fingerprint, occupied);
+    const occupied = await listActiveDevicesForUserClient(userId, row.client, pool);
+    const adobe = row.client === "motionflow-adobe";
+    const deviceFingerprint = fingerprint?.mac;
+    let existing = adobe && deviceFingerprint && /^[a-f0-9]{32}$/i.test(deviceFingerprint)
+      ? occupied.find(device => parseFingerprint(device.user_fingerprint)?.mac === deviceFingerprint)
+      : findReusableOccupiedDevice(fingerprint, occupied);
 
-  if (!existing) {
-    const activeCount = await countActiveDevices(userId, row.client);
-    if (activeCount >= cepDeviceLimit()) {
-      existing = findReusableOccupiedDevice(fingerprint, occupied, {
-        matchOsUser: true,
-      });
-      if (!existing) {
-        const [upd] = await pool.execute<ResultSetHeader>(
-          `UPDATE \`${SESSIONS_TABLE}\`
-           SET status = 'device_limit', user_id = ?
-           WHERE id = ? AND status = 'pending' AND expires_at >= NOW()`,
-          [userId, row.id],
-        );
-        if (upd.affectedRows === 0) {
-          return { ok: false, error: "CODE_EXPIRED" };
+    if (!existing) {
+      const activeCount = occupied.length;
+      if (activeCount >= cepDeviceLimit(row.client)) {
+        if (!adobe) {
+          existing = findReusableOccupiedDevice(fingerprint, occupied, { matchOsUser: true });
         }
-        return { ok: true, status: "device_limit" };
+        if (!existing) {
+          const [upd] = await pool.execute<ResultSetHeader>(
+            `UPDATE \`${SESSIONS_TABLE}\`
+             SET status = 'device_limit', user_id = ?
+             WHERE id = ? AND status = 'pending' AND expires_at >= NOW()`,
+            [userId, row.id],
+          );
+          if (upd.affectedRows === 0) {
+            return { ok: false, error: "CODE_EXPIRED" };
+          }
+          return { ok: true, status: "device_limit" };
+        }
       }
     }
-  }
 
-  const { token, hash } = generateToken();
-  let deviceId: number;
+    const { token, hash } = generateToken();
+    let deviceId: number;
 
-  if (existing) {
-    await pool.execute<ResultSetHeader>(
-      `UPDATE \`${DEVICES_TABLE}\`
-       SET token_hash = ?, user_fingerprint = ?, name = ?, ip = ?, client = ?, last_seen_at = NOW()
-       WHERE id = ?`,
-      [
-        hash,
-        row.device_json,
-        fingerprint?.user?.slice(0, 191) ?? existing.name,
-        approverIp ?? row.ip,
-        row.client,
-        existing.id,
-      ],
-    );
-    deviceId = existing.id;
-  } else {
-    const [res] = await pool.execute<ResultSetHeader>(
-      `INSERT INTO \`${DEVICES_TABLE}\`
-         (user_id, token_hash, user_fingerprint, name, ip, client, last_seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-      [
-        userId,
-        hash,
-        row.device_json,
-        fingerprint?.user?.slice(0, 191) ?? null,
-        row.ip,
-        row.client,
-      ],
-    );
-    deviceId = res.insertId;
-  }
+    if (existing) {
+      await pool.execute<ResultSetHeader>(
+        `UPDATE \`${DEVICES_TABLE}\`
+         SET token_hash = ?, user_fingerprint = ?, name = ?, ip = ?, client = ?, last_seen_at = NOW()
+         WHERE id = ? AND revoked_at IS NULL`,
+        [
+          hash,
+          row.device_json,
+          fingerprint?.user?.slice(0, 191) ?? existing.name,
+          approverIp ?? row.ip,
+          row.client,
+          existing.id,
+        ],
+      );
+      deviceId = existing.id;
+    } else {
+      const [res] = await pool.execute<ResultSetHeader>(
+        `INSERT INTO \`${DEVICES_TABLE}\`
+           (user_id, token_hash, user_fingerprint, name, ip, client, last_seen_at)
+         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+        [
+          userId,
+          hash,
+          row.device_json,
+          fingerprint?.user?.slice(0, 191) ?? null,
+          row.ip,
+          row.client,
+        ],
+      );
+      deviceId = res.insertId;
+    }
 
-  const [upd] = await pool.execute<ResultSetHeader>(
-    `UPDATE \`${SESSIONS_TABLE}\`
-     SET status = 'complete', user_id = ?, device_id = ?, token_plain = ?
-     WHERE id = ? AND status = 'pending' AND expires_at >= NOW()`,
-    [userId, deviceId, token, row.id],
-  );
-  if (upd.affectedRows === 0) {
-    // Lost a race (expired or double-submit) — do not leave a live orphan token.
-    await pool.execute(
-      `UPDATE \`${DEVICES_TABLE}\` SET revoked_at = NOW() WHERE id = ? AND token_hash = ?`,
-      [deviceId, hash],
+    const [upd] = await pool.execute<ResultSetHeader>(
+      `UPDATE \`${SESSIONS_TABLE}\`
+       SET status = 'complete', user_id = ?, device_id = ?, token_plain = ?
+       WHERE id = ? AND status = 'pending' AND expires_at >= NOW()`,
+      [userId, deviceId, token, row.id],
     );
-    return { ok: false, error: "CODE_EXPIRED" };
-  }
-  return { ok: true, status: "complete" };
+    if (upd.affectedRows === 0) {
+      // Lost a race (expired or double-submit) — do not leave a live orphan token.
+      await pool.execute(
+        `UPDATE \`${DEVICES_TABLE}\` SET revoked_at = NOW() WHERE id = ? AND token_hash = ?`,
+        [deviceId, hash],
+      );
+      return { ok: false, error: "CODE_EXPIRED" };
+    }
+    return { ok: true, status: "complete" };
+  });
 }
 
 export async function denyAuthSession(code: string): Promise<boolean> {
@@ -473,7 +497,7 @@ export async function claimAuthToken(
     return {
       status: "device_limit",
       devices,
-      device_limit: cepDeviceLimit(),
+      device_limit: cepDeviceLimit(row.client),
       message:
         "Device limit reached. Revoke another device to continue signing in.",
     };
@@ -584,79 +608,93 @@ export async function replaceDeviceForAuthSession(opts: {
   }
 
   const userId = Number(row.user_id);
-  const revoked = await revokeDevice(userId, opts.revokeDeviceId, row.client);
-  if (!revoked) {
-    return {
-      ok: false,
-      error: "INVALID_DEVICE",
-      message: "Device not found or already revoked",
-    };
-  }
+  const result = await withAdobeDeviceTransaction<ReplaceDeviceResult>(row.client, userId, async (pool) => {
+    const revoked = row.client === "motionflow-adobe"
+      ? (await pool.execute<ResultSetHeader>(
+          `UPDATE \`${DEVICES_TABLE}\` SET revoked_at = NOW()
+           WHERE id = ? AND user_id = ? AND client = ? AND revoked_at IS NULL`,
+          [opts.revokeDeviceId, userId, row.client],
+        ))[0].affectedRows > 0
+      : await revokeDevice(userId, opts.revokeDeviceId, row.client);
+    if (!revoked) {
+      return {
+        ok: false,
+        error: "INVALID_DEVICE",
+        message: "Device not found or already revoked",
+      };
+    }
 
-  // Re-check slot (race: another login may have filled it)
-  const activeCount = await countActiveDevices(userId, row.client);
-  if (activeCount >= cepDeviceLimit()) {
-    return {
-      ok: false,
-      error: "INVALID_DEVICE",
-      message: "Still at device limit — pick another device",
-    };
-  }
+    // Re-check slot (race: another login may have filled it)
+    const activeCount = await countActiveDevices(userId, row.client, pool);
+    if (activeCount >= cepDeviceLimit(row.client)) {
+      return {
+        ok: false,
+        error: "INVALID_DEVICE",
+        message: row.client === "motionflow-adobe"
+          ? "Sign out of an additional device from Profile before continuing."
+          : "Still at device limit — pick another device",
+      };
+    }
 
-  const fingerprint = parseFingerprint(row.device_json);
-  const { token, hash } = generateToken();
-  const pool = getPool();
-  const [res] = await pool.execute<ResultSetHeader>(
-    `INSERT INTO \`${DEVICES_TABLE}\`
-       (user_id, token_hash, user_fingerprint, name, ip, client, last_seen_at)
-     VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-    [
-      userId,
-      hash,
-      row.device_json,
-      fingerprint?.user?.slice(0, 191) ?? null,
-      row.ip,
-      row.client,
-    ],
-  );
-  const deviceId = res.insertId;
-
-  const [upd] = await pool.execute<ResultSetHeader>(
-    `UPDATE \`${SESSIONS_TABLE}\`
-     SET status = 'complete', device_id = ?, token_plain = ?
-     WHERE id = ? AND status = 'device_limit' AND expires_at >= NOW()`,
-    [deviceId, token, row.id],
-  );
-  if (upd.affectedRows === 0) {
-    await pool.execute(
-      `UPDATE \`${DEVICES_TABLE}\` SET revoked_at = NOW() WHERE id = ? AND token_hash = ?`,
-      [deviceId, hash],
+    const fingerprint = parseFingerprint(row.device_json);
+    const { token, hash } = generateToken();
+    const [res] = await pool.execute<ResultSetHeader>(
+      `INSERT INTO \`${DEVICES_TABLE}\`
+         (user_id, token_hash, user_fingerprint, name, ip, client, last_seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+      [
+        userId,
+        hash,
+        row.device_json,
+        fingerprint?.user?.slice(0, 191) ?? null,
+        row.ip,
+        row.client,
+      ],
     );
-    return {
-      ok: false,
-      error: "CODE_EXPIRED",
-      message: "Code expired",
-    };
+    const deviceId = res.insertId;
+
+    const [upd] = await pool.execute<ResultSetHeader>(
+      `UPDATE \`${SESSIONS_TABLE}\`
+       SET status = 'complete', device_id = ?, token_plain = ?
+       WHERE id = ? AND status = 'device_limit' AND expires_at >= NOW()`,
+      [deviceId, token, row.id],
+    );
+    if (upd.affectedRows === 0) {
+      await pool.execute(
+        `UPDATE \`${DEVICES_TABLE}\` SET revoked_at = NOW() WHERE id = ? AND token_hash = ?`,
+        [deviceId, hash],
+      );
+      return {
+        ok: false,
+        error: "CODE_EXPIRED",
+        message: "Code expired",
+      };
+    }
+
+    // Claim immediately so a concurrent poll cannot steal the token
+    await pool.execute(
+      `UPDATE \`${SESSIONS_TABLE}\`
+       SET token_plain = NULL, claimed_at = NOW()
+       WHERE id = ?`,
+      [row.id],
+    );
+
+    const user = await loadUserBasic(userId, pool);
+    if (!user) {
+      return {
+        ok: false,
+        error: "CODE_EXPIRED",
+        message: "User not found",
+      };
+    }
+
+    return { ok: true, token, user };
+  });
+  if (result.ok && row.client === "motionflow-adobe") {
+    const { publishCepDeviceRevoked } = await import("@/lib/cep-events");
+    void publishCepDeviceRevoked({ userId, deviceId: opts.revokeDeviceId });
   }
-
-  // Claim immediately so a concurrent poll cannot steal the token
-  await pool.execute(
-    `UPDATE \`${SESSIONS_TABLE}\`
-     SET token_plain = NULL, claimed_at = NOW()
-     WHERE id = ?`,
-    [row.id],
-  );
-
-  const user = await loadUserBasic(userId);
-  if (!user) {
-    return {
-      ok: false,
-      error: "CODE_EXPIRED",
-      message: "User not found",
-    };
-  }
-
-  return { ok: true, token, user };
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -667,8 +705,8 @@ type UserBasicRow = RowDataPacket & { id: number; email: string; name: string };
 
 async function loadUserBasic(
   userId: number,
+  pool: DeviceQueries = getPool(),
 ): Promise<{ id: number; email: string; name: string } | null> {
-  const pool = getPool();
   const [rows] = await pool.execute<UserBasicRow[]>(
     "SELECT id, email, name FROM users WHERE id = ? LIMIT 1",
     [userId],
@@ -679,10 +717,9 @@ async function loadUserBasic(
 }
 
 /** Active device count for this user + CEP client (Gal and Spunkram have separate seats). */
-async function countActiveDevices(userId: number, client: string): Promise<number> {
+async function countActiveDevices(userId: number, client: string, pool: DeviceQueries = getPool()): Promise<number> {
   const clientId = client.trim();
   if (!clientId) return 0;
-  const pool = getPool();
   const [rows] = await pool.execute<(RowDataPacket & { c: number })[]>(
     `SELECT COUNT(*) AS c FROM \`${DEVICES_TABLE}\`
      WHERE user_id = ? AND revoked_at IS NULL AND client = ?`,
@@ -695,10 +732,10 @@ async function countActiveDevices(userId: number, client: string): Promise<numbe
 async function listActiveDevicesForUserClient(
   userId: number,
   client: string,
+  pool: DeviceQueries = getPool(),
 ): Promise<DeviceRow[]> {
   const clientId = client.trim();
   if (!clientId) return [];
-  const pool = getPool();
   const [rows] = await pool.execute<DeviceRow[]>(
     `SELECT * FROM \`${DEVICES_TABLE}\`
      WHERE user_id = ? AND revoked_at IS NULL AND client = ?
