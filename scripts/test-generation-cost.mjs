@@ -56,7 +56,8 @@ function route(tool, { seconds = 301, modelSeconds = seconds, left = 10, highlig
         text: "Hello", duration_seconds: modelSeconds,
         words: [{ text: "Hello", start: 0, end: modelSeconds, type: "word" }],
       };
-      if (input?.system_prompt?.includes("EDITOR TASK AND OUTPUT CONTRACT")) {
+      const systemPrompt = input?.system_instruction ?? input?.system_prompt;
+      if (systemPrompt?.includes("EDITOR TASK AND OUTPUT CONTRACT")) {
         const { candidates } = JSON.parse(input.prompt);
         return JSON.stringify({
           reviews: candidates.map(({ id }) => ({ candidate_id: id, click_score: 4, angle: `Angle ${id}`, reason: "Fixture candidate" })),
@@ -67,7 +68,7 @@ function route(tool, { seconds = 301, modelSeconds = seconds, left = 10, highlig
           selection_note: "Fixture editor output",
         });
       }
-      const titles = input?.system_prompt?.includes("exactly 9")
+      const titles = systemPrompt?.includes("exactly 9")
         ? ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"]
         : ["One", "Two", "Three"];
       return JSON.stringify({ titles, sections: [{ start_index: 0, topic: "Intro" }], description: "Description", tags: ["audio"] });
