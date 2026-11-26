@@ -389,7 +389,7 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
         variant="ghost"
         size="icon"
         className={cn(
-          "fixed top-3 left-4 lg:hidden bg-background/95 backdrop-blur-sm border border-blue-500/30 shadow-lg h-10 w-10",
+          "fixed top-[calc(0.75rem+var(--marketplace-sale-height,0px))] left-4 lg:hidden bg-background/95 backdrop-blur-sm border border-blue-500/30 shadow-lg h-10 w-10",
           /* Below aside (z-70) when open so the drawer covers the control; above audio drawer (z-60) when closed */
           mobileOpen ? "z-50" : "z-65",
         )}
@@ -411,7 +411,7 @@ export function Sidebar({ activeCategory, onCategoryChange, collapsed, onCollaps
 
       <aside
         className={cn(
-          "fixed top-0 left-0 z-70 lg:z-40 h-screen bg-background/80 backdrop-blur-xl border-r border-border/50 flex flex-col transition-all duration-300 lg:translate-x-0",
+          "fixed top-[var(--marketplace-sale-height,0px)] bottom-0 left-0 z-70 lg:z-40 bg-background/80 backdrop-blur-xl border-r border-border/50 flex flex-col transition-all duration-300 lg:translate-x-0",
           collapsed ? "w-[72px]" : "w-72",
           mobileOpen ? "translate-x-0 w-72" : "-translate-x-full",
         )}

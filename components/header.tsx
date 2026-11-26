@@ -92,7 +92,7 @@ export function Header({
     return authorNavPopovers ? motionflowMainSiteUrl(href) : href;
   };
   const desktopLeftClass = typeof sidebarCollapsed === "boolean" ? (sidebarCollapsed ? "lg:left-[72px]" : "lg:left-72") : "lg:left-0";
-  const positionClass = fixed ? `fixed top-0 right-0 left-0 ${desktopLeftClass}` : "relative";
+  const positionClass = fixed ? `fixed top-[var(--marketplace-sale-height,0px)] right-0 left-0 ${desktopLeftClass}` : "relative";
 
   const openSignInModal = () => {
     setAuthModalMode("signin");

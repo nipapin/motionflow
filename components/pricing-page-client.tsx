@@ -13,6 +13,8 @@ import { usePaddle } from "@/lib/paddle";
 import { useAuth } from "@/components/auth-provider";
 import type { ActiveSubscriptionSummary, PricingBillingPeriod, PricingTier } from "@/lib/subscriptions";
 import { AI_TOOLS } from "@/lib/ai-tools";
+import { MARKETPLACE_ANNUAL_PLANS } from "@/lib/marketplace-black-friday";
+import { useMarketplaceSalePhase } from "@/components/use-marketplace-sale-phase";
 
 type PlanId = PricingTier;
 type BillingPeriod = PricingBillingPeriod;
@@ -20,11 +22,11 @@ type BillingPeriod = PricingBillingPeriod;
 const PRICE_IDS: Record<PlanId, Record<BillingPeriod, string | undefined>> = {
   creator: {
     monthly: process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_MONTHLY,
-    yearly: process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_YEARLY,
+    yearly: MARKETPLACE_ANNUAL_PLANS.creator.priceId,
   },
   creator_ai: {
     monthly: process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_AI_MONTHLY,
-    yearly: process.env.NEXT_PUBLIC_PADDLE_PRICE_CREATOR_AI_YEARLY,
+    yearly: MARKETPLACE_ANNUAL_PLANS.creator_ai.priceId,
   },
 };
 
@@ -134,6 +136,8 @@ interface PricingPageClientProps {
   currentSubscription: ActiveSubscriptionSummary | null;
   /** Affiliate referral slug from the httpOnly cookie, forwarded to Paddle. */
   affiliateSlug?: string | null;
+  saleInitialTime: number | null;
+  salePreview: boolean;
 }
 
 interface UpgradePreview {
@@ -189,12 +193,16 @@ function formatDateDMY(raw: string | null | undefined): string {
   return `${dd}.${mm}.${d.getFullYear()}`;
 }
 
-export function PricingPageClient({ currentUser, currentSubscription, affiliateSlug }: PricingPageClientProps) {
+export function PricingPageClient({ currentUser, currentSubscription, affiliateSlug, saleInitialTime, salePreview }: PricingPageClientProps) {
   const router = useRouter();
   const { paddle, ready, subscribe } = usePaddle();
   const { openSignIn } = useAuth();
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>(currentSubscription?.billingPeriod ?? "yearly");
   const [pendingPlan, setPendingPlan] = useState<PlanId | null>(null);
+  const salePhase = useMarketplaceSalePhase(saleInitialTime);
+  const saleActive = salePhase === "active";
+  const annualSaleAvailable = !currentSubscription && (saleActive || salePreview);
+  const showAnnualSale = annualSaleAvailable && billingPeriod === "yearly";
   const [downgradeTarget, setDowngradeTarget] = useState<{
     tier: PlanId;
     billingPeriod: BillingPeriod;
@@ -211,11 +219,11 @@ export function PricingPageClient({ currentUser, currentSubscription, affiliateS
   const [submittingUpgrade, setSubmittingUpgrade] = useState(false);
 
   const monthlyPrice = 18;
-  const yearlyPrice = monthlyPrice * 12 * 0.8;
+  const yearlyPrice = MARKETPLACE_ANNUAL_PLANS.creator.dollarPrice;
   const yearlyMonthlyPrice = yearlyPrice / 12;
 
   const ultimateMonthly = 29;
-  const ultimateYearly = ultimateMonthly * 12 * 0.8;
+  const ultimateYearly = MARKETPLACE_ANNUAL_PLANS.creator_ai.dollarPrice;
   const ultimateYearlyMonthly = ultimateYearly / 12;
 
   useEffect(() => {
@@ -236,7 +244,12 @@ export function PricingPageClient({ currentUser, currentSubscription, affiliateS
    * `openUpgradeModal` so the buyer pays only the prorated difference and the
    * same `subscription_id` gets updated in place.
    */
-  const openCheckout = (plan: PlanId) => {
+  const openCheckout = async (plan: PlanId) => {
+    if (pendingPlan) return;
+    if (showAnnualSale && !saleActive) {
+      toast.info("Black Friday checkout is only available during the sale.");
+      return;
+    }
     if (!currentUser) {
       openSignIn("signin");
       return;
@@ -258,13 +271,29 @@ export function PricingPageClient({ currentUser, currentSubscription, affiliateS
 
     const coupon = checkoutDiscountCode();
 
+    const settings = { displayMode: "overlay", theme: "light", allowLogout: false } as const;
     try {
+      if (showAnnualSale) {
+        const response = await fetch("/api/subscription/sale-checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ plan }),
+        });
+        const data = await response.json() as { transactionId?: string; error?: string };
+        if (!response.ok || !data.transactionId) {
+          toast.error(data.error ?? "Could not prepare the discounted checkout. Please try again.");
+          return;
+        }
+        paddle.Checkout.open({
+          settings: { ...settings, allowDiscountRemoval: false },
+          transactionId: data.transactionId,
+          customer: { email: currentUser.email },
+        });
+        return;
+      }
+
       paddle.Checkout.open({
-        settings: {
-          displayMode: "overlay",
-          theme: "light",
-          allowLogout: false,
-        },
+        settings,
         items: [{ priceId, quantity: 1 }],
         customer: { email: currentUser.email },
         customData: {
@@ -454,6 +483,9 @@ export function PricingPageClient({ currentUser, currentSubscription, affiliateS
         <p className="text-muted-foreground text-lg max-w-2xl mx-auto text-pretty leading-relaxed">
           Get unlimited access to all templates, music, and sound effects. Cancel anytime.
         </p>
+        {showAnnualSale && salePreview && !saleActive && (
+          <p className="mt-3 text-sm text-muted-foreground">Black Friday pricing preview</p>
+        )}
 
       </div>
 
@@ -530,14 +562,16 @@ export function PricingPageClient({ currentUser, currentSubscription, affiliateS
             )}
           >
             Yearly
-            <span
-              className={cn(
-                "text-xs px-2 py-0.5 rounded-full",
-                billingPeriod === "yearly" ? "bg-white/20 text-white" : "bg-emerald-500/20 text-emerald-400",
-              )}
-            >
-              -20%
-            </span>
+            {!annualSaleAvailable && (
+              <span
+                className={cn(
+                  "text-xs px-2 py-0.5 rounded-full",
+                  billingPeriod === "yearly" ? "bg-white/20 text-white" : "bg-emerald-500/20 text-emerald-400",
+                )}
+              >
+                -20%
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -548,6 +582,8 @@ export function PricingPageClient({ currentUser, currentSubscription, affiliateS
           const relation = relationFor(currentSubscription, plan.id, billingPeriod);
           const isCurrent = relation === "current";
           const isScheduledTarget = relation === "scheduled-target";
+          const salePercent = MARKETPLACE_ANNUAL_PLANS[plan.id].percent;
+          const firstYear = plan.yearly * (100 - salePercent) / 100;
 
           const cardClasses = plan.isFeatured
             ? "border-2 border-blue-500/50 bg-gradient-to-br from-card via-card to-blue-500/5 shadow-xl shadow-blue-500/10"
@@ -573,17 +609,40 @@ export function PricingPageClient({ currentUser, currentSubscription, affiliateS
               </div>
 
               <div className="mb-6">
-                <div className="flex items-baseline gap-1">
-                  <span className="text-5xl font-semibold text-foreground tracking-tight">
-                    ${billingPeriod === "monthly" ? plan.monthly : plan.yearlyMonthly.toFixed(0)}
-                  </span>
-                  <span className="text-muted-foreground">/month</span>
-                </div>
-                {billingPeriod === "yearly" && (
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-muted-foreground line-through text-sm">${plan.monthly * 12}/year</span>
-                    <span className="text-foreground text-sm font-medium">${plan.yearly.toFixed(0)}/year</span>
-                  </div>
+                {showAnnualSale ? (
+                  <>
+                    <span className="mb-2 inline-flex rounded-full border border-blue-400/40 bg-blue-500/15 px-2.5 py-1 text-sm font-semibold text-blue-700 dark:text-blue-200">
+                      {salePercent}% off
+                    </span>
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                      <del className="text-sm text-muted-foreground">{formatMoney(plan.yearly / 12, "USD")}</del>
+                      <span className="inline-flex items-baseline gap-1 whitespace-nowrap">
+                        <span className="text-4xl font-semibold tracking-tight text-foreground xl:text-5xl">
+                          {formatMoney(firstYear / 12, "USD")}
+                        </span>
+                        <span className="text-sm text-muted-foreground">/month</span>
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      <span className="font-medium text-foreground">{formatMoney(firstYear, "USD")} first year</span>
+                      {" · then "}{formatMoney(plan.yearly, "USD")}/year
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-5xl font-semibold text-foreground tracking-tight">
+                        ${billingPeriod === "monthly" ? plan.monthly : plan.yearlyMonthly.toFixed(0)}
+                      </span>
+                      <span className="text-muted-foreground">/month</span>
+                    </div>
+                    {billingPeriod === "yearly" && (
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-muted-foreground line-through text-sm">${plan.monthly * 12}/year</span>
+                        <span className="text-foreground text-sm font-medium">${plan.yearly.toFixed(0)}/year</span>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -600,7 +659,7 @@ export function PricingPageClient({ currentUser, currentSubscription, affiliateS
                   if (currentSubscription) {
                     void openUpgradeModal(plan.id);
                   } else {
-                    openCheckout(plan.id);
+                    void openCheckout(plan.id);
                   }
                 }}
                 onScheduleDowngrade={() => setDowngradeTarget({ tier: plan.id, billingPeriod })}

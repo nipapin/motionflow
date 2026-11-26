@@ -292,6 +292,7 @@ export interface PaddleApiTransaction {
   subscription_id?: string | null;
   invoice_id?: string | null;
   invoice_number?: string | null;
+  discount_id?: string | null;
   custom_data?: {
     buyer_id?: string | number;
     userId?: string | number;
@@ -336,11 +337,17 @@ export function createCheckoutTransaction(
   priceId: string,
   customData: Record<string, unknown>,
   source: { account: PaddleApiAccount; environment: SpunkramPaddleEnvironment },
+  discountId?: string,
 ) {
   return paddleFetch<PaddleApiTransaction>("/transactions", {
     ...source,
     method: "POST",
-    body: JSON.stringify({ items: [{ price_id: priceId, quantity: 1 }], collection_mode: "automatic", custom_data: customData }),
+    body: JSON.stringify({
+      items: [{ price_id: priceId, quantity: 1 }],
+      collection_mode: "automatic",
+      custom_data: customData,
+      ...(discountId ? { discount_id: discountId } : {}),
+    }),
   });
 }
 
