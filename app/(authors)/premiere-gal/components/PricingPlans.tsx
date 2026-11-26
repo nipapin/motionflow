@@ -3,8 +3,9 @@
 import { Check } from "@mui/icons-material";
 import { Box, Button, Stack, Typography, useColorScheme } from "@mui/material";
 import { useState } from "react";
+import { BLACK_FRIDAY_DISCOUNTS, getPremiereGalOffer } from "@/lib/premiere-gal-black-friday";
 import { options, pricingPlans, type PricingPlanEntry } from "../entities/pricing";
-import { useDiscount } from "../hooks/use-discount";
+import { useBlackFridayPhase } from "../hooks/use-black-friday";
 import { usePageSets } from "../page-sets-context";
 import { useBuyGalToolkit } from "../use-buy-gal-toolkit";
 import FreeDownloadDialog from "./FreeDownloadDialog";
@@ -15,19 +16,32 @@ const YEARLY_BILLED_TOTAL = 199;
 
 /** Port of `resources/js/premieregal/components/PricingPlans.jsx`. */
 export function PricingPlans() {
-  const isDiscount = useDiscount();
   const pageSets = usePageSets();
-  const discountPercent = typeof pageSets.discount_percent === "number" ? pageSets.discount_percent : 50;
+  const salePhase = useBlackFridayPhase();
   const { mode } = useColorScheme();
   const [activePlan, setActivePlan] = useState(
     () => pricingPlans.find((p) => p.priceKey === "yearly") ?? pricingPlans[1],
   );
   const [freeDownloadOpen, setFreeDownloadOpen] = useState(false);
-  const buyGalToolkit = useBuyGalToolkit();
+  const { buyGalToolkit, openingCheckout } = useBuyGalToolkit();
 
   const isFree = activePlan.priceKey === "free";
-  const hasDiscount = isDiscount && (activePlan.priceKey === "yearly" || activePlan.priceKey === "lifetime");
-  const discountedPrice = hasDiscount ? +(activePlan.price * (1 - discountPercent / 100)).toFixed(2) : null;
+  const isYearly = activePlan.priceKey === "yearly";
+  const localPreview = process.env.NODE_ENV === "development" && salePhase === "upcoming";
+  const getPlanOffer = (plan: PricingPlanEntry["priceKey"]) => {
+    if (localPreview && (plan === "yearly" || plan === "lifetime")) return BLACK_FRIDAY_DISCOUNTS[plan];
+    return getPremiereGalOffer(plan, salePhase, pageSets);
+  };
+  const offer = getPlanOffer(activePlan.priceKey);
+  const previewOnly = localPreview && offer?.source === "black-friday";
+  const discountFactor = 1 - (offer?.percent ?? 0) / 100;
+  const yearlyTotal = YEARLY_BILLED_TOTAL * discountFactor;
+  const salePrice = isYearly ? yearlyTotal / 12 : activePlan.price * discountFactor;
+  const shownPrice = offer?.source === "black-friday" ? salePrice.toFixed(2)
+    : offer ? String(+(activePlan.price * discountFactor).toFixed(2)) : String(activePlan.price);
+  const tagline = isYearly && offer?.source === "black-friday"
+    ? `First year $${yearlyTotal.toFixed(2)} · then $${YEARLY_BILLED_TOTAL}/year`
+    : isYearly && offer ? `Billed yearly ($${yearlyTotal.toFixed(2)})` : activePlan.tagline;
   const featureList = activePlan.features ?? options;
   const maxFeatureCount = Math.max(
     options.length,
@@ -35,11 +49,12 @@ export function PricingPlans() {
   );
 
   const handleCta = () => {
+    if (previewOnly) return;
     if (activePlan.priceKey === "free") {
       setFreeDownloadOpen(true);
       return;
     }
-    buyGalToolkit(activePlan.priceKey);
+    void buyGalToolkit(activePlan.priceKey, offer);
   };
 
   return (
@@ -55,35 +70,42 @@ export function PricingPlans() {
             borderRadius: "8px",
           }}
         >
-          {pricingPlans.map((plan) => (
-            <PricingPlan
-              key={plan.id}
-              hasDiscount={isDiscount}
-              plan={plan}
-              active={activePlan.id === plan.id}
-              onClick={() => setActivePlan(plan)}
-            />
-          ))}
+          {pricingPlans.map((plan) => {
+            const planOffer = getPlanOffer(plan.priceKey);
+            const promotional = (salePhase === "active" || localPreview) && !!planOffer;
+            const chip = promotional ? `${planOffer.percent}% off` : planOffer ? null : plan.chip;
+            return (
+              <PricingPlan
+                key={plan.id}
+                chip={chip}
+                promotional={promotional}
+                plan={plan}
+                active={activePlan.id === plan.id}
+                onClick={() => setActivePlan(plan)}
+              />
+            );
+          })}
         </PaperCard>
-        <Stack direction="row" alignItems="baseline" gap={1} sx={{ mt: "1rem", minHeight: 56 }}>
-          {hasDiscount && (
+        <Stack direction="row" alignItems="baseline" justifyContent="center" gap={0.75} sx={{ mt: "1rem", minHeight: 56, flexWrap: "wrap" }}>
+          {offer && (
             <Typography
-              fontWeight={700}
-              fontSize={25}
+              component="del"
+              fontWeight={400}
+              fontSize={{ xs: 18, xl: 23 }}
               color="var(--link-color)"
-              sx={{ textDecoration: "line-through", opacity: 0.5, fontWeight: 400 }}
             >
-              ${activePlan.price}
+              ${offer.source === "black-friday" ? activePlan.price.toFixed(2) : activePlan.price}
             </Typography>
           )}
-          <Typography fontWeight={700} fontSize={48} color="var(--text-color)" sx={{ display: "flex", alignItems: "baseline", lineHeight: 1 }}>
+          <Typography fontWeight={700} fontSize={offer ? { xs: 37, lg: 42, xl: 48 } : 48} color="var(--text-color)"
+            sx={{ display: "flex", alignItems: "baseline", gap: 0.5, lineHeight: 1, letterSpacing: offer ? "-0.045em" : undefined }}>
             {isFree ? (
               "Free"
             ) : (
               <>
-                ${hasDiscount ? discountedPrice : activePlan.price}{" "}
+                ${shownPrice}
                 {activePlan.per && (
-                  <Typography component="span" fontWeight={400} fontSize={20} color="var(--link-color)" sx={{ display: "block" }}>
+                  <Typography component="span" fontWeight={400} fontSize={offer ? 15 : 20} color="var(--link-color)" sx={{ letterSpacing: 0 }}>
                     {activePlan.per}
                   </Typography>
                 )}
@@ -91,10 +113,8 @@ export function PricingPlans() {
             )}
           </Typography>
         </Stack>
-        <Typography fontWeight={400} fontSize={12} color="var(--text-color)" sx={{ minHeight: 18 }}>
-          {activePlan.priceKey === "yearly" && isDiscount
-            ? `Billed yearly ($${(YEARLY_BILLED_TOTAL * (1 - discountPercent / 100)).toFixed(2)})`
-            : activePlan.tagline}
+        <Typography fontWeight={400} fontSize={12} color="var(--text-color)" sx={{ minHeight: 18, textAlign: "center" }}>
+          {tagline}
         </Typography>
         <Stack
           direction="column"
@@ -117,6 +137,8 @@ export function PricingPlans() {
           variant="contained"
           sx={{ background: "var(--linear-gradient)", py: "8px", borderRadius: "8px", fontWeight: 400, mt: "auto" }}
           onClick={handleCta}
+          disabled={openingCheckout || previewOnly}
+          aria-busy={openingCheckout}
         >
           <Typography fontWeight={400} fontSize={12} color="white">
             {isFree ? "Download the Free Version." : "Get Started Now"}
@@ -133,16 +155,18 @@ const PricingPlan = ({
   plan,
   active,
   onClick,
-  hasDiscount,
+  chip,
+  promotional,
 }: {
   plan: PricingPlanEntry;
   active: boolean;
   onClick: () => void;
-  hasDiscount: boolean;
+  chip: string | null;
+  promotional: boolean;
 }) => {
   return (
     <Box sx={{ position: "relative", width: "100%" }}>
-      {!hasDiscount && <PricingPlanChip plan={plan} />}
+      {chip && <PricingPlanChip label={chip} promotional={promotional} />}
       <Button
         disableElevation
         variant={active ? "contained" : "text"}

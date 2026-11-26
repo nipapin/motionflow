@@ -3,6 +3,7 @@
 import { Box, Stack, Typography, useColorScheme } from "@mui/material";
 import { useMobile } from "../hooks/use-mobile";
 import GalToolkitAppBar from "./AppBar";
+import BlackFridayBanner from "./BlackFridayBanner";
 import Blocks from "./Blocks";
 import Contact from "./Contact";
 import Discount from "./Discount";
@@ -24,6 +25,7 @@ export default function Content() {
   return (
     <Stack direction="column" gap={2} width="100%">
       <GalToolkitAppBar />
+      <BlackFridayBanner />
       <HeroVideo />
       {isMobile && (
         <>

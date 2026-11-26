@@ -16,7 +16,7 @@ export default async function PremiereGalPage({
   const { code, client: clientRaw } = await searchParams;
 
   return (
-    <PageSetsProvider value={pageSets}>
+    <PageSetsProvider value={{ ...pageSets, initialTime: Date.now() }}>
       <CepExtensionAuthDialog
         initialCode={code ?? ""}
         initialClient={

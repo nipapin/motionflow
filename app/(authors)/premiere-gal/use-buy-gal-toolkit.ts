@@ -1,18 +1,21 @@
 "use client";
 
 import { toast } from "sonner";
+import { useRef, useState } from "react";
 import { usePaddle } from "@/lib/paddle";
 import { useAuth } from "@/components/auth-provider";
+import type { PremiereGalOffer } from "@/lib/premiere-gal-black-friday";
 import { PREMIERE_GAL_PRICE_IDS, type PremiereGalPlanId } from "@/lib/premiere-gal-paddle-config";
-import { usePageSets } from "./page-sets-context";
 
 /** Port of the inline `buyItemPaymentGate(plan)` from `resources/views/premieregal/main.blade.php`. */
 export function useBuyGalToolkit() {
   const { paddle, ready } = usePaddle();
   const { user, openSignIn } = useAuth();
-  const pageSets = usePageSets();
+  const [openingCheckout, setOpeningCheckout] = useState(false);
+  const opening = useRef(false);
 
-  return (plan: PremiereGalPlanId) => {
+  const buyGalToolkit = async (plan: PremiereGalPlanId, offer?: PremiereGalOffer) => {
+    if (opening.current) return;
     if (!user) {
       openSignIn("signin");
       return;
@@ -28,27 +31,41 @@ export function useBuyGalToolkit() {
       return;
     }
 
-    const discountId = plan === "monthly" ? undefined : (pageSets.discount_id ?? undefined);
-
+    const settings = { displayMode: "overlay", theme: "light", allowLogout: false } as const;
     try {
+      if (offer?.source === "black-friday") {
+        opening.current = true;
+        setOpeningCheckout(true);
+        const response = await fetch("/api/premiere-gal/sale-checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ plan }),
+        });
+        const data = await response.json() as { transactionId?: string; error?: string };
+        if (!response.ok || !data.transactionId) throw new Error(data.error || "Could not prepare the discounted checkout.");
+        paddle.Checkout.open({ settings, transactionId: data.transactionId, customer: { email: user.email } });
+        return;
+      }
+
       // Paddle customData values must be strings (Laravel Blade sent buyer_id as a string).
       paddle.Checkout.open({
-        settings: {
-          displayMode: "overlay",
-          theme: "light",
-          allowLogout: false,
-        },
+        settings,
         items: [{ priceId, quantity: 1 }],
         customer: { email: user.email },
         customData: {
           buyer_id: String(user.id),
           plan,
         },
-        ...(discountId ? { discountId } : {}),
+        ...(offer ? { discountId: offer.id } : {}),
       });
     } catch (err) {
       console.error("[premiere-gal] paddle checkout open failed:", err);
-      toast.error("Could not open checkout. Please try again.");
+      toast.error(err instanceof Error ? err.message : "Could not open checkout. Please try again.");
+    } finally {
+      opening.current = false;
+      setOpeningCheckout(false);
     }
   };
+
+  return { buyGalToolkit, openingCheckout };
 }

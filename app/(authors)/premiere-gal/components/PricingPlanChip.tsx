@@ -1,12 +1,10 @@
 "use client";
 
 import { Box, Typography, useColorScheme } from "@mui/material";
-import type { PricingPlanEntry } from "../entities/pricing";
 
 /** Port of `resources/js/premieregal/components/PricingPlanChip.jsx`. */
-export default function PricingPlanChip({ plan }: { plan: PricingPlanEntry }) {
+export default function PricingPlanChip({ label, promotional }: { label: string; promotional: boolean }) {
   const { mode } = useColorScheme();
-  if (!plan.chip) return null;
 
   return (
     <Box
@@ -19,12 +17,12 @@ export default function PricingPlanChip({ plan }: { plan: PricingPlanEntry }) {
         color: mode === "dark" ? "black" : "white",
         background: mode === "dark" ? "white" : "var(--dark-background-color)",
         zIndex: 1,
-        p: "2px 4px",
+        p: promotional ? "3px 6px" : "2px 4px",
         borderRadius: "8px",
       }}
     >
-      <Typography fontWeight={400} fontSize={8}>
-        {plan.chip}
+      <Typography fontWeight={promotional ? 500 : 400} fontSize={promotional ? 10 : 8}>
+        {label}
       </Typography>
     </Box>
   );
