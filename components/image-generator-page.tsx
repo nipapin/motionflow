@@ -1,7 +1,7 @@
 "use client";
 
-import { ImageGenerator } from "@/components/image-generator";
+import { AiToolsWorkspace } from "@/components/ai-tools-workspace";
 
 export function ImageGeneratorPage() {
-  return <ImageGenerator />;
+  return <AiToolsWorkspace initialTool="image" />;
 }

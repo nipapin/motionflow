@@ -1,7 +1,7 @@
 "use client";
 
-import { TextToSpeech } from "@/components/text-to-speech";
+import { AiToolsWorkspace } from "@/components/ai-tools-workspace";
 
 export function TextToSpeechPage() {
-  return <TextToSpeech />;
+  return <AiToolsWorkspace initialTool="voice" />;
 }

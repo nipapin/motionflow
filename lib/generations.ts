@@ -18,12 +18,12 @@ import {
   subscriptionAdjustmentFromRow,
 } from "@/lib/user-generation-credits";
 
-/** Lifetime cap for users without an active Motionflow Creator subscription. */
-export const FREE_GENERATIONS_LIMIT = 5;
-/** Generations per Paddle billing period for Motionflow Creator (no AI bundle). */
-export const CREATOR_BILLING_PERIOD_GENERATIONS_LIMIT = 5;
-/** Generations per Paddle billing period for Motionflow Creator + AI. */
-export const CREATOR_AI_BILLING_PERIOD_GENERATIONS_LIMIT = 100;
+import {
+  FREE_GENERATIONS_LIMIT,
+  CREATOR_BILLING_PERIOD_GENERATIONS_LIMIT,
+  CREATOR_AI_BILLING_PERIOD_GENERATIONS_LIMIT,
+} from "@/lib/generation-limits";
+export { FREE_GENERATIONS_LIMIT, CREATOR_BILLING_PERIOD_GENERATIONS_LIMIT, CREATOR_AI_BILLING_PERIOD_GENERATIONS_LIMIT } from "@/lib/generation-limits";
 
 export const GENERATION_TOOLS = [
   "image",
@@ -302,17 +302,18 @@ export async function consumeGeneration(
     const subscriptionLeft = Math.max(0, effectiveLimit - used);
     const totalLeft = subscriptionLeft + extraCount;
 
-    const emptyStatus = (u: number): GenerationStatus => ({
-      used: u,
+    // A rejected multi-unit request leaves the available balance unchanged.
+    const unchangedStatus: GenerationStatus = {
+      used,
       limit,
       effective_limit: effectiveLimit,
-      remaining: 0,
+      remaining: subscriptionLeft,
       hasSubscription,
       plan,
-      subscription_generations_left: 0,
-      extra_generations_left: 0,
-      total_generations_left: 0,
-    });
+      subscription_generations_left: subscriptionLeft,
+      extra_generations_left: extraCount,
+      total_generations_left: totalLeft,
+    };
 
     if (units === 0) {
       await conn.commit();
@@ -337,7 +338,7 @@ export async function consumeGeneration(
       return {
         ok: false,
         reason: "limit_reached",
-        status: emptyStatus(used),
+        status: unchangedStatus,
       };
     }
 
@@ -360,7 +361,7 @@ export async function consumeGeneration(
           return {
             ok: false,
             reason: "limit_reached",
-            status: emptyStatus(used),
+            status: unchangedStatus,
           };
         }
         newExtraLeft -= 1;

@@ -1,5 +1,9 @@
 "use client";
 
+import { AiPromptField, AiToolHistoryLink, AiGenerationCost } from "@/components/ai-composer-controls";
+
+import { cn } from "@/lib/utils";
+
 import Link from "next/link";
 import { useState, useEffect, useCallback, type FormEvent } from "react";
 import {
@@ -343,28 +347,20 @@ export function SvgGenerator() {
         error={generationsError}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
+      <div className="ai-tool-body grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
         <form
           onSubmit={handleGenerate}
-          className="lg:col-span-1 space-y-3 lg:space-y-6"
+          className="ai-composer ai-composer--graphic lg:col-span-1 space-y-3 lg:space-y-6"
         >
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
-            <label
-              htmlFor="svg-prompt"
-              className="text-sm font-medium text-foreground mb-3 block"
-            >
-              Prompt
-            </label>
-            <textarea
-              id="svg-prompt"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Describe the vector graphic you want to create..."
-              className="w-full h-32 bg-background/50 border border-blue-500/30 rounded-xl p-4 text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:border-blue-500/60 smooth"
-            />
-          </div>
+          <AiPromptField
+            id="svg-prompt"
+            label="Prompt"
+            value={prompt}
+            onValueChange={setPrompt}
+            placeholder="Describe the vector graphic you want to create..."
+          />
 
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
+          <div className="ai-control ai-setting rounded-2xl border border-blue-500/30 bg-card/50 p-5">
             <label
               htmlFor="svg-style"
               className="text-sm font-medium text-foreground mb-3 block"
@@ -390,7 +386,7 @@ export function SvgGenerator() {
             </Select>
           </div>
 
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
+          <div className="ai-control ai-setting rounded-2xl border border-blue-500/30 bg-card/50 p-5">
             <label
               htmlFor="svg-ratio"
               className="text-sm font-medium text-foreground mb-3 block"
@@ -414,7 +410,7 @@ export function SvgGenerator() {
           <Button
             type="submit"
             disabled={!prompt.trim() || isGenerating || generationsLoading}
-            className="w-full h-12 bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl font-medium smooth shadow-lg shadow-blue-500/25 disabled:opacity-50"
+            className="ai-submit w-full h-12 bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl font-medium smooth shadow-lg shadow-blue-500/25 disabled:opacity-50"
           >
             {isGenerating ? (
               <>
@@ -427,15 +423,16 @@ export function SvgGenerator() {
                 Generate
               </>
             )}
+            <AiGenerationCost />
           </Button>
 
           {errorMessage && (
-            <p className="text-sm text-red-400 text-center">{errorMessage}</p>
+            <p className="ai-error text-sm text-red-400 text-center">{errorMessage}</p>
           )}
         </form>
 
-        <div className="lg:col-span-2 space-y-6">
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5 min-h-[350px]">
+        <div className="ai-results lg:col-span-2 space-y-6">
+          <div className={cn("rounded-2xl border border-blue-500/30 bg-card/50 p-5 min-h-[350px]", generatedSvgs.length === 0 && "ai-result-empty")}>
             <h3 className="text-lg font-medium text-foreground mb-4">
               Generated SVG
             </h3>
@@ -482,7 +479,7 @@ export function SvgGenerator() {
                 </div>
               </div>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center py-16">
+              <div className="ai-empty-content h-full flex flex-col items-center justify-center text-center py-16">
                 <div className="w-20 h-20 rounded-2xl bg-blue-500/10 flex items-center justify-center mb-4">
                   <Shapes className="w-10 h-10 text-blue-400" />
                 </div>
@@ -496,6 +493,8 @@ export function SvgGenerator() {
               </div>
             )}
           </div>
+
+          <AiToolHistoryLink />
 
           {user && recentSvgs.length > 0 ? (
             <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">

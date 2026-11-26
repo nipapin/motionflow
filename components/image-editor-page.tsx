@@ -1,7 +1,7 @@
 "use client";
 
-import { ImageEditor } from "@/components/image-editor";
+import { AiToolsWorkspace } from "@/components/ai-tools-workspace";
 
 export function ImageEditorPage() {
-  return <ImageEditor />;
+  return <AiToolsWorkspace initialTool="edit" />;
 }

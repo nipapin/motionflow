@@ -1,5 +1,10 @@
 "use client";
 
+import { AiPromptField, AiToolHistoryLink, AiImageAttachment, AiGenerationCost } from "@/components/ai-composer-controls";
+import { AI_GENERATION_COST, AI_VIDEO_GENERATION_COST } from "@/lib/ai-tool-cost";
+
+import { cn } from "@/lib/utils";
+
 import { useState, useEffect, useCallback, type FormEvent } from "react";
 import {
   Video,
@@ -226,8 +231,8 @@ export function VideoGenerator() {
    * Runs the generation gate check and triggers the appropriate UI response.
    * Returns true if the caller is clear to proceed, false if blocked.
    */
-  const checkGenerationGate = useCallback((): boolean => {
-    const block = getAiGenerateBlockReason(user, generations, generationsLoading);
+  const checkGenerationGate = useCallback((cost: number = AI_GENERATION_COST): boolean => {
+    const block = getAiGenerateBlockReason(user, generations, generationsLoading, cost);
     if (block === "sign_in") {
       markGuestWantedGenerate();
       setSignInOpen(true);
@@ -290,7 +295,7 @@ export function VideoGenerator() {
       return;
     }
 
-    if (!checkGenerationGate()) return;
+    if (!checkGenerationGate(AI_VIDEO_GENERATION_COST)) return;
 
     setIsGenerating(true);
 
@@ -364,116 +369,30 @@ export function VideoGenerator() {
         error={generationsError}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
-        <form onSubmit={handleGenerate} className="lg:col-span-1 space-y-3 lg:space-y-6">
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
-            <label
-              htmlFor="video-prompt"
-              className="text-sm font-medium text-foreground mb-3 block"
-            >
-              Video Prompt
-            </label>
-            <textarea
-              id="video-prompt"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Describe the video you want to create... (e.g., 'A drone shot flying over mountains at sunset')"
-              className="w-full h-32 bg-background/50 border border-blue-500/30 rounded-xl p-4 text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:border-blue-500/60 smooth"
-            />
-          </div>
+      <div className="ai-tool-body grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
+        <form onSubmit={handleGenerate} className="ai-composer ai-composer--video lg:col-span-1 space-y-3 lg:space-y-6">
+          <AiPromptField
+            id="video-prompt"
+            label="Video Prompt"
+            value={prompt}
+            onValueChange={setPrompt}
+            placeholder="Describe the video you want to create... (e.g., 'A drone shot flying over mountains at sunset')"
+          />
 
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5 space-y-5">
-            <div className="space-y-3">
-              <div>
-                <p className="text-sm font-medium text-foreground">Frames (optional)</p>
-                <p className="text-xs text-muted-foreground">
-                  Optional reference images for the first and last frames. PNG, JPEG, or WebP.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="relative mx-auto w-full max-w-[180px]">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setErrorMessage(null);
-                      setFramePickerSlot("first");
-                    }}
-                    className="flex aspect-square w-full cursor-pointer flex-col overflow-hidden rounded-xl border border-blue-500/30 bg-background/35 text-left transition-colors hover:border-blue-500/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
-                  >
-                    <div className="relative flex min-h-0 flex-1 flex-col">
-                      {firstFrameUrl ? (
-                        <img
-                          src={replicateFileUrlToDisplaySrc(firstFrameUrl)}
-                          alt="First frame"
-                          className="h-full w-full flex-1 object-cover"
-                        />
-                      ) : (
-                        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-3 text-muted-foreground/70">
-                          <ImageIcon className="h-8 w-8" />
-                          <span className="text-xs font-medium text-foreground/90 text-center leading-snug">
-                            First frame
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </button>
-                  {firstFrameUrl ? (
-                    <button
-                      type="button"
-                      aria-label="Clear first frame"
-                      className="absolute right-1 top-1 z-10 h-7 w-7 cursor-pointer rounded-full border border-blue-500/35 bg-background/80 p-0 text-muted-foreground leading-none backdrop-blur-sm transition-colors hover:text-foreground"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setFirstFrameUrl(null);
-                      }}
-                    >
-                      <X className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2" />
-                    </button>
-                  ) : null}
-                </div>
-
-                <div className="relative mx-auto w-full max-w-[180px]">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setErrorMessage(null);
-                      setFramePickerSlot("last");
-                    }}
-                    className="flex aspect-square w-full cursor-pointer flex-col overflow-hidden rounded-xl border border-blue-500/30 bg-background/35 text-left transition-colors hover:border-blue-500/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
-                  >
-                    <div className="relative flex min-h-0 flex-1 flex-col">
-                      {lastFrameUrl ? (
-                        <img
-                          src={replicateFileUrlToDisplaySrc(lastFrameUrl)}
-                          alt="Last frame"
-                          className="h-full w-full flex-1 object-cover"
-                        />
-                      ) : (
-                        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-3 text-muted-foreground/70">
-                          <ImageIcon className="h-8 w-8" />
-                          <span className="text-xs font-medium text-foreground/90 text-center leading-snug">
-                            Last frame
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </button>
-                  {lastFrameUrl ? (
-                    <button
-                      type="button"
-                      aria-label="Clear last frame"
-                      className="absolute right-1 top-1 z-10 h-7 w-7 cursor-pointer rounded-full border border-blue-500/35 bg-background/80 p-0 text-muted-foreground leading-none backdrop-blur-sm transition-colors hover:text-foreground"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setLastFrameUrl(null);
-                      }}
-                    >
-                      <X className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2" />
-                    </button>
-                  ) : null}
-                </div>
-              </div>
+          <div className="ai-control ai-video-options rounded-2xl border border-blue-500/30 bg-card/50 p-5 space-y-5">
+            <div className="ai-attachments" role="group" aria-label="Optional frame references">
+              <AiImageAttachment
+                label="First frame (optional)"
+                attached={Boolean(firstFrameUrl)}
+                onChoose={() => { setErrorMessage(null); setFramePickerSlot("first"); }}
+                onClear={() => setFirstFrameUrl(null)}
+              />
+              <AiImageAttachment
+                label="Last frame (optional)"
+                attached={Boolean(lastFrameUrl)}
+                onChoose={() => { setErrorMessage(null); setFramePickerSlot("last"); }}
+                onClear={() => setLastFrameUrl(null)}
+              />
             </div>
 
             <div>
@@ -523,7 +442,7 @@ export function VideoGenerator() {
               </Select>
             </div>
 
-            <div>
+            <div className="ai-audio-option">
               <div className="flex items-center justify-between rounded-xl border border-blue-500/30 bg-background/40 p-3">
                 <div>
                   <p className="text-sm font-medium text-foreground">Audio</p>
@@ -545,7 +464,7 @@ export function VideoGenerator() {
           <Button
             type="submit"
             disabled={!prompt.trim() || isGenerating || generationsLoading}
-            className="w-full h-12 bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl font-medium smooth shadow-lg shadow-blue-500/25 disabled:opacity-50"
+            className="ai-submit w-full h-12 bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl font-medium smooth shadow-lg shadow-blue-500/25 disabled:opacity-50"
           >
             {isGenerating ? (
               <>
@@ -558,10 +477,11 @@ export function VideoGenerator() {
                 Generate Video
               </>
             )}
+            <AiGenerationCost cost={AI_VIDEO_GENERATION_COST} />
           </Button>
 
           {errorMessage && (
-            <p className="text-sm text-red-400 text-center">{errorMessage}</p>
+            <p className="ai-error text-sm text-red-400 text-center">{errorMessage}</p>
           )}
         </form>
 
@@ -596,8 +516,8 @@ export function VideoGenerator() {
           generationsLoading={generationsLoading}
         />
 
-        <div className="lg:col-span-2 space-y-6">
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5 min-h-[350px]">
+        <div className="ai-results lg:col-span-2 space-y-6">
+          <div className={cn("rounded-2xl border border-blue-500/30 bg-card/50 p-5 min-h-[350px]", !generatedVideo && "ai-result-empty")}>
             <h3 className="text-lg font-medium text-foreground mb-4">
               Generated Video
             </h3>
@@ -636,7 +556,7 @@ export function VideoGenerator() {
                 </div>
               </div>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center py-16">
+              <div className="ai-empty-content h-full flex flex-col items-center justify-center text-center py-16">
                 <div className="w-20 h-20 rounded-2xl bg-blue-500/10 flex items-center justify-center mb-4">
                   <Video className="w-10 h-10 text-blue-400" />
                 </div>
@@ -649,6 +569,8 @@ export function VideoGenerator() {
               </div>
             )}
           </div>
+
+          <AiToolHistoryLink />
 
           {user && recentVideos.length > 0 ? (
             <RecentVideosList

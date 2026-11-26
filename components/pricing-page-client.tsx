@@ -65,7 +65,7 @@ const CREATOR_INCLUDES: PlanIncludeItem[] = [
   },
   {
     icon: "sparkle",
-    bold: "5 AI generations per month",
+    bold: "10 AI generations per month",
   },
   {
     icon: "check",
@@ -809,16 +809,17 @@ export function PricingPageClient({ currentUser, currentSubscription, affiliateS
               What's the difference between Creator and Creator + AI?
             </AccordionTrigger>
             <AccordionContent className="text-muted-foreground leading-relaxed">
-              <strong className="text-foreground/90">Creator</strong> gives you unlimited downloads from the full library — After Effects, Premiere Pro & DaVinci Resolve templates, stock music, sound effects, and footage — plus a commercial license and 5 AI generations per month to try the tools.{" "}
+              <strong className="text-foreground/90">Creator</strong> gives you unlimited downloads from the full library — After Effects, Premiere Pro & DaVinci Resolve templates, stock music, sound effects, and footage — plus a commercial license and 10 AI generations per month to try the tools.{" "}
               <strong className="text-foreground/90">Creator + AI</strong> upgrades that to 100 AI generations per month across all six tools: Video Generation, Image Generation, Image Edit, SVG Generation, Text to Speech, and Speech to Text.
             </AccordionContent>
           </AccordionItem>
           <AccordionItem value="q2" className="border-blue-500/10 px-3">
             <AccordionTrigger className="text-foreground text-base hover:no-underline">
-              How do AI generations work and what counts as one generation?
+              How do AI generation credits work?
             </AccordionTrigger>
             <AccordionContent className="text-muted-foreground leading-relaxed">
-              Each time you produce an output — one image, one video clip, one voiceover, one transcription, one SVG, or one edited image — it uses one generation credit. Credits reset at the start of every billing period. Your current balance is always visible in the app. If you run out mid-month, you can purchase extra generation packs without upgrading your plan.
+              Each generation uses a different number of credits depending on the type of content you create. You can see how many credits each tool uses on the{" "}
+              <Link href="/ai-tools" className="text-blue-400 hover:underline">AI Tools page</Link>. Credits reset at the start of every billing period. Your current balance is always visible in the app. If you run out mid-month, you can purchase extra generation packs without upgrading your plan.
             </AccordionContent>
           </AccordionItem>
           <AccordionItem value="q3" className="border-blue-500/10 px-3">

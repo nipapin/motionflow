@@ -3,6 +3,7 @@
 import { useEffect, useId, useState } from "react";
 import { RefreshCw, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AiGenerationCost } from "@/components/ai-composer-controls";
 import {
   Dialog,
   DialogContent,
@@ -328,6 +329,7 @@ export function FirstFrameDialog({
                   Generate image &amp; use
                 </>
               )}
+              <AiGenerationCost />
             </Button>
           </TabsContent>
 

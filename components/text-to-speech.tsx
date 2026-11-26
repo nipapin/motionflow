@@ -1,5 +1,7 @@
 "use client";
 
+import { AiPromptField, AiToolHistoryLink, AiGenerationCost } from "@/components/ai-composer-controls";
+
 import Link from "next/link";
 import {
   useCallback,
@@ -16,6 +18,7 @@ import {
   RotateCcw,
   Play,
   Pause,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { WaveformPlayer } from "@/components/waveform-player";
 import { useAuth } from "@/components/auth-provider";
 import { CreatorAiGateModal } from "@/components/creator-ai-gate-modal";
@@ -454,48 +458,18 @@ export function TextToSpeech() {
         error={generationsError}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
-        <form onSubmit={handleGenerate} className="lg:col-span-1 space-y-3 lg:space-y-6">
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
-            <div className="flex items-center justify-between mb-3">
-              <label
-                htmlFor="tts-text"
-                className="text-sm font-medium text-foreground"
-              >
-                Text
-              </label>
-              <span
-                className={cn(
-                  "text-xs",
-                  overLimit ? "text-red-400" : "text-muted-foreground",
-                )}
-              >
-                {characterCount} / {MAX_TEXT_LENGTH}
-              </span>
-            </div>
-            <textarea
-              id="tts-text"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              maxLength={MAX_TEXT_LENGTH}
-              placeholder="Enter the text you want to convert to speech…"
-              className={cn(
-                "w-full h-40 bg-background/50 border rounded-xl p-4 text-foreground placeholder:text-muted-foreground resize-none focus:outline-none smooth",
-                overLimit
-                  ? "border-red-500/60 focus:border-red-500/80"
-                  : "border-blue-500/30 focus:border-blue-500/60",
-              )}
-            />
-            <p className="text-[11px] text-muted-foreground mt-2">
-              Tip: write numbers as words (e.g. “twenty twenty-six”) and use
-              <code className="mx-1 px-1 rounded bg-background/60 border border-blue-500/20 text-foreground">
-                &lt;#0.5#&gt;
-              </code>
-              to add a 0.5 s pause.
-            </p>
-          </div>
+      <div className="ai-tool-body grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
+        <form onSubmit={handleGenerate} className="ai-composer ai-composer--voice lg:col-span-1 space-y-3 lg:space-y-6">
+          <AiPromptField
+            id="tts-text"
+            label="Text"
+            value={text}
+            onValueChange={setText}
+            placeholder="Enter the text you want to convert to speech…"
+            maxLength={MAX_TEXT_LENGTH}
+          />
 
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
+          <div className="ai-control ai-setting ai-voice-selector rounded-2xl border border-blue-500/30 bg-card/50 p-5">
             <label
               htmlFor="tts-voice"
               className="text-sm font-medium text-foreground mb-3 block"
@@ -533,7 +507,7 @@ export function TextToSpeech() {
                     ? "Stop preview"
                     : "Play voice preview"
                 }
-                className="shrink-0 h-11 w-11 flex items-center justify-center rounded-xl border border-blue-500/30 bg-background/50 text-blue-400 hover:border-blue-500/60 hover:text-blue-300 hover:bg-blue-500/10 smooth"
+                className="shrink-0 h-10 w-10 flex items-center justify-center rounded-full border border-blue-500/30 bg-background/50 text-blue-400 hover:border-blue-500/60 hover:text-blue-300 hover:bg-blue-500/10 smooth focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
                 {previewPlayingVoice === settings.voice_id ? (
                   <Pause className="w-4 h-4" />
@@ -544,7 +518,7 @@ export function TextToSpeech() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
+          <div className="ai-control ai-setting rounded-2xl border border-blue-500/30 bg-card/50 p-5">
             <label
               htmlFor="tts-emotion"
               className="text-sm font-medium text-foreground mb-3 block"
@@ -568,61 +542,74 @@ export function TextToSpeech() {
             </Select>
           </div>
 
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5 space-y-5">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-foreground">
-                  Speed
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {settings.speed.toFixed(2)}x
-                </span>
-              </div>
-              <Slider
-                min={0.5}
-                max={2}
-                step={0.05}
-                value={[settings.speed]}
-                onValueChange={(v) => updateSetting("speed", v[0] ?? 1)}
-              />
-            </div>
+          <div className="ai-control ai-setting">
+            <label htmlFor="tts-settings">Settings</label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <button id="tts-settings" type="button" aria-label="Voice settings" className="ai-settings-trigger">
+                  <span className="truncate">Voice settings</span> <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-72 max-w-[calc(100vw-2rem)] space-y-5 rounded-2xl border-blue-500/30 bg-popover p-5 shadow-xl" aria-label="Voice settings">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-foreground">
+                      Speed
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {settings.speed.toFixed(2)}x
+                    </span>
+                  </div>
+                  <Slider
+                    aria-label="Speed"
+                    min={0.5}
+                    max={2}
+                    step={0.05}
+                    value={[settings.speed]}
+                    onValueChange={(v) => updateSetting("speed", v[0] ?? 1)}
+                  />
+                </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-foreground">
-                  Volume
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {settings.volume.toFixed(1)}
-                </span>
-              </div>
-              <Slider
-                min={0}
-                max={10}
-                step={0.1}
-                value={[settings.volume]}
-                onValueChange={(v) => updateSetting("volume", v[0] ?? 1)}
-              />
-            </div>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-foreground">
+                      Volume
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {settings.volume.toFixed(1)}
+                    </span>
+                  </div>
+                  <Slider
+                    aria-label="Volume"
+                    min={0}
+                    max={10}
+                    step={0.1}
+                    value={[settings.volume]}
+                    onValueChange={(v) => updateSetting("volume", v[0] ?? 1)}
+                  />
+                </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-foreground">
-                  Pitch
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {settings.pitch > 0 ? "+" : ""}
-                  {settings.pitch} st
-                </span>
-              </div>
-              <Slider
-                min={-12}
-                max={12}
-                step={1}
-                value={[settings.pitch]}
-                onValueChange={(v) => updateSetting("pitch", v[0] ?? 0)}
-              />
-            </div>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-foreground">
+                      Pitch
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {settings.pitch > 0 ? "+" : ""}
+                      {settings.pitch} st
+                    </span>
+                  </div>
+                  <Slider
+                    aria-label="Pitch"
+                    min={-12}
+                    max={12}
+                    step={1}
+                    value={[settings.pitch]}
+                    onValueChange={(v) => updateSetting("pitch", v[0] ?? 0)}
+                  />
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
 
           <Button
@@ -630,7 +617,7 @@ export function TextToSpeech() {
             disabled={
               !text.trim() || overLimit || isGenerating || generationsLoading
             }
-            className="w-full h-12 bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl font-medium smooth shadow-lg shadow-blue-500/25 disabled:opacity-50"
+            className="ai-submit w-full h-12 bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl font-medium smooth shadow-lg shadow-blue-500/25 disabled:opacity-50"
           >
             {isGenerating ? (
               <>
@@ -643,15 +630,16 @@ export function TextToSpeech() {
                 Generate Speech
               </>
             )}
+            <AiGenerationCost />
           </Button>
 
           {errorMessage && (
-            <p className="text-sm text-red-400 text-center">{errorMessage}</p>
+            <p className="ai-error text-sm text-red-400 text-center">{errorMessage}</p>
           )}
         </form>
 
-        <div className="lg:col-span-2 space-y-6">
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
+        <div className="ai-results lg:col-span-2 space-y-6">
+          <div className={cn("rounded-2xl border border-blue-500/30 bg-card/50 p-5", !generatedAudio && "ai-result-empty")}>
             <h3 className="text-lg font-medium text-foreground mb-3">
               Generated audio
             </h3>
@@ -683,7 +671,7 @@ export function TextToSpeech() {
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center text-center py-8">
+              <div className="ai-empty-content flex flex-col items-center justify-center text-center py-8">
                 <div className="w-14 h-14 rounded-xl bg-blue-500/10 flex items-center justify-center mb-3">
                   <Volume2 className="w-7 h-7 text-blue-400" />
                 </div>
@@ -696,6 +684,8 @@ export function TextToSpeech() {
               </div>
             )}
           </div>
+
+          <AiToolHistoryLink />
 
           {user ? (
             <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">

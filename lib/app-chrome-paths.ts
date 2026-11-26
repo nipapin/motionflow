@@ -8,11 +8,12 @@ export const SIDEBAR_LABEL_BY_PATH: Record<string, string> = {
   "/sound-fx": "Sound FX",
   "/footages": "Footages",
   "/ai-tools": "AI Tools",
-  "/image-generation": "Image Gen",
-  "/image-edit": "Image Edit",
-  "/video-generation": "Video Gen",
-  "/text-to-speech": "Text to Speech",
-  "/speech-to-text": "Speech to Text",
+  "/image-generation": "AI Tools",
+  "/svg-generation": "AI Tools",
+  "/image-edit": "AI Tools",
+  "/video-generation": "AI Tools",
+  "/text-to-speech": "AI Tools",
+  "/speech-to-text": "AI Tools",
 };
 
 export function sidebarLabelForPath(pathname: string): string {

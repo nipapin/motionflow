@@ -1,5 +1,7 @@
 "use client";
 
+import { AiPromptField, AiToolHistoryLink, AiImageAttachment, AiGenerationCost } from "@/components/ai-composer-controls";
+
 import Link from "next/link";
 import {
   useState,
@@ -508,9 +510,9 @@ export function ImageEditor() {
         error={generationsError}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
-        <form onSubmit={handleSubmit} className="lg:col-span-1 space-y-3 lg:space-y-6">
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5 space-y-3">
+      <div className="ai-tool-body grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
+        <form onSubmit={handleSubmit} className="ai-composer ai-composer--edit lg:col-span-1 space-y-3 lg:space-y-6">
+          <div className="ai-control ai-setting rounded-2xl border border-blue-500/30 bg-card/50 p-5 space-y-3">
             <label
               htmlFor="suite-tool"
               className="text-sm font-medium text-foreground block"
@@ -539,125 +541,34 @@ export function ImageEditor() {
             </Select>
           </div>
 
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5 space-y-4">
-            <p className="text-sm font-medium text-foreground">Source image</p>
-            <p className="text-xs text-muted-foreground">
-              {activeTool === "prompt_edit"
-                ? "Image 1 required; optional second image for multi-image edits."
-                : "One image per run."}{" "}
-              <span className="text-foreground/80">PNG, JPEG, or WebP.</span>
-            </p>
-            <div
-              className={cn(
-                "grid gap-3",
-                activeTool === "prompt_edit" ? "grid-cols-2" : "grid-cols-1",
-              )}
-            >
-              <div className="relative mx-auto w-full max-w-[180px]">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setErrorMessage(null);
-                    setSourcePickerSlot("primary");
-                  }}
-                  className="flex aspect-square w-full cursor-pointer flex-col overflow-hidden rounded-xl border border-blue-500/30 bg-background/35 text-left transition-colors hover:border-blue-500/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
-                >
-                  <div className="relative flex min-h-0 flex-1 flex-col">
-                    {primaryUrl ? (
-                      <img
-                        src={replicateFileUrlToDisplaySrc(primaryUrl)}
-                        alt="Image 1"
-                        className="h-full w-full flex-1 object-cover"
-                      />
-                    ) : (
-                      <div className="flex flex-1 flex-col items-center justify-center gap-2 px-3 text-muted-foreground/70">
-                        <ImageIcon className="h-8 w-8" />
-                        <span className="text-xs font-medium text-foreground/90 text-center leading-snug">
-                          Image 1
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </button>
-                {primaryUrl ? (
-                  <button
-                    type="button"
-                    aria-label="Clear Image 1"
-                    className="absolute right-1 top-1 z-10 h-7 w-7 cursor-pointer rounded-full border border-blue-500/35 bg-background/80 p-0 text-muted-foreground leading-none backdrop-blur-sm transition-colors hover:text-foreground"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPrimaryUrl(null);
-                      setPrimarySourceMime(null);
-                    }}
-                  >
-                    <X className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2" />
-                  </button>
-                ) : null}
-              </div>
-              {activeTool === "prompt_edit" ? (
-                <div className="relative mx-auto w-full max-w-[180px]">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setErrorMessage(null);
-                      setSourcePickerSlot("secondary");
-                    }}
-                    className="flex aspect-square w-full cursor-pointer flex-col overflow-hidden rounded-xl border border-blue-500/30 bg-background/35 text-left transition-colors hover:border-blue-500/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
-                  >
-                    <div className="relative flex min-h-0 flex-1 flex-col">
-                      {secondaryUrl ? (
-                        <img
-                          src={replicateFileUrlToDisplaySrc(secondaryUrl)}
-                          alt="Image 2"
-                          className="h-full w-full flex-1 object-cover"
-                        />
-                      ) : (
-                        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-3 text-muted-foreground/70">
-                          <ImageIcon className="h-8 w-8" />
-                          <span className="text-xs font-medium text-foreground/90 text-center leading-snug">
-                            Image 2 (optional)
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </button>
-                  {secondaryUrl ? (
-                    <button
-                      type="button"
-                      aria-label="Clear Image 2"
-                      className="absolute right-1 top-1 z-10 h-7 w-7 cursor-pointer rounded-full border border-blue-500/35 bg-background/80 p-0 text-muted-foreground leading-none backdrop-blur-sm transition-colors hover:text-foreground"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSecondaryUrl(null);
-                      }}
-                    >
-                      <X className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2" />
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
+          <div className="ai-attachments" role="group" aria-label="Source images">
+            <AiImageAttachment
+              label="Image 1"
+              attached={Boolean(primaryUrl)}
+              onChoose={() => { setErrorMessage(null); setSourcePickerSlot("primary"); }}
+              onClear={() => { setPrimaryUrl(null); setPrimarySourceMime(null); }}
+            />
+            {activeTool === "prompt_edit" && (
+              <AiImageAttachment
+                label="Image 2 (optional)"
+                attached={Boolean(secondaryUrl)}
+                onChoose={() => { setErrorMessage(null); setSourcePickerSlot("secondary"); }}
+                onClear={() => setSecondaryUrl(null)}
+              />
+            )}
           </div>
 
           {activeTool === "prompt_edit" ? (
             <>
-              <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
-                <label
-                  htmlFor="edit-prompt"
-                  className="text-sm font-medium text-foreground mb-3 block"
-                >
-                  Edit prompt
-                </label>
-                <textarea
-                  id="edit-prompt"
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  placeholder='e.g. "Change the sky in image 1 to sunset colors"'
-                  className="w-full h-32 bg-background/50 border border-blue-500/30 rounded-xl p-4 text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:border-blue-500/60 smooth"
-                />
-              </div>
+              <AiPromptField
+                id="edit-prompt"
+                label="Edit prompt"
+                value={prompt}
+                onValueChange={setPrompt}
+                placeholder='e.g. "Change the sky in image 1 to sunset colors"'
+              />
 
-              <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
+              <div className="ai-control ai-setting rounded-2xl border border-blue-500/30 bg-card/50 p-5">
                 <label
                   htmlFor="edit-ratio"
                   className="text-sm font-medium text-foreground mb-3 block"
@@ -681,7 +592,7 @@ export function ImageEditor() {
           ) : null}
 
           {activeTool === "upscale" ? (
-            <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
+            <div className="ai-control ai-setting rounded-2xl border border-blue-500/30 bg-card/50 p-5">
               <label
                 htmlFor="scale-factor"
                 className="text-sm font-medium text-foreground mb-3 block"
@@ -709,7 +620,7 @@ export function ImageEditor() {
           <Button
             type="submit"
             disabled={submitDisabled}
-            className="w-full h-12 bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl font-medium smooth shadow-lg shadow-blue-500/25 disabled:opacity-50"
+            className="ai-submit w-full h-12 bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl font-medium smooth shadow-lg shadow-blue-500/25 disabled:opacity-50"
           >
             {isGenerating ? (
               <>
@@ -726,15 +637,16 @@ export function ImageEditor() {
                     : "Upscale"}
               </>
             )}
+            <AiGenerationCost />
           </Button>
 
           {errorMessage && (
-            <p className="text-sm text-red-400 text-center">{errorMessage}</p>
+            <p className="ai-error text-sm text-red-400 text-center">{errorMessage}</p>
           )}
         </form>
 
-        <div className="lg:col-span-2 space-y-6">
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5 min-h-[350px]">
+        <div className="ai-results lg:col-span-2 space-y-6">
+          <div className={cn("rounded-2xl border border-blue-500/30 bg-card/50 p-5 min-h-[350px]", generatedImages.length === 0 && "ai-result-empty")}>
             <h3 className="text-lg font-medium text-foreground mb-4">Result</h3>
             {generatedImages.length > 0 ? (
               <div className="space-y-4">
@@ -779,7 +691,7 @@ export function ImageEditor() {
                 </div>
               </div>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center py-16">
+              <div className="ai-empty-content h-full flex flex-col items-center justify-center text-center py-16">
                 <div className="w-20 h-20 rounded-2xl bg-blue-500/10 flex items-center justify-center mb-4">
                   <ImageIcon className="w-10 h-10 text-blue-400" />
                 </div>
@@ -790,6 +702,8 @@ export function ImageEditor() {
               </div>
             )}
           </div>
+
+          <AiToolHistoryLink />
 
           {user && recentItems.length > 0 ? (
             <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">

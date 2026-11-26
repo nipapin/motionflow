@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
+import { AiWorkspaceActiveContext } from "@/components/ai-workspace-context";
 import type { MotionflowGenerationPlan } from "@/lib/subscriptions";
 
 export interface GenerationStatus {
@@ -60,14 +61,31 @@ export function normalizeGenerationStatus(
   };
 }
 
+const GENERATIONS_UPDATED_EVENT = "motionflow:generations-updated";
+type GenerationUpdate = { userId: number; status: GenerationStatus };
+
 export function useGenerations(): UseGenerationsResult {
   const { user } = useAuth();
-  const [status, setStatusState] = useState<GenerationStatus | null>(null);
+  const workspaceActive = useContext(AiWorkspaceActiveContext);
+  const [snapshot, setSnapshot] = useState<GenerationUpdate | null>(null);
+  const status = snapshot?.userId === user?.id ? snapshot?.status ?? null : null;
+  const currentUserId = useRef(user?.id);
+  currentUserId.current = user?.id;
+  const requestVersion = useRef(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [authenticated, setAuthenticated] = useState(true);
 
   const refresh = useCallback(async () => {
+    const userId = user?.id;
+    const version = ++requestVersion.current;
+    if (!userId) {
+      setAuthenticated(false);
+      setSnapshot(null);
+      setLoading(false);
+      return;
+    }
+    const isCurrent = () => currentUserId.current === userId && requestVersion.current === version;
     setLoading(true);
     setError(null);
     try {
@@ -76,9 +94,10 @@ export function useGenerations(): UseGenerationsResult {
         cache: "no-store",
       });
 
+      if (!isCurrent()) return;
       if (res.status === 401) {
         setAuthenticated(false);
-        setStatusState(null);
+        setSnapshot(null);
         return;
       }
 
@@ -90,23 +109,50 @@ export function useGenerations(): UseGenerationsResult {
         throw new Error(data.error || `Request failed (${res.status})`);
       }
 
+      if (!isCurrent()) return;
+      const update = { userId, status: normalizeGenerationStatus(data) };
       setAuthenticated(true);
-      setStatusState(normalizeGenerationStatus(data));
+      setSnapshot(update);
+      window.dispatchEvent(new CustomEvent<GenerationUpdate>(GENERATIONS_UPDATED_EVENT, { detail: update }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load status");
+      if (isCurrent()) setError(e instanceof Error ? e.message : "Failed to load status");
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, []);
+  }, [user?.id]);
 
   /** Re-fetch when session appears/changes (e.g. after sign-in modal) so UI is not stuck logged-out. */
   useEffect(() => {
-    void refresh();
-  }, [refresh, user?.id]);
+    if (workspaceActive) void refresh();
+  }, [refresh, user?.id, workspaceActive]);
+
+  // All tool instances and the sidebar share updates without polling or extra requests.
+  useEffect(() => {
+    const receive = (event: Event) => {
+      const update = (event as CustomEvent<GenerationUpdate>).detail;
+      if (!update || update.userId !== currentUserId.current) return;
+      ++requestVersion.current;
+      setSnapshot(update);
+      setAuthenticated(true);
+      setLoading(false);
+      setError(null);
+    };
+    window.addEventListener(GENERATIONS_UPDATED_EVENT, receive);
+    const onFocus = () => { if (workspaceActive && user?.id) void refresh(); };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener(GENERATIONS_UPDATED_EVENT, receive);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [workspaceActive, user?.id, refresh]);
 
   const setStatus = useCallback((next: GenerationStatus) => {
-    setStatusState(next);
-  }, []);
+    const userId = user?.id;
+    if (!userId || currentUserId.current !== userId) return;
+    const update = { userId, status: normalizeGenerationStatus(next) };
+    setSnapshot(update);
+    window.dispatchEvent(new CustomEvent<GenerationUpdate>(GENERATIONS_UPDATED_EVENT, { detail: update }));
+  }, [user?.id]);
 
   return { status, loading, error, authenticated, refresh, setStatus };
 }

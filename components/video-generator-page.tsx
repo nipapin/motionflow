@@ -1,7 +1,7 @@
 "use client";
 
-import { VideoGenerator } from "@/components/video-generator";
+import { AiToolsWorkspace } from "@/components/ai-tools-workspace";
 
 export function VideoGeneratorPage() {
-  return <VideoGenerator />;
+  return <AiToolsWorkspace initialTool="video" />;
 }

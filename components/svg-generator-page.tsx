@@ -1,7 +1,7 @@
 "use client";
 
-import { SvgGenerator } from "@/components/svg-generator";
+import { AiToolsWorkspace } from "@/components/ai-tools-workspace";
 
 export function SvgGeneratorPage() {
-  return <SvgGenerator />;
+  return <AiToolsWorkspace initialTool="graphic" />;
 }

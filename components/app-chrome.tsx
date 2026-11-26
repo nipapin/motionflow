@@ -25,14 +25,6 @@ import {
   type SearchCategory,
 } from "@/lib/search-categories";
 
-const AI_TOOL_SIDEBAR_LABELS = new Set([
-  "Image Gen",
-  "Image Edit",
-  "Video Gen",
-  "Text to Speech",
-  "Speech to Text",
-]);
-
 type AppChromeContextValue = {
   searchQuery: string;
   setSearchQuery: (q: string) => void;
@@ -66,7 +58,7 @@ export function AppChrome({ children, saleInitialTime = null }: { children: Reac
   const [spaActiveCategory, setSpaActiveCategory] = useState("All");
 
   const routeSidebarLabel = sidebarLabelForPath(normalizedPath);
-  const isAiToolPage = AI_TOOL_SIDEBAR_LABELS.has(routeSidebarLabel);
+  const isAiToolPage = routeSidebarLabel === "AI Tools";
   const showSearch = true;
   const activeCategory = isSpaHome ? spaActiveCategory : routeSidebarLabel;
 

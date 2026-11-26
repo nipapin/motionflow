@@ -1,5 +1,9 @@
 "use client";
 
+import { AiToolHistoryLink, AiGenerationCost } from "@/components/ai-composer-controls";
+
+import { cn } from "@/lib/utils";
+
 import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Mic, Upload, Download, RefreshCw, Trash2, Copy, Check, FileAudio } from "lucide-react";
@@ -378,10 +382,10 @@ export function SpeechToText() {
         error={generationsError}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
-        <div className="lg:col-span-1 space-y-3 lg:space-y-6">
+      <div className="ai-tool-body grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
+        <div className="ai-composer ai-composer--transcribe lg:col-span-1 space-y-3 lg:space-y-6">
           {/* Upload Section */}
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
+          <div className="ai-control ai-upload rounded-2xl border border-blue-500/30 bg-card/50 p-5">
             <label htmlFor={fileInputId} className="text-sm font-medium text-foreground mb-3 block">Upload File</label>
             <input
               ref={fileInputRef}
@@ -414,7 +418,7 @@ export function SpeechToText() {
           </div>
 
           {/* Output Format */}
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">
+          <div className="ai-control ai-setting rounded-2xl border border-blue-500/30 bg-card/50 p-5">
             <label
               htmlFor="stt-format"
               className="text-sm font-medium text-foreground mb-3 block"
@@ -445,7 +449,7 @@ export function SpeechToText() {
               isTranscribing ||
               generationsLoading
             }
-            className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl font-medium smooth shadow-lg shadow-blue-500/25 disabled:opacity-50"
+            className="ai-submit w-full h-12 bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 rounded-xl font-medium smooth shadow-lg shadow-blue-500/25 disabled:opacity-50"
           >
             {isTranscribing ? (
               <>
@@ -458,15 +462,16 @@ export function SpeechToText() {
                 Transcribe
               </>
             )}
+            <AiGenerationCost />
           </Button>
 
           {errorMessage && (
-            <p className="text-sm text-red-400 text-center">{errorMessage}</p>
+            <p className="ai-error text-sm text-red-400 text-center">{errorMessage}</p>
           )}
         </div>
 
-        <div className="lg:col-span-2 space-y-6">
-          <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5 min-h-[400px]">
+        <div className="ai-results lg:col-span-2 space-y-6">
+          <div className={cn("rounded-2xl border border-blue-500/30 bg-card/50 p-5 min-h-[400px]", !transcribedText && "ai-result-empty")}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-medium text-foreground">Transcription</h3>
               {transcribedText && (
@@ -502,7 +507,7 @@ export function SpeechToText() {
                 <p className="text-foreground leading-relaxed whitespace-pre-wrap font-mono text-sm">{transcribedText}</p>
               </div>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center py-16">
+              <div className="ai-empty-content h-full flex flex-col items-center justify-center text-center py-16">
                 <div className="w-20 h-20 rounded-2xl bg-blue-500/10 flex items-center justify-center mb-4">
                   <Mic className="w-10 h-10 text-blue-400" />
                 </div>
@@ -511,6 +516,8 @@ export function SpeechToText() {
               </div>
             )}
           </div>
+
+          <AiToolHistoryLink />
 
           {user ? (
             <div className="rounded-2xl border border-blue-500/30 bg-card/50 p-5">

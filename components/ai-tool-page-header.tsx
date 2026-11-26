@@ -1,5 +1,8 @@
 "use client";
 
+import { useContext } from "react";
+import { createPortal } from "react-dom";
+import { AiWorkspaceActiveContext, AiWorkspaceQuotaContext } from "@/components/ai-workspace-context";
 import { GenerationsBadge } from "@/components/generations-badge";
 import { cn } from "@/lib/utils";
 import type { GenerationStatus } from "@/hooks/use-generations";
@@ -26,8 +29,23 @@ export function AiToolPageHeader({
   authenticated,
   error,
 }: AiToolPageHeaderProps) {
+  const quotaTarget = useContext(AiWorkspaceQuotaContext);
+  const workspaceActive = useContext(AiWorkspaceActiveContext);
+  const quotaBadge = (
+    <GenerationsBadge
+      status={status}
+      loading={loading}
+      authenticated={authenticated}
+      error={error}
+    />
+  );
+
+  if (quotaTarget !== undefined) {
+    return workspaceActive && quotaTarget ? createPortal(quotaBadge, quotaTarget) : null;
+  }
+
   return (
-    <div className="mb-8">
+    <div className="ai-tool-heading mb-8">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1 pr-1 sm:pr-2">
           <h1 className="text-2xl sm:text-3xl font-semibold text-foreground tracking-tight leading-tight">
@@ -42,12 +60,7 @@ export function AiToolPageHeader({
             {description}
           </p>
         </div>
-        <GenerationsBadge
-          status={status}
-          loading={loading}
-          authenticated={authenticated}
-          error={error}
-        />
+        {quotaBadge}
       </div>
     </div>
   );

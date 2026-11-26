@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { AiToolsPage } from "@/components/ai-tools-page";
-import { getAiToolsPreviews } from "@/lib/ai-tools-previews";
+import { AiToolsWorkspace, type AiWorkspaceTool } from "@/components/ai-tools-workspace";
 
 export const metadata: Metadata = {
   title: "AI Video, Image & Voice Generator — Motion Flow",
@@ -99,15 +98,17 @@ const schemaJsonLd = {
   ],
 };
 
-export default async function Page() {
-  const previews = await getAiToolsPreviews();
+export default async function Page({ searchParams }: { searchParams: Promise<{ tool?: string }> }) {
+  const { tool } = await searchParams;
+  const modes: AiWorkspaceTool[] = ["image", "edit", "video", "voice", "transcribe", "graphic"];
+  const initialTool = modes.find(mode => mode === tool) ?? "image";
   return (
     <>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaJsonLd) }}
       />
-      <AiToolsPage previews={previews} />
+      <AiToolsWorkspace initialTool={initialTool} />
     </>
   );
 }

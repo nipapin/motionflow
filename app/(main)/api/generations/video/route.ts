@@ -1,6 +1,7 @@
 import { trackedReplicateFetch } from "@/lib/replicate-usage-fetch";
 import { getReplicateApiToken } from "@/lib/replicate-auth";
 import { NextRequest, NextResponse } from "next/server";
+import { AI_GENERATION_COST, AI_VIDEO_GENERATION_COST } from "@/lib/ai-tool-cost";
 import Replicate, { type FileOutput } from "replicate";
 import { resolveRequestUser, requestHasCepBearer } from "@/lib/auth/resolve-request-user";
 import {
@@ -243,7 +244,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const creatorAi = await requireCreatorAiForGeneration(user.id);
+        const creatorAi = await requireCreatorAiForGeneration(user.id, user.cepClient);
         if (!creatorAi.ok) {
             return creatorAi.response;
         }
@@ -325,12 +326,14 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        const cost = user.cepClient ? AI_GENERATION_COST : AI_VIDEO_GENERATION_COST;
         const preStatus = await getGenerationsStatus(user.id);
-        if (preStatus.total_generations_left <= 0) {
+        if (preStatus.total_generations_left < cost) {
             return NextResponse.json(
                 {
                     code: GENERATION_LIMIT_REACHED_CODE,
                     ...preStatus,
+                    cost,
                 },
                 { status: 402 },
             );
@@ -502,12 +505,13 @@ export async function POST(req: NextRequest) {
             persistedVideoUrl = videoUrl;
         }
 
-        const consumed = await consumeGeneration(user.id, "video");
+        const consumed = await consumeGeneration(user.id, "video", cost);
         if (!consumed.ok) {
             return NextResponse.json(
                 {
                     code: GENERATION_LIMIT_REACHED_CODE,
                     ...consumed.status,
+                    cost,
                 },
                 { status: 402 },
             );
@@ -530,6 +534,7 @@ export async function POST(req: NextRequest) {
             target_resolution,
             audio_enabled,
             generations: consumed.status,
+            cost,
             record_id: recordId > 0 ? String(recordId) : undefined,
             ...(subGrokOverride !== null || extraGrokOverride !== null
                 ? {

@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const creatorAi = await requireCreatorAiForGeneration(user.id);
+        const creatorAi = await requireCreatorAiForGeneration(user.id, user.cepClient);
         if (!creatorAi.ok) {
             return creatorAi.response;
         }

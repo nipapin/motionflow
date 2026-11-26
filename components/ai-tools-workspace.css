@@ -1,0 +1,73 @@
+.ai-workspace {
+  --ai-panel: var(--card);
+  --ai-line: color-mix(in srgb, var(--foreground) 12%, transparent);
+  --ai-surface: color-mix(in srgb, var(--ai-panel) 50%, transparent);
+  --ai-panel-border: color-mix(in srgb, var(--color-blue-500) 30%, transparent);
+}
+
+.ai-workspace .ai-tool-body { display: flex; flex-direction: column; gap: 1.5rem; }
+
+.ai-workspace .ai-composer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: .75rem;
+  padding: 1.25rem;
+  border: 1px solid var(--ai-panel-border);
+  border-radius: 1.75rem;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-blue-500) 4%, transparent), transparent 65%), var(--ai-surface);
+  box-shadow: 0 12px 40px rgb(0 0 0 / .08);
+  transition: border-color .2s, box-shadow .2s;
+}
+.ai-workspace .ai-composer:focus-within { border-color: color-mix(in srgb, var(--color-blue-500) 60%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-blue-500) 8%, transparent); }
+.ai-workspace .ai-composer > *, .ai-workspace .ai-setting > * { margin-block: 0; }
+.ai-workspace .ai-control { padding: 0; border: 0; border-radius: 0; background: transparent; }
+.ai-workspace .ai-setting { width: auto; min-width: 9rem; max-width: 100%; }
+.ai-workspace .ai-setting > label { display: block; margin-block-end: .4rem; font-size: .7rem; line-height: 1rem; color: var(--muted-foreground); }
+.ai-workspace .ai-composer [data-slot="select-trigger"] { min-width: 9rem; height: 2.5rem; border-color: var(--ai-panel-border); border-radius: 999px; background: color-mix(in srgb, var(--background) 50%, transparent); }
+.ai-workspace .ai-prompt { order: -1; width: 100%; }
+.ai-workspace .ai-prompt > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.ai-workspace .ai-prompt textarea { display: block; width: 100%; height: 6rem; min-height: 6rem; max-height: 24rem; padding: .25rem 2.5rem .75rem .25rem; border: none; border-radius: .5rem; background: transparent; font-size: .9375rem; line-height: 1.65; }
+.ai-workspace .ai-prompt textarea:focus-visible { outline: none; }
+.ai-workspace .ai-prompt-clear { right: 0; top: 0; }
+.ai-workspace .ai-submit { width: auto; min-height: 2.5rem; height: 2.5rem; margin-left: auto; padding: 0 1rem; border-radius: 999px; background: linear-gradient(to right, var(--color-blue-600), var(--color-blue-500)); color: #fff; box-shadow: 0 4px 16px color-mix(in srgb, var(--color-blue-500) 25%, transparent); font-weight: 600; }
+.ai-workspace .ai-submit svg { margin-right: 0; width: 1rem; height: 1rem; }
+.ai-workspace .ai-settings-trigger { display: flex; align-items: center; justify-content: space-between; gap: .5rem; width: 100%; height: 2.5rem; padding: 0 1rem; border: 1px solid var(--ai-panel-border); border-radius: 999px; background: color-mix(in srgb, var(--background) 50%, transparent); font-size: .875rem; cursor: pointer; }
+.ai-workspace .ai-settings-trigger:hover { border-color: var(--color-blue-500); }
+.ai-workspace .ai-settings-trigger:focus-visible { outline: 2px solid var(--color-blue-500); outline-offset: 2px; }
+.ai-workspace .ai-submit:hover:not(:disabled) { background: linear-gradient(to right, var(--color-blue-500), var(--color-blue-400)); }
+.ai-workspace .ai-submit:disabled { opacity: .45; }
+.ai-workspace .ai-composer > .ai-error { width: 100%; text-align: left; }
+
+.ai-workspace .ai-attachments { order: -2; display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.25rem; width: 100%; }
+.ai-workspace .ai-video-options { display: contents; }
+.ai-workspace .ai-video-options > * { margin: 0; }
+.ai-workspace .ai-video-options > div:not(.ai-attachments) { width: 10rem; max-width: 100%; }
+.ai-workspace .ai-video-options label { margin-bottom: .4rem; font-size: .7rem; color: var(--muted-foreground); }
+.ai-workspace .ai-video-options .ai-audio-option { width: 13rem; }
+.ai-workspace .ai-audio-option > div { height: 2.5rem; padding: 0 .75rem; border-color: var(--ai-line); border-radius: 999px; }
+.ai-workspace .ai-audio-option p + p { display: none; }
+.ai-workspace .ai-audio-option [data-slot="switch"] { margin-left: .75rem; }
+.ai-workspace .ai-upload { width: 100%; }
+.ai-workspace .ai-upload > button { padding-block: 1.5rem; border-color: var(--ai-line); }
+
+.ai-workspace .ai-results { width: 100%; }
+.ai-workspace .ai-results > div:not(.ai-history-link) { border-color: var(--ai-panel-border); background: var(--ai-surface); }
+.ai-workspace .ai-result-empty { min-height: 0; border-style: dashed; background: transparent; }
+.ai-workspace .ai-result-empty > h3 { display: none; }
+.ai-workspace .ai-result-empty > div:first-child:has(> h3) { display: none; }
+.ai-workspace .ai-result-empty .ai-empty-content { padding-block: 1.5rem; }
+.ai-workspace .ai-empty-content > div:first-child { width: 2.5rem; height: 2.5rem; margin-bottom: .75rem; background: transparent; }
+.ai-workspace .ai-empty-content > div:first-child svg { width: 1.5rem; height: 1.5rem; color: var(--muted-foreground); }
+.ai-workspace .ai-empty-content h3 { font-size: .9rem; }
+.ai-workspace .ai-empty-content p { max-width: none; font-size: .8rem; }
+
+@media (max-width: 640px) {
+  .ai-workspace .ai-composer { padding: 1rem; border-radius: 1.25rem; gap: .75rem; }
+  .ai-workspace .ai-setting, .ai-workspace .ai-video-options > div:not(.ai-attachments) { flex: 1 1 40%; min-width: 0; }
+  .ai-workspace .ai-composer [data-slot="select-trigger"] { min-width: 0; width: 100%; }
+  .ai-workspace .ai-composer--voice .ai-voice-selector { flex-basis: 100%; }
+  .ai-workspace .ai-settings-trigger { padding-inline: .65rem; gap: .25rem; font-size: .8125rem; }
+  .ai-workspace .ai-submit { width: 100%; margin-left: 0; margin-top: .25rem; }
+  .ai-workspace .ai-submit { font-size: .8125rem; }
+}

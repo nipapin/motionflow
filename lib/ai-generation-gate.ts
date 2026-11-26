@@ -1,5 +1,6 @@
 import type { AuthUser } from "@/components/auth-provider";
 import type { GenerationStatus } from "@/hooks/use-generations";
+import { AI_GENERATION_COST } from "@/lib/ai-tool-cost";
 
 /** Same value as `CREATOR_AI_REQUIRED_CODE` in `creator-ai-generation-access.ts` (API JSON). */
 export const CREATOR_AI_REQUIRED_CODE = "CREATOR_AI_REQUIRED" as const;
@@ -17,6 +18,7 @@ export function getAiGenerateBlockReason(
     user: AuthUser | null,
     status: GenerationStatus | null,
     generationsLoading: boolean,
+    cost: number = AI_GENERATION_COST,
 ): AiGenerateBlockReason | null {
     if (generationsLoading) {
         return null;
@@ -27,10 +29,7 @@ export function getAiGenerateBlockReason(
     if (!status) {
         return null;
     }
-    if (status.plan !== "creator_ai") {
-        return "needs_creator_ai";
-    }
-    if (status.total_generations_left <= 0) {
+    if (status.total_generations_left < cost) {
         return "limit";
     }
     return null;
