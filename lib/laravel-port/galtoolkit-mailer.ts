@@ -1,6 +1,6 @@
 import "server-only";
 
-import { sendResendEmail } from "@/lib/mail/resend-mailer";
+import { sendResendEmail, type ResendAttachment } from "@/lib/mail/resend-mailer";
 
 /**
  * Galtoolkit contact form (port of Laravel `App\Mail\sendContactForm`).
@@ -66,6 +66,7 @@ export interface ContactFormPayload {
   email: string;
   contactMessage: string;
   attachment?: File | null;
+  attachments?: ResendAttachment[];
 }
 
 export async function sendGaltoolkitContactForm(
@@ -83,10 +84,10 @@ export async function sendGaltoolkitContactForm(
     logPrefix: "[galtoolkit-mail]",
     text: renderText(payload),
     html: renderHtml(payload),
-    attachments: payload.attachment ? [{
+    attachments: payload.attachments ?? (payload.attachment ? [{
       filename: payload.attachment.name,
       content: Buffer.from(await payload.attachment.arrayBuffer()),
       contentType: payload.attachment.type || undefined,
-    }] : undefined,
+    }] : undefined),
   });
 }
